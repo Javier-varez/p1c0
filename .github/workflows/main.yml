@@ -1,0 +1,46 @@
+name: p1c0
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  cargo_clippy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: rust-src, clippy, rustfmt, rustc, rust-std
+        target: aarch64-unknown-none-softfloat
+    - name: Run cargo fmt check
+      uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --all -- --check
+    - name: Run cargo clippy
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
+
+  cargo_build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: rust-src, clippy, rustfmt, rustc, rust-std
+        target: aarch64-unknown-none-softfloat
+    - name: Run cargo build
+      run: cargo build
