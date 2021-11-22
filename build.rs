@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     Build::new()
         .file("startup.S")
         .target("aarch64-unknown-none-softfloat")
-        .compiler("aarch64-none-elf-gcc")
+        .compiler("aarch64-linux-gnu-gcc")
         .compile("entry");
 
     println!("cargo:rerun-if-changed=startup.S");
