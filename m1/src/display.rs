@@ -1,79 +1,27 @@
 use crate::boot_args::BootVideoArgs;
+use embedded_graphics::draw_target::DrawTarget;
+use embedded_graphics::pixelcolor::Rgb888;
+use embedded_graphics::prelude::*;
 
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct PixelColor {
-    _reserved: u8,
-    blue: u8,
-    green: u8,
-    red: u8,
-}
-
-impl PixelColor {
-    pub const BLACK: PixelColor = PixelColor {
-        red: 0,
-        green: 0,
-        blue: 0,
-        _reserved: 0,
-    };
-
-    pub const RED: PixelColor = PixelColor {
-        red: 255,
-        green: 0,
-        blue: 0,
-        _reserved: 0,
-    };
-
-    pub const GREEN: PixelColor = PixelColor {
-        red: 0,
-        green: 255,
-        blue: 0,
-        _reserved: 0,
-    };
-
-    pub const BLUE: PixelColor = PixelColor {
-        red: 0,
-        green: 0,
-        blue: 255,
-        _reserved: 0,
-    };
-
-    pub fn new(red: u8, green: u8, blue: u8) -> Self {
-        Self {
-            red,
-            green,
-            blue,
-            _reserved: 0,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct Coordinate {
-    pub x: u32,
-    pub y: u32,
-}
-
-impl Coordinate {
-    pub fn new(x: u32, y: u32) -> Self {
-        Self { x, y }
-    }
-}
+const MAX_WIDTH: usize = 3024;
+const MAX_HEIGHT: usize = 1964;
 
 pub struct Display {
-    hwbase: *mut PixelColor,
     width: u32,
     height: u32,
     stride: u32,
+    hwbase: *mut u32,
+    base: [u32; MAX_HEIGHT * MAX_WIDTH],
 }
 
 impl Display {
     pub fn new(video_args: &BootVideoArgs) -> Self {
         Self {
-            hwbase: video_args.base as *mut PixelColor,
+            hwbase: video_args.base as *mut u32,
             width: video_args.width as u32,
             height: video_args.height as u32,
             stride: video_args.stride as u32 / 4,
+            base: [0; MAX_HEIGHT * MAX_WIDTH],
         }
     }
 
@@ -85,25 +33,36 @@ impl Display {
         self.height
     }
 
-    pub fn clear(&mut self) {
-        self.fill_display(|_| PixelColor::BLACK);
+    pub fn flush(&mut self) {
+        let display_size = (self.stride * self.height) as usize;
+        let origin = self.base.as_ptr();
+        unsafe { core::ptr::copy_nonoverlapping(origin, self.hwbase, display_size) };
     }
+}
 
-    pub fn fill_display<T>(&mut self, color_functor: T)
+impl DrawTarget for Display {
+    type Color = Rgb888;
+    type Error = core::convert::Infallible;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
-        T: Fn(Coordinate) -> PixelColor,
+        I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let coordinate = Coordinate::new(x, y);
-                self.draw_pixel(coordinate, color_functor(coordinate));
-            }
+        for Pixel(coord, color) in pixels.into_iter() {
+            let Point { x, y } = coord;
+            // Calculate the index in the framebuffer.
+            let pix_offset = (x + y * self.stride as i32) as usize;
+            let color =
+                (color.r() as u32) << 22 | (color.g() as u32) << 12 | (color.b() as u32) << 2;
+            self.base[pix_offset] = color;
         }
-    }
 
-    pub fn draw_pixel(&mut self, coordinate: Coordinate, color: PixelColor) {
-        let pix_offset = coordinate.x + coordinate.y * self.stride;
-        let ptr = self.hwbase as usize + (pix_offset * core::mem::size_of::<u32>() as u32) as usize;
-        unsafe { core::ptr::write(ptr as *mut PixelColor, color) };
+        Ok(())
+    }
+}
+
+impl OriginDimensions for Display {
+    fn size(&self) -> Size {
+        Size::new(self.width, self.height)
     }
 }

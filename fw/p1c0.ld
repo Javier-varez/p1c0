@@ -3,7 +3,8 @@ ENTRY(_start)
 /* Fake virtual load address for the mach-o */
 _va_base = 0xFFFFFE0007004000;
 
-_stack_size = 0x20000;
+/* Huge stack for now, as we don't have dyn memory yet and the framebuffer is in the stack */
+_stack_size = 0x4000000;
 
 _max_payload_size = 64*1024*1024;
 
