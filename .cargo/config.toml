@@ -1,5 +1,2 @@
-[build]
-target = "aarch64-unknown-none-softfloat"
-
-[target.aarch64-unknown-none-softfloat]
-rustflags = ["-C", "link-arg=-Tp1c0.ld"]
+[alias]
+xtask = "run --manifest-path ./xtask/Cargo.toml --"

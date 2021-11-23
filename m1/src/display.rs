@@ -1,4 +1,4 @@
-use crate::BootVideoArgs;
+use crate::boot_args::BootVideoArgs;
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
