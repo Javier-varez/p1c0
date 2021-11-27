@@ -152,6 +152,7 @@ SECTIONS {
         *(.rela.data)
         *(.rela.data.*)
         *(.rela.dyn)
+        *(.rela.*)
         _rela_end = .;
         . = ALIGN(0x4000);
     } :rodata

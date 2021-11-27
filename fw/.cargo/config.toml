@@ -2,4 +2,12 @@
 target = "aarch64-unknown-none-softfloat"
 
 [target.aarch64-unknown-none-softfloat]
-rustflags = ["-C", "link-arg=-Tp1c0.ld"]
+rustflags = [
+    "-C", "link-arg=-Tp1c0.ld",
+    "-C", "link-arg=-Map=p1c0.map",
+    "-C", "relocation-model=pic",
+    "-C", "link-arg=--no-apply-dynamic-relocs",
+    "-C", "link-arg=-pie",
+    "-C", "link-args=-z nocopyreloc",
+    "-C", "link-args=-z notext"
+]
