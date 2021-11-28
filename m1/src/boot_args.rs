@@ -1,4 +1,5 @@
 #[repr(C)]
+#[derive(Clone, Debug)]
 pub struct BootVideoArgs {
     pub base: *mut u8,
     pub display: usize,
@@ -9,6 +10,7 @@ pub struct BootVideoArgs {
 }
 
 #[repr(C)]
+#[derive(Clone, Debug)]
 pub struct BootArgs {
     pub revision: u16,
     pub version: u16,
