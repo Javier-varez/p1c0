@@ -25,18 +25,25 @@ const COL_MARGIN: u32 = 10;
 // prevent deadlocks). At this point using spin mutex causes a crash, that needs to be investigated.
 static mut DISPLAY: Option<Display> = None;
 
+// Align this to 128 to make the display update much faster. Also need to guarantee that base is
+// the first element in the struct so that it is still aligned.
+#[repr(C, align(128))]
 pub struct Display {
+    base: [u32; MAX_HEIGHT * MAX_WIDTH],
     width: u32,
     height: u32,
     stride: u32,
     hwbase: *mut u32,
-    base: [u32; MAX_HEIGHT * MAX_WIDTH],
 
     // Console members
     font: &'static MonoFont<'static>,
     current_row: u32,
     current_col: u32,
     max_rows: u32,
+}
+
+extern "C" {
+    fn _memcpy128_aligned(dst: *mut u32, src: *const u32, num_bytes: usize);
 }
 
 impl Display {
@@ -76,7 +83,18 @@ impl Display {
     fn flush(&mut self) {
         let display_size = (self.stride * self.height) as usize;
         let origin = self.base.as_ptr();
-        unsafe { core::ptr::copy_nonoverlapping(origin, self.hwbase, display_size) };
+        // Calling _memcpy128_aligned makes display update way faster.
+        // Safety:
+        //   * self.hwbase is aligned to 128 bytes.
+        //   * self.base is also aligned to 128 bytes.
+        //   * size is a multiple of 128 bytes.
+        unsafe {
+            _memcpy128_aligned(
+                self.hwbase,
+                origin,
+                display_size * core::mem::size_of::<u32>(),
+            )
+        };
     }
 }
 
