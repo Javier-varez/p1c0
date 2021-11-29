@@ -3,3 +3,4 @@
 pub mod arch;
 pub mod boot_args;
 pub mod display;
+pub mod font;
