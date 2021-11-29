@@ -13,6 +13,8 @@ use embedded_graphics::{
     text::{Baseline, Text},
 };
 
+use crate::font::FIRA_CODE_30;
+
 const MAX_WIDTH: usize = 3024;
 const MAX_HEIGHT: usize = 1964;
 
@@ -54,7 +56,7 @@ impl Display {
     /// Otherwise data might be written to invalid memory regions.
     pub unsafe fn init<T: ImageDrawable<Color = Rgb888>>(video_args: &BootVideoArgs, logo: &T) {
         let retina = (video_args.depth & RETINA_DEPTH_FLAG) != 0;
-        let font = if retina { &FONT_10X20 } else { &FONT_5X7 };
+        let font = if retina { &FIRA_CODE_30 } else { &FONT_5X7 };
         let max_rows = (video_args.height as u32 / font.character_size.height) - ROW_MARGIN * 2;
         let mut disp = Self {
             hwbase: video_args.base as *mut u32,
