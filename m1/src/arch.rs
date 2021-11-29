@@ -8,10 +8,11 @@ pub struct RelaEntry {
 const R_AARCH64_RELATIVE: usize = 1027;
 
 /// Applies relative offsets during boot to relocate the binary.
-/// SAFETY:
-///   * rela_start must point to valid memory, at the start of the relocatable information
-///   * rela_len_bytes must be larger than 0 and indicate the size of the slice in bytes.
-///   * Other regular conditions must hold when calling thsi function (e.g.: having a valid SP)
+///
+/// # Safety
+///   `rela_start` must point to valid memory, at the start of the relocatable information
+///   `rela_len_bytes` must be larger than 0 and indicate the size of the slice in bytes.
+///   Other regular conditions must hold when calling thsi function (e.g.: having a valid SP)
 #[no_mangle]
 pub unsafe extern "C" fn apply_rela(
     base: usize,

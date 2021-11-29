@@ -47,6 +47,11 @@ extern "C" {
 }
 
 impl Display {
+    /// Initializes the display HW with the given logo to work as a console.
+    ///
+    /// # Safety
+    /// BootVideoArgs must point to valid HW memory and contain the actual display size.
+    /// Otherwise data might be written to invalid memory regions.
     pub unsafe fn init<T: ImageDrawable<Color = Rgb888>>(video_args: &BootVideoArgs, logo: &T) {
         let retina = (video_args.depth & RETINA_DEPTH_FLAG) != 0;
         let font = if retina { &FONT_10X20 } else { &FONT_5X7 };
