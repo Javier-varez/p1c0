@@ -4,10 +4,7 @@ use core::fmt::{self, Write};
 use embedded_graphics::{
     draw_target::DrawTarget,
     image::Image,
-    mono_font::{
-        ascii::{FONT_10X20, FONT_5X7},
-        MonoFont, MonoTextStyle,
-    },
+    mono_font::{ascii::FONT_5X7, MonoFont, MonoTextStyle},
     pixelcolor::Rgb888,
     prelude::*,
     text::{Baseline, Text},
@@ -92,9 +89,9 @@ impl Display {
         let origin = self.base.as_ptr();
         // Calling _memcpy128_aligned makes display update way faster.
         // Safety:
-        //   * self.hwbase is aligned to 128 bytes.
-        //   * self.base is also aligned to 128 bytes.
-        //   * size is a multiple of 128 bytes.
+        //   * self.hwbase is aligned to 128 bits
+        //   * self.base is also aligned to 128 bits
+        //   * size is a multiple of 128 bits
         unsafe {
             _memcpy128_aligned(
                 self.hwbase,
