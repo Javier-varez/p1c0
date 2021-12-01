@@ -51,7 +51,7 @@ impl Display {
         let video_args = &get_boot_args().boot_video;
         let retina = (video_args.depth & RETINA_DEPTH_FLAG) != 0;
         let font = if retina { &FIRA_CODE_30 } else { &FONT_5X7 };
-        let max_rows = (video_args.height as u32 / font.character_size.height) - ROW_MARGIN * 2;
+        let max_rows = (video_args.height as u32 - ROW_MARGIN * 2) / font.character_size.height;
         let mut disp = Self {
             hwbase: video_args.base as *mut u32,
             width: video_args.width as u32,
@@ -89,6 +89,7 @@ impl Display {
         //   * self.hwbase is aligned to 128 bits
         //   * self.base is also aligned to 128 bits
         //   * size is a multiple of 128 bits
+        //   * destination does not overlap with source
         unsafe {
             _memcpy128_aligned(
                 self.hwbase,
@@ -96,6 +97,24 @@ impl Display {
                 display_size * core::mem::size_of::<u32>(),
             )
         };
+    }
+
+    fn scroll_up(&mut self) {
+        let offset = (self.width * self.font.character_size.height) as usize;
+        let count = (self.height * self.width) as usize - offset;
+        let source = &self.base[offset] as *const u32;
+        let destination = self.base.as_mut_ptr();
+
+        // Use memcpy128 for speed. This over
+        // Safety:
+        //   * source is aligned to 128 bits
+        //   * destination is also aligned to 128 bits
+        //   * size is a multiple of 128 bits
+        //   * destination is < source
+        unsafe { _memcpy128_aligned(destination, source, count * core::mem::size_of::<u32>()) };
+
+        // Clear last lines
+        self.base.iter_mut().skip(count).for_each(|val| *val = 0);
     }
 }
 
@@ -154,7 +173,7 @@ impl fmt::Write for Display {
                 self.current_row += 1;
                 self.current_col = 0;
                 if self.current_row >= self.max_rows {
-                    // TODO(javier-varez): Implement scrolling here
+                    self.scroll_up();
                     self.current_row = self.max_rows - 1;
                 }
             } else {
