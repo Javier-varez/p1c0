@@ -27,6 +27,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22a9137b95ea06864e018375b72adfb7db6e6f68cfc8df5a04d00288050485ee"
 
 [[package]]
+name = "cortex-a"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "509fc35485a2b4ddbacabe0bf2212cdfff88da93658608e5cc651afcb75b7733"
+dependencies = [
+ "tock-registers",
+]
+
+[[package]]
 name = "embedded-graphics"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -71,8 +80,10 @@ dependencies = [
 name = "m1"
 version = "0.1.0"
 dependencies = [
+ "cortex-a",
  "embedded-graphics",
  "spin",
+ "tock-registers",
 ]
 
 [[package]]
@@ -140,6 +151,12 @@ dependencies = [
  "embedded-graphics",
  "nom",
 ]
+
+[[package]]
+name = "tock-registers"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ee8fba06c1f4d0b396ef61a54530bb6b28f0dc61c38bc8bc5a5a48161e6282e"
 
 [[package]]
 name = "version_check"

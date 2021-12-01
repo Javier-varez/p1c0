@@ -1,4 +1,4 @@
-.extern kernel_main
+.extern start_rust
 .extern _stack_bot
 .extern _bss_start
 .extern _bss_end
@@ -36,10 +36,11 @@ _apply_relocations:
     sub x2, x2, x1
     bl apply_rela
 
-_jump_to_kernel_main:
+_jump_to_start_rust:
     mov x0, x19
     mov x1, x20
-    bl kernel_main
+    adrp x2, _stack_bot
+    bl start_rust
 
 _infinite_loop:
     b .

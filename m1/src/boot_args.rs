@@ -26,3 +26,18 @@ pub struct BootArgs {
     pub boot_flags: u64,
     pub mem_size_actual: u64,
 }
+
+static mut BOOT_ARGS: Option<BootArgs> = None;
+
+/// Assumes that set_boot_args has been called and panics if the option is None
+pub fn get_boot_args() -> &'static BootArgs {
+    unsafe { BOOT_ARGS.as_ref().expect("Boot args are set") }
+}
+
+/// Must be called by the init code of the processor.
+/// SAFETY
+///   This shall only be called right after booting where no-one has already accessed the boot
+///   arguments and there is only one thread running
+pub(crate) unsafe fn set_boot_args(boot_args: &BootArgs) {
+    BOOT_ARGS.replace(boot_args.clone());
+}
