@@ -4,7 +4,7 @@
 use m1::println;
 
 use embedded_graphics::pixelcolor::Rgb888;
-use m1::boot_args::BootArgs;
+use m1::boot_args::{get_boot_args, BootArgs};
 use m1::display::Display;
 use tinybmp::Bmp;
 
@@ -38,12 +38,14 @@ fn print_boot_args(boot_args: &BootArgs) {
 }
 
 #[no_mangle]
-pub extern "C" fn kernel_main(boot_args: &BootArgs) {
+pub extern "C" fn kernel_main() {
     let logo = Bmp::<Rgb888>::from_slice(ATE_LOGO_DATA).unwrap();
-    unsafe { Display::init(&boot_args.boot_video, &logo) };
+    Display::init(&logo);
 
     println!("p1c0 running on Apple M1 Pro");
+    println!("Exception level: {:?}", m1::arch::get_exception_level());
     println!("");
 
+    let boot_args = get_boot_args();
     print_boot_args(boot_args);
 }

@@ -1,4 +1,4 @@
-use crate::boot_args::BootVideoArgs;
+use crate::boot_args::get_boot_args;
 use core::fmt::{self, Write};
 
 use embedded_graphics::{
@@ -47,11 +47,8 @@ extern "C" {
 
 impl Display {
     /// Initializes the display HW with the given logo to work as a console.
-    ///
-    /// # Safety
-    /// BootVideoArgs must point to valid HW memory and contain the actual display size.
-    /// Otherwise data might be written to invalid memory regions.
-    pub unsafe fn init<T: ImageDrawable<Color = Rgb888>>(video_args: &BootVideoArgs, logo: &T) {
+    pub fn init<T: ImageDrawable<Color = Rgb888>>(logo: &T) {
+        let video_args = &get_boot_args().boot_video;
         let retina = (video_args.depth & RETINA_DEPTH_FLAG) != 0;
         let font = if retina { &FIRA_CODE_30 } else { &FONT_5X7 };
         let max_rows = (video_args.height as u32 / font.character_size.height) - ROW_MARGIN * 2;
@@ -70,7 +67,7 @@ impl Display {
         disp.draw_logo(logo);
         disp.flush();
 
-        DISPLAY.replace(disp);
+        unsafe { DISPLAY.replace(disp) };
     }
 
     fn draw_logo<T: ImageDrawable<Color = Rgb888>>(&mut self, logo: &T) {
