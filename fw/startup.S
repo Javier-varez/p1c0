@@ -50,7 +50,8 @@ _infinite_loop:
 _memcpy128_aligned:
     ands    x2, x2, #~15
     beq     memcpy128_done
-memcpy128_body:  ldp     x3, x4, [x1], #16
+memcpy128_body:
+    ldp     x3, x4, [x1], #16
     stp     x3, x4, [x0], #16
     subs    x2, x2, #16
     bne     memcpy128_body
