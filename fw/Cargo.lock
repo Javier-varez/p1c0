@@ -122,9 +122,11 @@ name = "p1c0"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "cortex-a",
  "embedded-graphics",
  "m1",
  "tinybmp",
+ "tock-registers",
 ]
 
 [[package]]
