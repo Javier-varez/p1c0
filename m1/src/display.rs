@@ -191,20 +191,3 @@ pub fn _print(args: ::core::fmt::Arguments) {
         display.write_fmt(args).expect("Printing to display failed");
     }
 }
-
-/// Prints to the host through the display console interface
-#[macro_export]
-macro_rules! print {
-    ($($arg:tt)*) => {
-        $crate::display::_print(format_args!($($arg)*));
-    };
-}
-
-/// Prints to the host through the display console interface, appending a newline.
-#[macro_export]
-macro_rules! println {
-    () => ($crate::print!("\n"));
-    ($fmt:expr) => ($crate::print!(concat!($fmt, "\n")));
-    ($fmt:expr, $($arg:tt)*) => ($crate::print!(
-  concat!($fmt, "\n"), $($arg)*));
-}
