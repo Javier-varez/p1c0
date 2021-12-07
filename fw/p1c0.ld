@@ -6,6 +6,9 @@ _va_base = 0xFFFFFE0007004000;
 /* Huge stack for now, as we don't have dyn memory yet and the framebuffer is in the stack */
 _stack_size = 0x8000000;
 
+/* 4 GB arena size */
+_arena_size = 0x100000000;
+
 _max_payload_size = 64*1024*1024;
 
 /* We are actually relocatable */
@@ -183,6 +186,10 @@ SECTIONS {
     } :data
     _data_size = . - _data_start;
     _end = .;
+    _arena_start = .;
+    . += _arena_size;
+    arena_end = .;
+    . = ALIGN(0x4000);
     _payload_start = .;
     _payload_end = . + _max_payload_size;
 
