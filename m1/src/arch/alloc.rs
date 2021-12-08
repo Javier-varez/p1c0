@@ -1,7 +1,11 @@
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::UnsafeCell;
 
+#[cfg(not(test))]
 #[global_allocator]
+static ALLOCATOR: TerribleAllocator = TerribleAllocator::new();
+
+#[cfg(test)]
 static ALLOCATOR: TerribleAllocator = TerribleAllocator::new();
 
 unsafe impl Sync for TerribleAllocator {}
@@ -59,4 +63,84 @@ unsafe impl GlobalAlloc for TerribleAllocator {
 
     /// We just don't free any memory! Leaking is safe after all, isn't it? =D
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    struct Test {
+        arena: Vec<u32>,
+    }
+
+    impl Test {
+        fn new() -> Self {
+            let mut test = Self {
+                arena: vec![0xFFAA5500u32; 1024],
+            };
+            let base = &mut test.arena[0] as *mut _ as *mut _;
+            unsafe { ALLOCATOR.init(base, test.size()) };
+            test
+        }
+
+        fn base(&self) -> *const u8 {
+            &self.arena[0] as *const _ as *const _
+        }
+
+        fn size(&self) -> usize {
+            core::mem::size_of_val(&self.arena)
+        }
+    }
+
+    #[test]
+    fn allocate_i32() {
+        let test = Test::new();
+
+        let layout = Layout::for_value(&30u32);
+        let ptr = unsafe { ALLOCATOR.alloc(layout) };
+
+        assert_eq!(ptr as *const _, test.base());
+
+        let layout = Layout::for_value(&30u32);
+        let ptr = unsafe { ALLOCATOR.alloc(layout) };
+
+        assert_eq!(ptr as *const _, unsafe {
+            test.base().add(core::mem::size_of::<u32>())
+        });
+    }
+
+    #[test]
+    fn allocate_i64() {
+        let test = Test::new();
+
+        let layout = Layout::for_value(&30u32);
+        let ptr = unsafe { ALLOCATOR.alloc(layout) };
+
+        assert_eq!(ptr as *const _, test.base());
+
+        let layout = Layout::for_value(&30u64);
+        let ptr = unsafe { ALLOCATOR.alloc(layout) };
+
+        assert_eq!(ptr as *const _, unsafe {
+            test.base().add(core::mem::size_of::<u64>())
+        });
+    }
+
+    #[test]
+    fn deallocate_doesnt_actually_free() {
+        let test = Test::new();
+
+        let layout = Layout::for_value(&30u32);
+        let ptr = unsafe { ALLOCATOR.alloc(layout) };
+        assert_eq!(ptr as *const _, test.base());
+
+        unsafe { ALLOCATOR.dealloc(ptr, layout) };
+
+        let layout = Layout::for_value(&30u64);
+        let ptr = unsafe { ALLOCATOR.alloc(layout) };
+
+        assert_eq!(ptr as *const _, unsafe {
+            test.base().add(core::mem::size_of::<u64>())
+        });
+    }
 }
