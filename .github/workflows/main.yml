@@ -31,6 +31,26 @@ jobs:
     - name: Run cargo clippy
       run: cargo xtask clippy
 
+  cargo_test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+        components: rust-src, clippy, rustfmt, rustc, rust-std, llvm-tools-preview
+        target: aarch64-unknown-none-softfloat
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y gcc-aarch64-linux-gnu
+        cargo install cargo-binutils
+    - name: Run cargo test
+      run: cargo test
+
   cargo_build:
     runs-on: ubuntu-latest
 
