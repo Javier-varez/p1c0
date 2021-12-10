@@ -6,6 +6,7 @@ use cortex_a::{
 use tock_registers::interfaces::{Readable, Writeable};
 
 pub mod alloc;
+pub mod mmu;
 
 #[repr(C)]
 pub struct RelaEntry {
