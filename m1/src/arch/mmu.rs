@@ -57,7 +57,7 @@ impl PhysicalAddress {
     }
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Debug)]
 enum DescriptorType {
     Invalid,
     PageOrBlock,
@@ -223,12 +223,12 @@ impl TranslationLevel {
 /// In addition, each level must be 11 bits, that's why we have 2048 entries in a level table
 #[repr(C, align(0x4000))]
 struct LevelTable {
-    table: Vec<DescriptorEntry>,
+    table: [DescriptorEntry; 2048],
     level: TranslationLevel,
 }
 
 impl Deref for LevelTable {
-    type Target = Vec<DescriptorEntry>;
+    type Target = [DescriptorEntry];
     fn deref(&self) -> &Self::Target {
         &self.table
     }
@@ -241,16 +241,9 @@ impl DerefMut for LevelTable {
 }
 
 impl LevelTable {
-    const fn new_empty(level: TranslationLevel) -> Self {
+    const fn new(level: TranslationLevel) -> Self {
         Self {
-            table: Vec::new(),
-            level,
-        }
-    }
-
-    fn new(level: TranslationLevel) -> Self {
-        Self {
-            table: vec![INVALID_DESCRIPTOR; level.table_size()],
+            table: [INVALID_DESCRIPTOR; 2048],
             level,
         }
     }
@@ -269,12 +262,8 @@ impl MemoryManagementUnit {
     const fn new() -> Self {
         Self {
             initialized: false,
-            level0: LevelTable::new_empty(TranslationLevel::Level0),
+            level0: LevelTable::new(TranslationLevel::Level0),
         }
-    }
-
-    fn init(&mut self) {
-        self.level0 = LevelTable::new(TranslationLevel::Level0)
     }
 
     fn add_default_mappings(&mut self) {
@@ -294,7 +283,6 @@ impl MemoryManagementUnit {
         if self.initialized {
             return;
         }
-        self.init();
         self.add_default_mappings();
         self.enable();
         self.initialized = true;
@@ -431,7 +419,6 @@ mod test {
     #[test]
     fn single_page_mapping() {
         let mut mmu = MemoryManagementUnit::new();
-        mmu.init();
 
         assert!(mmu.level0[0].is_invalid());
 
@@ -473,6 +460,47 @@ mod test {
 
         for (idx, desc) in level3.iter().enumerate() {
             if idx == 0x59e {
+                assert!(desc.is_block_or_page());
+                assert_eq!(desc.pa(), Some(to));
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+    }
+
+    #[test]
+    fn single_block_mapping() {
+        let mut mmu = MemoryManagementUnit::new();
+
+        assert!(mmu.level0[0].is_invalid());
+
+        let from = VirtualAddress(0x12344000000 as *const u8);
+        let to = PhysicalAddress(0x12344000000 as *const u8);
+        let size = 1 << 25;
+        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .expect("Adding region was successful");
+
+        let level0 = &mut mmu.level0;
+        assert_eq!(level0.level, TranslationLevel::Level0);
+        assert!(!level0[0].is_invalid());
+        assert!(level0[0].is_table());
+        assert!(level0[1].is_invalid());
+
+        let level1 = level0[0].get_table().expect("Is a table");
+        assert_eq!(level1.level, TranslationLevel::Level1);
+        for (idx, desc) in level1.iter().enumerate() {
+            if idx == 0x12 {
+                assert!(desc.is_table());
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+
+        let level2 = level1[0x12].get_table().expect("Is a table");
+        assert_eq!(level2.level, TranslationLevel::Level2);
+
+        for (idx, desc) in level2.iter().enumerate() {
+            if idx == 0x1a2 {
                 assert!(desc.is_block_or_page());
                 assert_eq!(desc.pa(), Some(to));
             } else {
