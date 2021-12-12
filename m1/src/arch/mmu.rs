@@ -1,6 +1,6 @@
 extern crate alloc;
-use alloc::vec;
-use alloc::{boxed::Box, vec::Vec};
+
+use alloc::boxed::Box;
 use core::ops::{Deref, DerefMut};
 use cortex_a::{
     asm::barrier,
@@ -16,7 +16,8 @@ static mut MMU: MemoryManagementUnit = MemoryManagementUnit::new();
 
 #[derive(Debug)]
 pub enum Error {
-    OverlapsExistingMapping,
+    OverlapsExistingMapping(VirtualAddress, TranslationLevel),
+    UnalignedAddress,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -37,8 +38,12 @@ pub enum Permissions {
 pub struct VirtualAddress(*const u8);
 
 impl VirtualAddress {
-    pub fn new(addr: *const u8) -> Self {
-        Self(addr)
+    pub fn new(addr: *const u8) -> Result<Self, Error> {
+        let addr_usize = addr as usize;
+        if (addr_usize & (PAGE_SIZE - 1)) != 0 {
+            return Err(Error::UnalignedAddress);
+        }
+        Ok(Self(addr))
     }
     pub unsafe fn offset(&self, offset: usize) -> Self {
         Self(self.0.add(offset))
@@ -49,8 +54,12 @@ impl VirtualAddress {
 pub struct PhysicalAddress(*const u8);
 
 impl PhysicalAddress {
-    pub fn new(addr: *const u8) -> Self {
-        Self(addr)
+    pub fn new(addr: *const u8) -> Result<Self, Error> {
+        let addr_usize = addr as usize;
+        if (addr_usize & (PAGE_SIZE - 1)) != 0 {
+            return Err(Error::UnalignedAddress);
+        }
+        Ok(Self(addr))
     }
     pub unsafe fn offset(&self, offset: usize) -> Self {
         Self(self.0.add(offset))
@@ -147,15 +156,15 @@ impl Drop for DescriptorEntry {
 }
 
 const INVALID_DESCRIPTOR: DescriptorEntry = DescriptorEntry::new_invalid();
+
 /// Translation granule is hardcoded to 16KB
 /// size of L2 memory region is 32MB
 /// size of L1 memory region is 64GB
 /// size of L0 memory region is 128TB
 /// Total addressable memory is 256TB
 ///
-
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-enum TranslationLevel {
+pub enum TranslationLevel {
     Level0,
     Level1,
     Level2,
@@ -207,6 +216,11 @@ impl TranslationLevel {
     fn table_index_for_addr(&self, va: VirtualAddress) -> usize {
         let va = va.0 as usize;
         (va & self.va_mask()) >> self.offset()
+    }
+
+    fn is_address_aligned(&self, va: VirtualAddress) -> bool {
+        let va = va.0 as usize;
+        (va % self.entry_size()) == 0
     }
 
     fn next(&self) -> Self {
@@ -270,8 +284,8 @@ impl MemoryManagementUnit {
         let ram_base = 0x10000000000 as *const u8;
         let ram_size = 0x800000000;
         self.map_region(
-            VirtualAddress::new(ram_base),
-            PhysicalAddress::new(ram_base),
+            VirtualAddress::new(ram_base).expect("Address is aligned to page size"),
+            PhysicalAddress::new(ram_base).expect("Address is aligned to page size"),
             ram_size,
             Attributes::Normal,
             Permissions::RWX,
@@ -338,9 +352,10 @@ impl MemoryManagementUnit {
         let mut remaining_size = size;
         while remaining_size != 0 {
             let index = translation_table.level.table_index_for_addr(va);
+            let aligned = translation_table.level.is_address_aligned(va);
             let descriptor_entry = &mut translation_table[index];
 
-            if (size >= entry_size) && level.supports_block_descriptors() {
+            if aligned && (remaining_size >= entry_size) && level.supports_block_descriptors() {
                 // We could allocate a block or page descriptor here. Else we would need a next
                 // level table
                 match descriptor_entry.ty() {
@@ -350,19 +365,19 @@ impl MemoryManagementUnit {
                     }
                     DescriptorType::Table => {
                         // TODO(javier-varez): Handle consolidation of mappings
-                        return Err(Error::OverlapsExistingMapping);
+                        return Err(Error::OverlapsExistingMapping(va, level));
                     }
                     DescriptorType::PageOrBlock
                         if descriptor_entry.pa().expect("Desc is a page/block") != pa =>
                     {
-                        return Err(Error::OverlapsExistingMapping);
+                        return Err(Error::OverlapsExistingMapping(va, level));
                     }
                     _ => {}
                 }
             } else {
                 // Need to have a table and some granularity inside
                 if descriptor_entry.is_block_or_page() {
-                    return Err(Error::OverlapsExistingMapping);
+                    return Err(Error::OverlapsExistingMapping(va, level));
                 }
 
                 if descriptor_entry.is_invalid() {
@@ -372,7 +387,7 @@ impl MemoryManagementUnit {
                 Self::map_region_internal(
                     va,
                     pa,
-                    size,
+                    remaining_size,
                     attributes,
                     permissions,
                     descriptor_entry.get_table().expect("Is a table"),
@@ -422,8 +437,8 @@ mod test {
 
         assert!(mmu.level0[0].is_invalid());
 
-        let from = VirtualAddress(0x012345678000 as *const u8);
-        let to = PhysicalAddress(0x012345678000 as *const u8);
+        let from = VirtualAddress::new(0x012345678000 as *const u8).unwrap();
+        let to = PhysicalAddress::new(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -474,8 +489,8 @@ mod test {
 
         assert!(mmu.level0[0].is_invalid());
 
-        let from = VirtualAddress(0x12344000000 as *const u8);
-        let to = PhysicalAddress(0x12344000000 as *const u8);
+        let from = VirtualAddress::new(0x12344000000 as *const u8).unwrap();
+        let to = PhysicalAddress::new(0x12344000000 as *const u8).unwrap();
         let size = 1 << 25;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -502,6 +517,64 @@ mod test {
         for (idx, desc) in level2.iter().enumerate() {
             if idx == 0x1a2 {
                 assert!(desc.is_block_or_page());
+                assert_eq!(desc.pa(), Some(to));
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+    }
+
+    #[test]
+    fn large_aligned_block_mapping() {
+        let mut mmu = MemoryManagementUnit::new();
+
+        assert!(mmu.level0[0].is_invalid());
+
+        let block_size = 1 << 25;
+        let page_size = 1 << 14;
+
+        let from = VirtualAddress::new(0x12344000000 as *const u8).unwrap();
+        let to = PhysicalAddress::new(0x12344000000 as *const u8).unwrap();
+        let size = block_size + page_size * 4;
+        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .expect("Adding region was successful");
+
+        let level0 = &mut mmu.level0;
+        assert_eq!(level0.level, TranslationLevel::Level0);
+        assert!(!level0[0].is_invalid());
+        assert!(level0[0].is_table());
+        assert!(level0[1].is_invalid());
+
+        let level1 = level0[0].get_table().expect("Is a table");
+        assert_eq!(level1.level, TranslationLevel::Level1);
+        for (idx, desc) in level1.iter().enumerate() {
+            if idx == 0x12 {
+                assert!(desc.is_table());
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+
+        let level2 = level1[0x12].get_table().expect("Is a table");
+        assert_eq!(level2.level, TranslationLevel::Level2);
+
+        for (idx, desc) in level2.iter().enumerate() {
+            if idx == 0x1a2 {
+                assert!(desc.is_block_or_page());
+                assert_eq!(desc.pa(), Some(to));
+            } else if idx == 0x1a3 {
+                assert!(desc.is_table());
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+
+        let level3 = level2[0x1a3].get_table().expect("Is a table");
+        for (idx, desc) in level3.iter().enumerate() {
+            if idx < 4 {
+                assert!(desc.is_block_or_page());
+                let to_usize = to.0 as usize + block_size + page_size * idx;
+                let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
                 assert!(desc.is_invalid());
