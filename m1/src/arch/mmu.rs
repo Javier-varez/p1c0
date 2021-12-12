@@ -355,7 +355,16 @@ impl MemoryManagementUnit {
             let aligned = translation_table.level.is_address_aligned(va);
             let descriptor_entry = &mut translation_table[index];
 
-            if aligned && (remaining_size >= entry_size) && level.supports_block_descriptors() {
+            let chunk_size = if !aligned {
+                let next_level = level.next();
+                let rem_entry_size =
+                    entry_size - next_level.table_index_for_addr(va) * next_level.entry_size();
+                core::cmp::min(rem_entry_size, remaining_size)
+            } else {
+                core::cmp::min(entry_size, remaining_size)
+            };
+
+            if aligned && (chunk_size == entry_size) && level.supports_block_descriptors() {
                 // We could allocate a block or page descriptor here. Else we would need a next
                 // level table
                 match descriptor_entry.ty() {
@@ -387,7 +396,7 @@ impl MemoryManagementUnit {
                 Self::map_region_internal(
                     va,
                     pa,
-                    remaining_size,
+                    chunk_size,
                     attributes,
                     permissions,
                     descriptor_entry.get_table().expect("Is a table"),
@@ -395,11 +404,11 @@ impl MemoryManagementUnit {
             }
 
             unsafe {
-                pa = pa.offset(entry_size);
-                va = va.offset(entry_size);
+                pa = pa.offset(chunk_size);
+                va = va.offset(chunk_size);
             }
 
-            remaining_size = remaining_size.saturating_sub(entry_size);
+            remaining_size = remaining_size.saturating_sub(chunk_size);
         }
         Ok(())
     }
@@ -570,10 +579,74 @@ mod test {
         }
 
         let level3 = level2[0x1a3].get_table().expect("Is a table");
+        assert_eq!(level3.level, TranslationLevel::Level3);
         for (idx, desc) in level3.iter().enumerate() {
             if idx < 4 {
                 assert!(desc.is_block_or_page());
                 let to_usize = to.0 as usize + block_size + page_size * idx;
+                let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
+                assert_eq!(desc.pa(), Some(to));
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+    }
+
+    #[test]
+    fn large_unaligned_block_mapping() {
+        let mut mmu = MemoryManagementUnit::new();
+
+        assert!(mmu.level0[0].is_invalid());
+
+        let block_size = 1 << 25;
+        let page_size = 1 << 14;
+        let va = 0x12344000000 + page_size * 2044;
+
+        let from = VirtualAddress::new(va as *const u8).unwrap();
+        let to = PhysicalAddress::new(0x12344000000 as *const u8).unwrap();
+        let size = block_size + page_size * 4;
+        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .expect("Adding region was successful");
+
+        let level0 = &mut mmu.level0;
+        assert_eq!(level0.level, TranslationLevel::Level0);
+        assert!(!level0[0].is_invalid());
+        assert!(level0[0].is_table());
+        assert!(level0[1].is_invalid());
+
+        let level1 = level0[0].get_table().expect("Is a table");
+        assert_eq!(level1.level, TranslationLevel::Level1);
+        for (idx, desc) in level1.iter().enumerate() {
+            if idx == 0x12 {
+                assert!(desc.is_table());
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+
+        let level2 = level1[0x12].get_table().expect("Is a table");
+        assert_eq!(level2.level, TranslationLevel::Level2);
+
+        for (idx, desc) in level2.iter().enumerate() {
+            if idx == 0x1a2 {
+                assert!(desc.is_table());
+            } else if idx == 0x1a3 {
+                assert!(desc.is_block_or_page());
+                let to_usize = to.0 as usize + page_size * 4;
+                let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
+                assert_eq!(desc.pa(), Some(to));
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+
+        let level3 = level2[0x1a2].get_table().expect("Is a table");
+        assert_eq!(level3.level, TranslationLevel::Level3);
+
+        for (idx, desc) in level3.iter().enumerate() {
+            if idx >= 2044 {
+                assert!(desc.is_block_or_page());
+                let to_usize = to.0 as usize + page_size * (idx - 2044);
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
