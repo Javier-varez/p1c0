@@ -8,6 +8,8 @@ use cortex_a::{
 };
 use tock_registers::interfaces::Writeable;
 
+use crate::println;
+
 const VA_MASK: u64 = (1 << 48) - (1 << 14);
 const PA_MASK: u64 = (1 << 48) - (1 << 14);
 const PAGE_SIZE: usize = 1 << 14;
@@ -27,11 +29,39 @@ pub enum Attributes {
     DevicenGnRE = 2,
 }
 
+impl Attributes {
+    const MAIR_ATTR_OFFSET: usize = 2;
+    fn mair_index(&self) -> u64 {
+        (*self as u64) << Self::MAIR_ATTR_OFFSET
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum Permissions {
     RWX = 0,
     RW = 1,
     RX = 2,
+    RO = 3,
+}
+
+impl Permissions {
+    fn ap_bits(&self) -> u64 {
+        match *self {
+            Permissions::RWX | Permissions::RW => 0b01 << 6,
+            Permissions::RX | Permissions::RO => 0b11 << 6,
+        }
+    }
+
+    fn nx_bits(&self) -> u64 {
+        match *self {
+            Permissions::RWX | Permissions::RX => 0,
+            Permissions::RW | Permissions::RO => 0x3 << 53, // UXN and PXN bits
+        }
+    }
+
+    fn bits(&self) -> u64 {
+        self.ap_bits() | self.nx_bits()
+    }
 }
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
@@ -93,11 +123,16 @@ impl DescriptorEntry {
 
     fn new_page_or_block_desc(
         physical_addr: PhysicalAddress,
-        _attributes: Attributes,
-        _permissions: Permissions,
+        attributes: Attributes,
+        permissions: Permissions,
     ) -> Self {
-        // TODO(javier-varez): Fix attributes
-        Self(Self::VALID_BIT | (physical_addr.0 as u64 & VA_MASK))
+        let shareability = 0b10 << 8; // Output shareable
+        Self(
+            Self::VALID_BIT
+                | (physical_addr.0 as u64 & VA_MASK)
+                | attributes.mair_index()
+                | shareability,
+        )
     }
 
     fn is_table(&self) -> bool {
@@ -291,6 +326,49 @@ impl MemoryManagementUnit {
             Permissions::RWX,
         )
         .expect("No other mapping overlaps");
+
+        self.map_region(
+            VirtualAddress::new(0x20000000000 as *const _)
+                .expect("Address is aligned to page size"),
+            PhysicalAddress::new(ram_base).expect("Address is aligned to page size"),
+            ram_size,
+            Attributes::Normal,
+            Permissions::RWX,
+        )
+        .expect("No other mapping overlaps");
+
+        let mmio_region_base = 0x0000000200000000 as *const u8;
+        let mmio_region_size = 0x0000000400000000;
+        self.map_region(
+            VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
+            PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
+            mmio_region_size,
+            Attributes::DevicenGnRE,
+            Permissions::RWX,
+        )
+        .expect("No other mapping overlaps");
+
+        let mmio_region_base = 0x0000000580000000 as *const u8;
+        let mmio_region_size = 0x0000000180000000;
+        self.map_region(
+            VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
+            PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
+            mmio_region_size,
+            Attributes::DevicenGnRE,
+            Permissions::RWX,
+        )
+        .expect("No other mapping overlaps");
+
+        let mmio_region_base = 0x0000000700000000 as *const u8;
+        let mmio_region_size = 0x0000000F80000000;
+        self.map_region(
+            VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
+            PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
+            mmio_region_size,
+            Attributes::DevicenGnRE,
+            Permissions::RWX,
+        )
+        .expect("No other mapping overlaps");
     }
 
     pub fn init_and_enable(&mut self) {
@@ -302,11 +380,16 @@ impl MemoryManagementUnit {
         self.initialized = true;
     }
 
+    pub fn is_initialized(&self) -> bool {
+        self.initialized
+    }
+
     fn enable(&self) {
         MAIR_EL1.write(
             MAIR_EL1::Attr0_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
                 + MAIR_EL1::Attr0_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
-                + MAIR_EL1::Attr1_Device::nonGathering_nonReordering_EarlyWriteAck,
+                + MAIR_EL1::Attr1_Device::nonGathering_nonReordering_EarlyWriteAck
+                + MAIR_EL1::Attr2_Device::nonGathering_nonReordering_noEarlyWriteAck,
         );
 
         TCR_EL1.write(
@@ -336,6 +419,7 @@ impl MemoryManagementUnit {
         unsafe {
             barrier::isb(barrier::SY);
         }
+        println!("MMU enabled");
     }
 
     fn map_region_internal(
@@ -423,6 +507,8 @@ impl MemoryManagementUnit {
     ) -> Result<(), Error> {
         let translation_table = &mut self.level0;
 
+        println!("Adding mapping from {:?} to {:?}, size {:?}", va, pa, size);
+
         // Size needs to be aligned to page size
         if (size % PAGE_SIZE) != 0 {
             size = size + PAGE_SIZE - (size % PAGE_SIZE);
@@ -432,8 +518,12 @@ impl MemoryManagementUnit {
     }
 }
 
-pub fn initialize_mmu() {
+pub fn initialize() {
     unsafe { MMU.init_and_enable() };
+}
+
+pub fn is_initialized() -> bool {
+    unsafe { MMU.is_initialized() }
 }
 
 #[cfg(test)]
@@ -647,6 +737,52 @@ mod test {
             if idx >= 2044 {
                 assert!(desc.is_block_or_page());
                 let to_usize = to.0 as usize + page_size * (idx - 2044);
+                let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
+                assert_eq!(desc.pa(), Some(to));
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+    }
+
+    #[test]
+    fn ram_mapping() {
+        let mut mmu = MemoryManagementUnit::new();
+
+        assert!(mmu.level0[0].is_invalid());
+
+        let block_size = 1 << 25;
+
+        let from = VirtualAddress::new(0x10000000000u64 as *const u8).unwrap();
+        let to = PhysicalAddress::new(0x10000000000u64 as *const u8).unwrap();
+        let size = 0x800000000usize;
+        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .expect("Adding region was successful");
+
+        let level0 = &mut mmu.level0;
+        assert_eq!(level0.level, TranslationLevel::Level0);
+        assert!(!level0[0].is_invalid());
+        assert!(level0[0].is_table());
+        assert!(level0[1].is_invalid());
+
+        let level1 = level0[0].get_table().expect("Is a table");
+        assert_eq!(level1.level, TranslationLevel::Level1);
+        for (idx, desc) in level1.iter().enumerate() {
+            println!("level 1: {}", idx);
+            if idx == 0x10 {
+                assert!(desc.is_table());
+            } else {
+                assert!(desc.is_invalid());
+            }
+        }
+
+        let level2 = level1[0x10].get_table().expect("Is a table");
+        assert_eq!(level2.level, TranslationLevel::Level2);
+
+        for (idx, desc) in level2.iter().enumerate() {
+            if idx < 1024 {
+                assert!(desc.is_block_or_page());
+                let to_usize = to.0 as usize + block_size * idx;
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {

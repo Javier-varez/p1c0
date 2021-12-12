@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(default_alloc_error_handler)]
 
 use m1::println;
 
@@ -7,9 +8,6 @@ use embedded_graphics::pixelcolor::Rgb888;
 use m1::boot_args::{get_boot_args, BootArgs};
 use m1::display::Display;
 use tinybmp::Bmp;
-
-use cortex_a::registers::{ID_AA64MMFR0_EL1, SCTLR_EL1};
-use tock_registers::interfaces::Readable;
 
 const ATE_LOGO_DATA: &[u8] = include_bytes!("../ate_logo.bmp");
 
@@ -49,23 +47,8 @@ pub extern "C" fn kernel_main() {
     println!("Exception level: {:?}", m1::arch::get_exception_level());
     println!("");
 
+    m1::arch::mmu::initialize();
+
     let boot_args = get_boot_args();
     print_boot_args(boot_args);
-
-    println!("SCTLR_EL1 0x{:04x}", SCTLR_EL1.get());
-
-    println!(
-        "TGran64 0x{:04x}",
-        ID_AA64MMFR0_EL1.read(ID_AA64MMFR0_EL1::TGran64)
-    );
-
-    println!(
-        "TGran16 0x{:04x}",
-        ID_AA64MMFR0_EL1.read(ID_AA64MMFR0_EL1::TGran16)
-    );
-
-    println!(
-        "TGran4 0x{:04x}",
-        ID_AA64MMFR0_EL1.read(ID_AA64MMFR0_EL1::TGran4)
-    );
 }
