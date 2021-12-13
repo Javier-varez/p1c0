@@ -6,8 +6,9 @@ use cortex_a::{
     asm::barrier,
     registers::{MAIR_EL1, SCTLR_EL1, TCR_EL1, TTBR0_EL1, TTBR1_EL1},
 };
-use tock_registers::interfaces::Writeable;
+use tock_registers::interfaces::{ReadWriteable, Writeable};
 
+#[cfg(not(test))]
 use crate::println;
 
 const VA_MASK: u64 = (1 << 48) - (1 << 14);
@@ -47,8 +48,8 @@ pub enum Permissions {
 impl Permissions {
     fn ap_bits(&self) -> u64 {
         match *self {
-            Permissions::RWX | Permissions::RW => 0b01 << 6,
-            Permissions::RX | Permissions::RO => 0b11 << 6,
+            Permissions::RWX | Permissions::RW => 0b10 << 6,
+            Permissions::RX | Permissions::RO => 0b00 << 6,
         }
     }
 
@@ -99,7 +100,8 @@ impl PhysicalAddress {
 #[derive(Eq, PartialEq, Debug)]
 enum DescriptorType {
     Invalid,
-    PageOrBlock,
+    Page,
+    Block,
     Table,
 }
 
@@ -110,6 +112,8 @@ struct DescriptorEntry(u64);
 impl DescriptorEntry {
     const VALID_BIT: u64 = 1 << 0;
     const TABLE_BIT: u64 = 1 << 1;
+    const PAGE_BIT: u64 = 1 << 55;
+    const SHAREABILITY: u64 = 0b10 << 8; // Output shareable
 
     const fn new_invalid() -> Self {
         Self(0)
@@ -121,17 +125,33 @@ impl DescriptorEntry {
         Self(Self::VALID_BIT | Self::TABLE_BIT | (table_addr as u64 & VA_MASK))
     }
 
-    fn new_page_or_block_desc(
+    fn new_block_desc(
         physical_addr: PhysicalAddress,
         attributes: Attributes,
         permissions: Permissions,
     ) -> Self {
-        let shareability = 0b10 << 8; // Output shareable
         Self(
             Self::VALID_BIT
                 | (physical_addr.0 as u64 & VA_MASK)
                 | attributes.mair_index()
-                | shareability,
+                | Self::SHAREABILITY
+                | permissions.bits(),
+        )
+    }
+
+    fn new_page_desc(
+        physical_addr: PhysicalAddress,
+        attributes: Attributes,
+        permissions: Permissions,
+    ) -> Self {
+        Self(
+            Self::VALID_BIT
+                | Self::TABLE_BIT
+                | Self::PAGE_BIT
+                | (physical_addr.0 as u64 & VA_MASK)
+                | attributes.mair_index()
+                | Self::SHAREABILITY
+                | permissions.bits(),
         )
     }
 
@@ -139,8 +159,12 @@ impl DescriptorEntry {
         self.ty() == DescriptorType::Table
     }
 
-    fn is_block_or_page(&self) -> bool {
-        self.ty() == DescriptorType::PageOrBlock
+    fn is_block(&self) -> bool {
+        self.ty() == DescriptorType::Block
+    }
+
+    fn is_page(&self) -> bool {
+        self.ty() == DescriptorType::Page
     }
 
     fn is_invalid(&self) -> bool {
@@ -161,31 +185,30 @@ impl DescriptorEntry {
         if (self.0 & Self::VALID_BIT) == 0 {
             DescriptorType::Invalid
         } else if (self.0 & Self::TABLE_BIT) == 0 {
-            DescriptorType::PageOrBlock
-        } else {
+            DescriptorType::Block
+        } else if (self.0 & Self::PAGE_BIT) == 0 {
             DescriptorType::Table
+        } else {
+            DescriptorType::Page
         }
     }
 
     fn pa(&self) -> Option<PhysicalAddress> {
-        if self.is_block_or_page() {
-            Some(PhysicalAddress((self.0 & PA_MASK) as *const u8))
-        } else {
-            None
+        match self.ty() {
+            DescriptorType::Page | DescriptorType::Block => {
+                Some(PhysicalAddress((self.0 & PA_MASK) as *const u8))
+            }
+            _ => None,
         }
     }
 }
 
 impl Drop for DescriptorEntry {
     fn drop(&mut self) {
-        match self.ty() {
-            DescriptorType::Table => {
-                // Free table
-                let table = self.get_table().expect("Descriptor is a table") as *mut _;
-                let table_box = unsafe { Box::from_raw(table) };
-                drop(table_box);
-            }
-            _ => {}
+        if let Some(table) = self.get_table() {
+            // Free table
+            let table_box = unsafe { Box::from_raw(table as *mut _) };
+            drop(table_box);
         }
     }
 }
@@ -213,13 +236,6 @@ impl TranslationLevel {
 
     fn supports_block_descriptors(&self) -> bool {
         matches!(*self, TranslationLevel::Level2 | TranslationLevel::Level3)
-    }
-
-    fn table_size(&self) -> usize {
-        match *self {
-            TranslationLevel::Level0 => 2,
-            _ => 2048,
-        }
     }
 
     fn address_range_size(&self) -> usize {
@@ -327,16 +343,6 @@ impl MemoryManagementUnit {
         )
         .expect("No other mapping overlaps");
 
-        self.map_region(
-            VirtualAddress::new(0x20000000000 as *const _)
-                .expect("Address is aligned to page size"),
-            PhysicalAddress::new(ram_base).expect("Address is aligned to page size"),
-            ram_size,
-            Attributes::Normal,
-            Permissions::RWX,
-        )
-        .expect("No other mapping overlaps");
-
         let mmio_region_base = 0x0000000200000000 as *const u8;
         let mmio_region_size = 0x0000000400000000;
         self.map_region(
@@ -388,16 +394,16 @@ impl MemoryManagementUnit {
         MAIR_EL1.write(
             MAIR_EL1::Attr0_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
                 + MAIR_EL1::Attr0_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
-                + MAIR_EL1::Attr1_Device::nonGathering_nonReordering_EarlyWriteAck
-                + MAIR_EL1::Attr2_Device::nonGathering_nonReordering_noEarlyWriteAck,
+                + MAIR_EL1::Attr1_Device::nonGathering_nonReordering_noEarlyWriteAck
+                + MAIR_EL1::Attr2_Device::nonGathering_nonReordering_EarlyWriteAck,
         );
 
         TCR_EL1.write(
             TCR_EL1::IPS::Bits_48
                 + TCR_EL1::TG1::KiB_16
                 + TCR_EL1::TG0::KiB_16
-                + TCR_EL1::SH1::Inner
-                + TCR_EL1::SH0::Inner
+                + TCR_EL1::SH1::Outer
+                + TCR_EL1::SH0::Outer
                 + TCR_EL1::ORGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
                 + TCR_EL1::ORGN1::WriteBack_ReadAlloc_WriteAlloc_Cacheable
                 + TCR_EL1::IRGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
@@ -414,7 +420,7 @@ impl MemoryManagementUnit {
             barrier::isb(barrier::SY);
         }
 
-        SCTLR_EL1.write(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
+        SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
 
         unsafe {
             barrier::isb(barrier::SY);
@@ -448,19 +454,25 @@ impl MemoryManagementUnit {
                 core::cmp::min(entry_size, remaining_size)
             };
 
-            if aligned && (chunk_size == entry_size) && level.supports_block_descriptors() {
+            if aligned
+                && (chunk_size == entry_size)
+                && (level.supports_block_descriptors() || level.is_last())
+            {
                 // We could allocate a block or page descriptor here. Else we would need a next
                 // level table
                 match descriptor_entry.ty() {
                     DescriptorType::Invalid => {
-                        *descriptor_entry =
-                            DescriptorEntry::new_page_or_block_desc(pa, attributes, permissions);
+                        *descriptor_entry = if level.is_last() {
+                            DescriptorEntry::new_page_desc(pa, attributes, permissions)
+                        } else {
+                            DescriptorEntry::new_block_desc(pa, attributes, permissions)
+                        };
                     }
                     DescriptorType::Table => {
                         // TODO(javier-varez): Handle consolidation of mappings
                         return Err(Error::OverlapsExistingMapping(va, level));
                     }
-                    DescriptorType::PageOrBlock
+                    DescriptorType::Page | DescriptorType::Block
                         if descriptor_entry.pa().expect("Desc is a page/block") != pa =>
                     {
                         return Err(Error::OverlapsExistingMapping(va, level));
@@ -468,13 +480,15 @@ impl MemoryManagementUnit {
                     _ => {}
                 }
             } else {
-                // Need to have a table and some granularity inside
-                if descriptor_entry.is_block_or_page() {
-                    return Err(Error::OverlapsExistingMapping(va, level));
-                }
-
-                if descriptor_entry.is_invalid() {
-                    *descriptor_entry = DescriptorEntry::new_table_desc(level.next());
+                match descriptor_entry.ty() {
+                    DescriptorType::Block | DescriptorType::Page => {
+                        // Need to have a table and some granularity inside
+                        return Err(Error::OverlapsExistingMapping(va, level));
+                    }
+                    DescriptorType::Invalid => {
+                        *descriptor_entry = DescriptorEntry::new_table_desc(level.next());
+                    }
+                    _ => {}
                 }
 
                 Self::map_region_internal(
@@ -507,7 +521,10 @@ impl MemoryManagementUnit {
     ) -> Result<(), Error> {
         let translation_table = &mut self.level0;
 
-        println!("Adding mapping from {:?} to {:?}, size {:?}", va, pa, size);
+        println!(
+            "Adding mapping from {:?} to {:?}, size 0x{:x}",
+            va, pa, size
+        );
 
         // Size needs to be aligned to page size
         if (size % PAGE_SIZE) != 0 {
@@ -574,7 +591,7 @@ mod test {
 
         for (idx, desc) in level3.iter().enumerate() {
             if idx == 0x59e {
-                assert!(desc.is_block_or_page());
+                assert!(desc.is_page());
                 assert_eq!(desc.pa(), Some(to));
             } else {
                 assert!(desc.is_invalid());
@@ -615,7 +632,7 @@ mod test {
 
         for (idx, desc) in level2.iter().enumerate() {
             if idx == 0x1a2 {
-                assert!(desc.is_block_or_page());
+                assert!(desc.is_block());
                 assert_eq!(desc.pa(), Some(to));
             } else {
                 assert!(desc.is_invalid());
@@ -659,7 +676,7 @@ mod test {
 
         for (idx, desc) in level2.iter().enumerate() {
             if idx == 0x1a2 {
-                assert!(desc.is_block_or_page());
+                assert!(desc.is_block());
                 assert_eq!(desc.pa(), Some(to));
             } else if idx == 0x1a3 {
                 assert!(desc.is_table());
@@ -672,7 +689,7 @@ mod test {
         assert_eq!(level3.level, TranslationLevel::Level3);
         for (idx, desc) in level3.iter().enumerate() {
             if idx < 4 {
-                assert!(desc.is_block_or_page());
+                assert!(desc.is_page());
                 let to_usize = to.0 as usize + block_size + page_size * idx;
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
@@ -721,7 +738,7 @@ mod test {
             if idx == 0x1a2 {
                 assert!(desc.is_table());
             } else if idx == 0x1a3 {
-                assert!(desc.is_block_or_page());
+                assert!(desc.is_block());
                 let to_usize = to.0 as usize + page_size * 4;
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
@@ -735,7 +752,7 @@ mod test {
 
         for (idx, desc) in level3.iter().enumerate() {
             if idx >= 2044 {
-                assert!(desc.is_block_or_page());
+                assert!(desc.is_page());
                 let to_usize = to.0 as usize + page_size * (idx - 2044);
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
@@ -746,18 +763,9 @@ mod test {
     }
 
     #[test]
-    fn ram_mapping() {
+    fn real_mapping() {
         let mut mmu = MemoryManagementUnit::new();
-
-        assert!(mmu.level0[0].is_invalid());
-
-        let block_size = 1 << 25;
-
-        let from = VirtualAddress::new(0x10000000000u64 as *const u8).unwrap();
-        let to = PhysicalAddress::new(0x10000000000u64 as *const u8).unwrap();
-        let size = 0x800000000usize;
-        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
-            .expect("Adding region was successful");
+        mmu.add_default_mappings();
 
         let level0 = &mut mmu.level0;
         assert_eq!(level0.level, TranslationLevel::Level0);
@@ -771,8 +779,6 @@ mod test {
             println!("level 1: {}", idx);
             if idx == 0x10 {
                 assert!(desc.is_table());
-            } else {
-                assert!(desc.is_invalid());
             }
         }
 
@@ -781,8 +787,9 @@ mod test {
 
         for (idx, desc) in level2.iter().enumerate() {
             if idx < 1024 {
-                assert!(desc.is_block_or_page());
-                let to_usize = to.0 as usize + block_size * idx;
+                assert!(desc.is_block());
+                let block_size = 1 << 25;
+                let to_usize = 0x10000000000 as usize + block_size * idx;
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
