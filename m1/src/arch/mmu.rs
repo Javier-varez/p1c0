@@ -6,7 +6,7 @@ use cortex_a::{
     asm::barrier,
     registers::{MAIR_EL1, SCTLR_EL1, TCR_EL1, TTBR0_EL1, TTBR1_EL1},
 };
-use tock_registers::interfaces::{ReadWriteable, Writeable};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[cfg(not(test))]
 use crate::println;
@@ -33,7 +33,7 @@ pub enum Attributes {
 impl Attributes {
     const MAIR_ATTR_OFFSET: usize = 2;
     fn mair_index(&self) -> u64 {
-        (*self as u64) << Self::MAIR_ATTR_OFFSET
+        ((*self as u64) & 0x7) << Self::MAIR_ATTR_OFFSET
     }
 }
 
@@ -48,8 +48,8 @@ pub enum Permissions {
 impl Permissions {
     fn ap_bits(&self) -> u64 {
         match *self {
-            Permissions::RWX | Permissions::RW => 0b10 << 6,
-            Permissions::RX | Permissions::RO => 0b00 << 6,
+            Permissions::RWX | Permissions::RW => 0b00 << 6,
+            Permissions::RX | Permissions::RO => 0b10 << 6,
         }
     }
 
@@ -112,6 +112,7 @@ struct DescriptorEntry(u64);
 impl DescriptorEntry {
     const VALID_BIT: u64 = 1 << 0;
     const TABLE_BIT: u64 = 1 << 1;
+    const ACCESS_FLAG: u64 = 1 << 10;
     const PAGE_BIT: u64 = 1 << 55;
     const SHAREABILITY: u64 = 0b10 << 8; // Output shareable
 
@@ -122,7 +123,7 @@ impl DescriptorEntry {
     fn new_table_desc(level: TranslationLevel) -> Self {
         let table = Box::new(LevelTable::new(level));
         let table_addr = Box::leak(table) as *mut _;
-        Self(Self::VALID_BIT | Self::TABLE_BIT | (table_addr as u64 & VA_MASK))
+        Self(Self::VALID_BIT | Self::TABLE_BIT | (table_addr as u64 & PA_MASK))
     }
 
     fn new_block_desc(
@@ -132,7 +133,8 @@ impl DescriptorEntry {
     ) -> Self {
         Self(
             Self::VALID_BIT
-                | (physical_addr.0 as u64 & VA_MASK)
+                | Self::ACCESS_FLAG
+                | (physical_addr.0 as u64 & PA_MASK)
                 | attributes.mair_index()
                 | Self::SHAREABILITY
                 | permissions.bits(),
@@ -148,7 +150,8 @@ impl DescriptorEntry {
             Self::VALID_BIT
                 | Self::TABLE_BIT
                 | Self::PAGE_BIT
-                | (physical_addr.0 as u64 & VA_MASK)
+                | Self::ACCESS_FLAG
+                | (physical_addr.0 as u64 & PA_MASK)
                 | attributes.mair_index()
                 | Self::SHAREABILITY
                 | permissions.bits(),
@@ -402,8 +405,8 @@ impl MemoryManagementUnit {
             TCR_EL1::IPS::Bits_48
                 + TCR_EL1::TG1::KiB_16
                 + TCR_EL1::TG0::KiB_16
-                + TCR_EL1::SH1::Outer
-                + TCR_EL1::SH0::Outer
+                + TCR_EL1::SH1::Inner
+                + TCR_EL1::SH0::Inner
                 + TCR_EL1::ORGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
                 + TCR_EL1::ORGN1::WriteBack_ReadAlloc_WriteAlloc_Cacheable
                 + TCR_EL1::IRGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
@@ -420,12 +423,20 @@ impl MemoryManagementUnit {
             barrier::isb(barrier::SY);
         }
 
-        SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
+        SCTLR_EL1.modify(SCTLR_EL1::M::Enable);
 
         unsafe {
             barrier::isb(barrier::SY);
         }
-        println!("MMU enabled");
+
+        if matches!(
+            SCTLR_EL1.read_as_enum(SCTLR_EL1::M),
+            Some(SCTLR_EL1::M::Value::Enable)
+        ) {
+            println!("MMU enabled");
+        } else {
+            println!("Error enabling MMU");
+        }
     }
 
     fn map_region_internal(

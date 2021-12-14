@@ -65,8 +65,8 @@ fn transition_to_el1(stack_bottom: *const ()) -> ! {
             + SPSR_EL2::M::EL1h, // We "came" from el1h
     );
 
-    // Link register is kernel_main
-    ELR_EL2.set(kernel_main as *const () as u64);
+    // Link register is el1_entry
+    ELR_EL2.set(el1_entry as *const () as u64);
 
     // TODO(javier-varez): Set proper stack pointer here...
     SP_EL1.set(stack_bottom as u64);
@@ -92,6 +92,11 @@ extern "C" {
     static _arena_size: u8;
 }
 
+pub unsafe extern "C" fn el1_entry() {
+    mmu::initialize();
+    kernel_main();
+}
+
 #[no_mangle]
 pub extern "C" fn start_rust(boot_args: &BootArgs, _base: *const (), stack_bottom: *const ()) -> ! {
     // SAFETY
@@ -110,7 +115,7 @@ pub extern "C" fn start_rust(boot_args: &BootArgs, _base: *const (), stack_botto
             transition_to_el1(stack_bottom);
         }
         CurrentEL::EL::Value::EL1 => {
-            unsafe { kernel_main() };
+            unsafe { el1_entry() };
             loop {
                 asm::wfi();
             }

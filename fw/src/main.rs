@@ -47,8 +47,6 @@ pub extern "C" fn kernel_main() {
     println!("Exception level: {:?}", m1::arch::get_exception_level());
     println!("");
 
-    m1::arch::mmu::initialize();
-
     let boot_args = get_boot_args();
     print_boot_args(boot_args);
 }
