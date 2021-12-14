@@ -48,9 +48,9 @@ impl Uart {
 impl fmt::Write for Uart {
     fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
         for character in s.bytes() {
-            if character == '\n' as u8 {
+            if character == b'\n' {
                 // Implicit \r with every \n
-                self.putchar('\r' as u8);
+                self.putchar(b'\r');
             }
             self.putchar(character);
         }
