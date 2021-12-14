@@ -423,7 +423,7 @@ impl MemoryManagementUnit {
             barrier::isb(barrier::SY);
         }
 
-        SCTLR_EL1.modify(SCTLR_EL1::M::Enable);
+        SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
 
         unsafe {
             barrier::isb(barrier::SY);
