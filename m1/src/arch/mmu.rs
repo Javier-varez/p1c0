@@ -158,22 +158,6 @@ impl DescriptorEntry {
         )
     }
 
-    fn is_table(&self) -> bool {
-        self.ty() == DescriptorType::Table
-    }
-
-    fn is_block(&self) -> bool {
-        self.ty() == DescriptorType::Block
-    }
-
-    fn is_page(&self) -> bool {
-        self.ty() == DescriptorType::Page
-    }
-
-    fn is_invalid(&self) -> bool {
-        self.ty() == DescriptorType::Invalid
-    }
-
     fn get_table(&mut self) -> Option<&mut LevelTable> {
         match self.ty() {
             DescriptorType::Table => {
@@ -314,10 +298,6 @@ impl LevelTable {
             table: [INVALID_DESCRIPTOR; 2048],
             level,
         }
-    }
-
-    fn iter(&self) -> core::slice::Iter<'_, DescriptorEntry> {
-        self.table.iter()
     }
 }
 
@@ -562,7 +542,7 @@ mod test {
     fn single_page_mapping() {
         let mut mmu = MemoryManagementUnit::new();
 
-        assert!(mmu.level0[0].is_invalid());
+        assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
         let from = VirtualAddress::new(0x012345678000 as *const u8).unwrap();
         let to = PhysicalAddress::new(0x012345678000 as *const u8).unwrap();
@@ -572,40 +552,39 @@ mod test {
 
         let level0 = &mut mmu.level0;
         assert_eq!(level0.level, TranslationLevel::Level0);
-        assert!(!level0[0].is_invalid());
-        assert!(level0[0].is_table());
-        assert!(level0[1].is_invalid());
+        assert!(matches!(level0[0].ty(), DescriptorType::Table));
+        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
         assert_eq!(level1.level, TranslationLevel::Level1);
-        for (idx, desc) in level1.iter().enumerate() {
+        for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
-                assert!(desc.is_table());
+                assert!(matches!(desc.ty(), DescriptorType::Table));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
 
         let level2 = level1[0x12].get_table().expect("Is a table");
         assert_eq!(level2.level, TranslationLevel::Level2);
 
-        for (idx, desc) in level2.iter().enumerate() {
+        for (idx, desc) in level2.table.iter().enumerate() {
             if idx == 0x1a2 {
-                assert!(desc.is_table());
+                assert!(matches!(desc.ty(), DescriptorType::Table));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
 
         let level3 = level2[0x1a2].get_table().expect("Is a table");
         assert_eq!(level3.level, TranslationLevel::Level3);
 
-        for (idx, desc) in level3.iter().enumerate() {
+        for (idx, desc) in level3.table.iter().enumerate() {
             if idx == 0x59e {
-                assert!(desc.is_page());
+                assert!(matches!(desc.ty(), DescriptorType::Page));
                 assert_eq!(desc.pa(), Some(to));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
     }
@@ -614,7 +593,7 @@ mod test {
     fn single_block_mapping() {
         let mut mmu = MemoryManagementUnit::new();
 
-        assert!(mmu.level0[0].is_invalid());
+        assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
         let from = VirtualAddress::new(0x12344000000 as *const u8).unwrap();
         let to = PhysicalAddress::new(0x12344000000 as *const u8).unwrap();
@@ -624,29 +603,28 @@ mod test {
 
         let level0 = &mut mmu.level0;
         assert_eq!(level0.level, TranslationLevel::Level0);
-        assert!(!level0[0].is_invalid());
-        assert!(level0[0].is_table());
-        assert!(level0[1].is_invalid());
+        assert!(matches!(level0[0].ty(), DescriptorType::Table));
+        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
         assert_eq!(level1.level, TranslationLevel::Level1);
-        for (idx, desc) in level1.iter().enumerate() {
+        for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
-                assert!(desc.is_table());
+                assert!(matches!(desc.ty(), DescriptorType::Table));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
 
         let level2 = level1[0x12].get_table().expect("Is a table");
         assert_eq!(level2.level, TranslationLevel::Level2);
 
-        for (idx, desc) in level2.iter().enumerate() {
+        for (idx, desc) in level2.table.iter().enumerate() {
             if idx == 0x1a2 {
-                assert!(desc.is_block());
+                assert!(matches!(desc.ty(), DescriptorType::Block));
                 assert_eq!(desc.pa(), Some(to));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
     }
@@ -655,7 +633,7 @@ mod test {
     fn large_aligned_block_mapping() {
         let mut mmu = MemoryManagementUnit::new();
 
-        assert!(mmu.level0[0].is_invalid());
+        assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
         let block_size = 1 << 25;
         let page_size = 1 << 14;
@@ -668,44 +646,43 @@ mod test {
 
         let level0 = &mut mmu.level0;
         assert_eq!(level0.level, TranslationLevel::Level0);
-        assert!(!level0[0].is_invalid());
-        assert!(level0[0].is_table());
-        assert!(level0[1].is_invalid());
+        assert!(matches!(level0[0].ty(), DescriptorType::Table));
+        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
         assert_eq!(level1.level, TranslationLevel::Level1);
-        for (idx, desc) in level1.iter().enumerate() {
+        for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
-                assert!(desc.is_table());
+                assert!(matches!(desc.ty(), DescriptorType::Table));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
 
         let level2 = level1[0x12].get_table().expect("Is a table");
         assert_eq!(level2.level, TranslationLevel::Level2);
 
-        for (idx, desc) in level2.iter().enumerate() {
+        for (idx, desc) in level2.table.iter().enumerate() {
             if idx == 0x1a2 {
-                assert!(desc.is_block());
+                assert!(matches!(desc.ty(), DescriptorType::Block));
                 assert_eq!(desc.pa(), Some(to));
             } else if idx == 0x1a3 {
-                assert!(desc.is_table());
+                assert!(matches!(desc.ty(), DescriptorType::Table));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
 
         let level3 = level2[0x1a3].get_table().expect("Is a table");
         assert_eq!(level3.level, TranslationLevel::Level3);
-        for (idx, desc) in level3.iter().enumerate() {
+        for (idx, desc) in level3.table.iter().enumerate() {
             if idx < 4 {
-                assert!(desc.is_page());
+                assert!(matches!(desc.ty(), DescriptorType::Page));
                 let to_usize = to.0 as usize + block_size + page_size * idx;
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
     }
@@ -714,7 +691,7 @@ mod test {
     fn large_unaligned_block_mapping() {
         let mut mmu = MemoryManagementUnit::new();
 
-        assert!(mmu.level0[0].is_invalid());
+        assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
         let block_size = 1 << 25;
         let page_size = 1 << 14;
@@ -728,47 +705,46 @@ mod test {
 
         let level0 = &mut mmu.level0;
         assert_eq!(level0.level, TranslationLevel::Level0);
-        assert!(!level0[0].is_invalid());
-        assert!(level0[0].is_table());
-        assert!(level0[1].is_invalid());
+        assert!(matches!(level0[0].ty(), DescriptorType::Table));
+        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
         assert_eq!(level1.level, TranslationLevel::Level1);
-        for (idx, desc) in level1.iter().enumerate() {
+        for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
-                assert!(desc.is_table());
+                assert!(matches!(desc.ty(), DescriptorType::Table));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
 
         let level2 = level1[0x12].get_table().expect("Is a table");
         assert_eq!(level2.level, TranslationLevel::Level2);
 
-        for (idx, desc) in level2.iter().enumerate() {
+        for (idx, desc) in level2.table.iter().enumerate() {
             if idx == 0x1a2 {
-                assert!(desc.is_table());
+                assert!(matches!(desc.ty(), DescriptorType::Table));
             } else if idx == 0x1a3 {
-                assert!(desc.is_block());
+                assert!(matches!(desc.ty(), DescriptorType::Block));
                 let to_usize = to.0 as usize + page_size * 4;
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
 
         let level3 = level2[0x1a2].get_table().expect("Is a table");
         assert_eq!(level3.level, TranslationLevel::Level3);
 
-        for (idx, desc) in level3.iter().enumerate() {
+        for (idx, desc) in level3.table.iter().enumerate() {
             if idx >= 2044 {
-                assert!(desc.is_page());
+                assert!(matches!(desc.ty(), DescriptorType::Page));
                 let to_usize = to.0 as usize + page_size * (idx - 2044);
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
     }
@@ -780,31 +756,30 @@ mod test {
 
         let level0 = &mut mmu.level0;
         assert_eq!(level0.level, TranslationLevel::Level0);
-        assert!(!level0[0].is_invalid());
-        assert!(level0[0].is_table());
-        assert!(level0[1].is_invalid());
+        assert!(matches!(level0[0].ty(), DescriptorType::Table));
+        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
         assert_eq!(level1.level, TranslationLevel::Level1);
-        for (idx, desc) in level1.iter().enumerate() {
+        for (idx, desc) in level1.table.iter().enumerate() {
             println!("level 1: {}", idx);
             if idx == 0x10 {
-                assert!(desc.is_table());
+                assert!(matches!(desc.ty(), DescriptorType::Table));
             }
         }
 
         let level2 = level1[0x10].get_table().expect("Is a table");
         assert_eq!(level2.level, TranslationLevel::Level2);
 
-        for (idx, desc) in level2.iter().enumerate() {
+        for (idx, desc) in level2.table.iter().enumerate() {
             if idx < 1024 {
-                assert!(desc.is_block());
+                assert!(matches!(desc.ty(), DescriptorType::Block));
                 let block_size = 1 << 25;
                 let to_usize = 0x10000000000 as usize + block_size * idx;
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
-                assert!(desc.is_invalid());
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
         }
     }
