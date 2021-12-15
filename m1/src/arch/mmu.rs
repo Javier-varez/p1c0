@@ -299,6 +299,85 @@ impl LevelTable {
             level,
         }
     }
+
+    fn map_region(
+        &mut self,
+        mut va: VirtualAddress,
+        mut pa: PhysicalAddress,
+        size: usize,
+        attributes: Attributes,
+        permissions: Permissions,
+    ) -> Result<(), Error> {
+        let level = self.level;
+        let entry_size = level.entry_size();
+
+        let mut remaining_size = size;
+        while remaining_size != 0 {
+            let index = self.level.table_index_for_addr(va);
+            let aligned = self.level.is_address_aligned(va);
+            let descriptor_entry = &mut self.table[index];
+
+            let chunk_size = if !aligned {
+                let next_level = level.next();
+                let rem_entry_size =
+                    entry_size - next_level.table_index_for_addr(va) * next_level.entry_size();
+                core::cmp::min(rem_entry_size, remaining_size)
+            } else {
+                core::cmp::min(entry_size, remaining_size)
+            };
+
+            if aligned
+                && (chunk_size == entry_size)
+                && (level.supports_block_descriptors() || level.is_last())
+            {
+                // We could allocate a block or page descriptor here. Else we would need a next
+                // level table
+                match descriptor_entry.ty() {
+                    DescriptorType::Invalid => {
+                        *descriptor_entry = if level.is_last() {
+                            DescriptorEntry::new_page_desc(pa, attributes, permissions)
+                        } else {
+                            DescriptorEntry::new_block_desc(pa, attributes, permissions)
+                        };
+                    }
+                    DescriptorType::Table => {
+                        // TODO(javier-varez): Handle consolidation of mappings
+                        return Err(Error::OverlapsExistingMapping(va, level));
+                    }
+                    DescriptorType::Page | DescriptorType::Block
+                        if descriptor_entry.pa().expect("Desc is a page/block") != pa =>
+                    {
+                        return Err(Error::OverlapsExistingMapping(va, level));
+                    }
+                    _ => {}
+                }
+            } else {
+                match descriptor_entry.ty() {
+                    DescriptorType::Block | DescriptorType::Page => {
+                        // Need to have a table and some granularity inside
+                        return Err(Error::OverlapsExistingMapping(va, level));
+                    }
+                    DescriptorType::Invalid => {
+                        *descriptor_entry = DescriptorEntry::new_table_desc(level.next());
+                    }
+                    _ => {}
+                }
+
+                descriptor_entry
+                    .get_table()
+                    .expect("Is a table")
+                    .map_region(va, pa, chunk_size, attributes, permissions)?;
+            }
+
+            unsafe {
+                pa = pa.offset(chunk_size);
+                va = va.offset(chunk_size);
+            }
+
+            remaining_size = remaining_size.saturating_sub(chunk_size);
+        }
+        Ok(())
+    }
 }
 
 pub struct MemoryManagementUnit {
@@ -419,89 +498,6 @@ impl MemoryManagementUnit {
         }
     }
 
-    fn map_region_internal(
-        mut va: VirtualAddress,
-        mut pa: PhysicalAddress,
-        size: usize,
-        attributes: Attributes,
-        permissions: Permissions,
-        translation_table: &mut LevelTable,
-    ) -> Result<(), Error> {
-        let level = translation_table.level;
-        let entry_size = level.entry_size();
-
-        let mut remaining_size = size;
-        while remaining_size != 0 {
-            let index = translation_table.level.table_index_for_addr(va);
-            let aligned = translation_table.level.is_address_aligned(va);
-            let descriptor_entry = &mut translation_table[index];
-
-            let chunk_size = if !aligned {
-                let next_level = level.next();
-                let rem_entry_size =
-                    entry_size - next_level.table_index_for_addr(va) * next_level.entry_size();
-                core::cmp::min(rem_entry_size, remaining_size)
-            } else {
-                core::cmp::min(entry_size, remaining_size)
-            };
-
-            if aligned
-                && (chunk_size == entry_size)
-                && (level.supports_block_descriptors() || level.is_last())
-            {
-                // We could allocate a block or page descriptor here. Else we would need a next
-                // level table
-                match descriptor_entry.ty() {
-                    DescriptorType::Invalid => {
-                        *descriptor_entry = if level.is_last() {
-                            DescriptorEntry::new_page_desc(pa, attributes, permissions)
-                        } else {
-                            DescriptorEntry::new_block_desc(pa, attributes, permissions)
-                        };
-                    }
-                    DescriptorType::Table => {
-                        // TODO(javier-varez): Handle consolidation of mappings
-                        return Err(Error::OverlapsExistingMapping(va, level));
-                    }
-                    DescriptorType::Page | DescriptorType::Block
-                        if descriptor_entry.pa().expect("Desc is a page/block") != pa =>
-                    {
-                        return Err(Error::OverlapsExistingMapping(va, level));
-                    }
-                    _ => {}
-                }
-            } else {
-                match descriptor_entry.ty() {
-                    DescriptorType::Block | DescriptorType::Page => {
-                        // Need to have a table and some granularity inside
-                        return Err(Error::OverlapsExistingMapping(va, level));
-                    }
-                    DescriptorType::Invalid => {
-                        *descriptor_entry = DescriptorEntry::new_table_desc(level.next());
-                    }
-                    _ => {}
-                }
-
-                Self::map_region_internal(
-                    va,
-                    pa,
-                    chunk_size,
-                    attributes,
-                    permissions,
-                    descriptor_entry.get_table().expect("Is a table"),
-                )?;
-            }
-
-            unsafe {
-                pa = pa.offset(chunk_size);
-                va = va.offset(chunk_size);
-            }
-
-            remaining_size = remaining_size.saturating_sub(chunk_size);
-        }
-        Ok(())
-    }
-
     pub fn map_region(
         &mut self,
         va: VirtualAddress,
@@ -522,7 +518,7 @@ impl MemoryManagementUnit {
             size = size + PAGE_SIZE - (size % PAGE_SIZE);
         }
 
-        Self::map_region_internal(va, pa, size, attributes, permissions, translation_table)
+        translation_table.map_region(va, pa, size, attributes, permissions)
     }
 }
 
@@ -762,7 +758,6 @@ mod test {
         let level1 = level0[0].get_table().expect("Is a table");
         assert_eq!(level1.level, TranslationLevel::Level1);
         for (idx, desc) in level1.table.iter().enumerate() {
-            println!("level 1: {}", idx);
             if idx == 0x10 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
             }
