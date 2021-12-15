@@ -10,10 +10,8 @@ use embedded_graphics::{
     text::{Baseline, Text},
 };
 
+use crate::collections::{new_aligned_vector, AlignedVec};
 use crate::font::FIRA_CODE_30;
-
-const MAX_WIDTH: usize = 3024;
-const MAX_HEIGHT: usize = 1964;
 
 const RETINA_DEPTH_FLAG: usize = 1 << 16;
 
@@ -24,11 +22,9 @@ const COL_MARGIN: u32 = 10;
 // prevent deadlocks). At this point using spin mutex causes a crash, that needs to be investigated.
 static mut DISPLAY: Option<Display> = None;
 
-// Align this to 128 to make the display update much faster. Also need to guarantee that base is
-// the first element in the struct so that it is still aligned.
-#[repr(C, align(128))]
 pub struct Display {
-    base: [u32; MAX_HEIGHT * MAX_WIDTH],
+    // Align this to 128 to use _memcpy128_aligned, which makes the display update much faster.
+    base: AlignedVec<u32, 128>,
     width: u32,
     height: u32,
     stride: u32,
@@ -52,12 +48,15 @@ impl Display {
         let retina = (video_args.depth & RETINA_DEPTH_FLAG) != 0;
         let font = if retina { &FIRA_CODE_30 } else { &FONT_5X7 };
         let max_rows = (video_args.height as u32 - ROW_MARGIN * 2) / font.character_size.height;
+
+        let mut base = new_aligned_vector();
+        base.resize_with(video_args.width * video_args.height, Default::default);
         let mut disp = Self {
             hwbase: video_args.base as *mut u32,
             width: video_args.width as u32,
             height: video_args.height as u32,
             stride: video_args.stride as u32 / 4,
-            base: [0; MAX_HEIGHT * MAX_WIDTH],
+            base,
             font,
             current_row: 0,
             current_col: 0,

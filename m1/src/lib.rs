@@ -1,8 +1,9 @@
 #![cfg_attr(not(test), no_std)]
-#![feature(global_asm, asm)]
+#![feature(global_asm, asm, allocator_api)]
 
 pub mod arch;
 pub mod boot_args;
+mod collections;
 pub mod display;
 pub mod font;
 pub mod uart;
