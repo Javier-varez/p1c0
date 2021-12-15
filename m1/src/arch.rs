@@ -6,6 +6,7 @@ use cortex_a::{
 use tock_registers::interfaces::{Readable, Writeable};
 
 pub mod alloc;
+pub mod exceptions;
 pub mod mmu;
 
 #[repr(C)]
@@ -93,6 +94,7 @@ extern "C" {
 }
 
 pub unsafe extern "C" fn el1_entry() {
+    exceptions::handling_init();
     mmu::initialize();
     kernel_main();
 }

@@ -49,4 +49,9 @@ pub extern "C" fn kernel_main() {
 
     let boot_args = get_boot_args();
     print_boot_args(boot_args);
+
+    let addr = 0x00007FFFFFFFFFFF as *const u64;
+    println!("let's cause a page fault!");
+    let val = unsafe { *addr };
+    println!("Hah, value is {}", val);
 }
