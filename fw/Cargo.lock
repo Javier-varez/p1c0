@@ -10,9 +10,9 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
 name = "az"
-version = "1.1.2"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d6dff4a1892b54d70af377bf7a17064192e822865791d812957f21e3108c325"
+checksum = "f771a5d1f5503f7f4279a30f3643d3421ba149848b89ecaaec0ea2acf04a5ac4"
 
 [[package]]
 name = "byteorder"
@@ -29,7 +29,7 @@ checksum = "22a9137b95ea06864e018375b72adfb7db6e6f68cfc8df5a04d00288050485ee"
 [[package]]
 name = "cortex-a"
 version = "6.1.0"
-source = "git+https://github.com/Javier-varez/cortex-a.git?branch=fix_core_arch_asm#1f3e08a59b3f5f7574480c058225ede8b652be2a"
+source = "git+https://github.com/Javier-varez/cortex-a.git?branch=fix_core_arch_asm#06950d997f02cede432a0ab861f16c142e007626"
 dependencies = [
  "tock-registers",
 ]
