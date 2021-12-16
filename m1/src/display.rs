@@ -23,8 +23,8 @@ const COL_MARGIN: u32 = 10;
 static mut DISPLAY: Option<Display> = None;
 
 pub struct Display {
-    // Align this to 128 to use _memcpy128_aligned, which makes the display update much faster.
-    base: AlignedVec<u32, 128>,
+    // Align this to 128 bits to use _memcpy128_aligned, which makes the display update much faster.
+    base: AlignedVec<u32, 16>,
     width: u32,
     height: u32,
     stride: u32,
