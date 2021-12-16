@@ -1,5 +1,5 @@
 #![cfg_attr(not(test), no_std)]
-#![feature(global_asm, asm, allocator_api)]
+#![feature(allocator_api)]
 
 pub mod arch;
 pub mod boot_args;
