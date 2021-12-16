@@ -23,8 +23,7 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 [[package]]
 name = "cortex-a"
 version = "6.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "509fc35485a2b4ddbacabe0bf2212cdfff88da93658608e5cc651afcb75b7733"
+source = "git+https://github.com/Javier-varez/cortex-a.git?branch=fix_core_arch_asm#1f3e08a59b3f5f7574480c058225ede8b652be2a"
 dependencies = [
  "tock-registers",
 ]
