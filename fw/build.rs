@@ -8,10 +8,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     File::create(out_dir.join("p1c0.ld"))?.write_all(include_bytes!("p1c0.ld"))?;
 
+    let host = env::var("HOST").unwrap();
+
+    let compiler = if host == "aarch64-apple-darwin" {
+        "clang"
+    } else {
+        "aarch64-linux-gnu-gcc"
+    };
+
     Build::new()
         .file("startup.S")
         .target("aarch64-unknown-none-softfloat")
-        .compiler("aarch64-linux-gnu-gcc")
+        .compiler(compiler)
         .compile("entry");
 
     println!("cargo:rerun-if-changed=startup.S");
