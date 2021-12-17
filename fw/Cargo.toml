@@ -9,7 +9,7 @@ edition = "2021"
 m1 = { path = "../m1" }
 embedded-graphics = "0.7.1"
 tinybmp = "0.3.1"
-cortex-a = { git = "https://github.com/Javier-varez/cortex-a.git", branch = "fix_core_arch_asm", version = "6.1.0" }
+cortex-a = "7.0.0"
 tock-registers = "0.7.0"
 
 [build-dependencies]
