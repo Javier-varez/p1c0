@@ -46,27 +46,49 @@
 // We need to align to 2048 bytes the exception table
 .align 11
 
+.globl __exception_vector_start
 __exception_vector_start:
 
 // Current EL with SP_EL0
 .org 0x000
+.p2align 7
 	save_context_and_call_handler current_el0_synchronous
-.org 0x080
+.p2align 7
 	save_context_and_call_handler current_el0_irq
-.org 0x100
+.p2align 7
 	fiq_suspend
-.org 0x180
+.p2align 7
 	save_context_and_call_handler current_el0_serror
 
 // Current EL with SP_ELx, x > 0
-.org 0x200
+.p2align 7
 	save_context_and_call_handler current_elx_synchronous
-.org 0x280
+.p2align 7
 	save_context_and_call_handler current_elx_irq
-.org 0x300
+.p2align 7
 	fiq_suspend
-.org 0x380
+.p2align 7
 	save_context_and_call_handler current_elx_serror
+
+// Lower EL in AARCH64
+.p2align 7
+	save_context_and_call_handler lower_el_aarch64_synchronous
+.p2align 7
+	save_context_and_call_handler lower_el_aarch64_irq
+.p2align 7
+	fiq_suspend
+.p2align 7
+	save_context_and_call_handler lower_el_aarch64_serror
+
+// Lower EL in AARCH32
+.p2align 7
+	save_context_and_call_handler lower_el_aarch32_synchronous
+.p2align 7
+	save_context_and_call_handler lower_el_aarch32_irq
+.p2align 7
+	fiq_suspend
+.p2align 7
+	save_context_and_call_handler lower_el_aarch32_serror
 
 __exception_restore_context:
 	ldp	x18, x19, [sp], #16
@@ -93,3 +115,55 @@ __exception_restore_context:
 	ldr x30, [sp], #8
 
 	eret
+
+.size	__exception_restore_context, . - __exception_restore_context
+.type	__exception_restore_context, function
+
+// We need to align to 2048 bytes the exception table
+.align 11
+
+.globl __el2_exception_vector_start
+__el2_exception_vector_start:
+
+// Current EL with SP_EL0
+.p2align 7
+	save_context_and_call_handler current_el0_synchronous
+.p2align 7
+	save_context_and_call_handler current_el0_irq
+.p2align 7
+	fiq_suspend
+.p2align 7
+	save_context_and_call_handler current_el0_serror
+
+// Current EL with SP_ELx, x > 0
+.p2align 7
+	save_context_and_call_handler current_elx_synchronous
+.p2align 7
+	save_context_and_call_handler current_elx_irq
+.p2align 7
+	fiq_suspend
+.p2align 7
+	save_context_and_call_handler current_elx_serror
+
+// Lower EL in AARCH64
+.p2align 7
+	save_context_and_call_handler lower_el_aarch64_synchronous
+.p2align 7
+	save_context_and_call_handler lower_el_aarch64_irq
+.p2align 7
+	fiq_suspend
+.p2align 7
+	save_context_and_call_handler lower_el_aarch64_serror
+
+// Lower EL in AARCH32
+.p2align 7
+	save_context_and_call_handler lower_el_aarch32_synchronous
+.p2align 7
+	save_context_and_call_handler lower_el_aarch32_irq
+.p2align 7
+	fiq_suspend
+.p2align 7
+	save_context_and_call_handler lower_el_aarch32_serror
+
+// __rel_exception_vector_start:
+// .reloc __rel_exception_vector_start, R_AARCH64_RELATIVE, __exception_vector_start
