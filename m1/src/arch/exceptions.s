@@ -93,6 +93,3 @@ __exception_restore_context:
 	ldr x30, [sp], #8
 
 	eret
-
-.size	__exception_restore_context, . - __exception_restore_context
-.type	__exception_restore_context, function
