@@ -8,6 +8,7 @@ mod collections;
 pub mod display;
 pub mod font;
 pub mod uart;
+pub mod wdt;
 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {

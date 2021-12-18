@@ -3,13 +3,14 @@ use cortex_a::{
     asm,
     registers::{CurrentEL, CNTHCTL_EL2, CNTVOFF_EL2, ELR_EL2, HCR_EL2, SPSR_EL2, SP_EL1},
 };
-use tock_registers::interfaces::{Readable, Writeable};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 pub mod alloc;
 pub mod exceptions;
 pub mod mmu;
 
 use crate::uart;
+use crate::wdt;
 
 #[repr(C)]
 pub struct RelaEntry {
@@ -58,7 +59,7 @@ fn transition_to_el1(stack_bottom: *const ()) -> ! {
     CNTVOFF_EL2.set(0);
 
     // EL1 is Aarch64
-    HCR_EL2.write(HCR_EL2::RW::EL1IsAarch64);
+    HCR_EL2.modify(HCR_EL2::RW::EL1IsAarch64);
 
     SPSR_EL2.write(
         SPSR_EL2::D::Masked
@@ -98,7 +99,6 @@ extern "C" {
 /// # Safety
 ///   This function must be called with the MMU off and exceptions masked while running in EL1.
 pub unsafe extern "C" fn el1_entry() {
-    exceptions::handling_init();
     mmu::initialize();
 
     let arena_size = (&_arena_size) as *const u8 as usize;
@@ -114,7 +114,12 @@ pub extern "C" fn start_rust(boot_args: &BootArgs, _base: *const (), stack_botto
     // This is safe because at this point there is only one thread running and no one has accessed
     // the boot args yet.
     unsafe { crate::boot_args::set_boot_args(boot_args) };
+    exceptions::handling_init();
     uart::initialize();
+
+    // This services and initializes the watchdog (on first call). To avoid a reboot we should
+    // periodically call this function
+    wdt::service();
 
     match CurrentEL.read_as_enum(CurrentEL::EL).expect("Valid EL") {
         CurrentEL::EL::Value::EL2 => {
