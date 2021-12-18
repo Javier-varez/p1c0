@@ -1,4 +1,3 @@
-use core::cell::UnsafeCell;
 use core::fmt;
 use cortex_a::{asm::barrier, registers::*};
 use tock_registers::{
@@ -6,11 +5,11 @@ use tock_registers::{
     registers::InMemoryRegister,
 };
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(test)))]
 use core::arch::global_asm;
 
 // Assembly code for the exception table ane entry points
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
 /// Wrapper structs for memory copies of registers.
@@ -38,7 +37,9 @@ struct ExceptionContext {
 fn default_exception_handler(exc: &ExceptionContext) {
     panic!(
         "\n\nCPU Exception!\n\
+        Exc level {:?}\n\
         {}",
+        crate::arch::get_exception_level(),
         exc
     );
 }
@@ -71,6 +72,57 @@ unsafe extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
 #[no_mangle]
 unsafe extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
     default_exception_handler(e);
+}
+
+#[no_mangle]
+unsafe extern "C" fn lower_el_aarch64_synchronous(e: &mut ExceptionContext) {
+    crate::println!(
+        "lower_el_aarch64_synchronous: {:?}",
+        crate::arch::get_exception_level()
+    );
+    default_exception_handler(e);
+}
+
+#[no_mangle]
+unsafe extern "C" fn lower_el_aarch64_irq(e: &mut ExceptionContext) {
+    crate::println!(
+        "lower_el_aarch64_irq: {:?}",
+        crate::arch::get_exception_level()
+    );
+    default_exception_handler(e);
+}
+
+#[no_mangle]
+unsafe extern "C" fn lower_el_aarch64_serror(e: &mut ExceptionContext) {
+    crate::println!(
+        "lower_el_aarch64_serror: {:?}",
+        crate::arch::get_exception_level()
+    );
+    default_exception_handler(e);
+}
+
+#[no_mangle]
+unsafe extern "C" fn lower_el_aarch32_synchronous(_e: &mut ExceptionContext) {
+    panic!(
+        "lower_el_aarch32_synchronous: {:?}. This should not happen!",
+        crate::arch::get_exception_level()
+    );
+}
+
+#[no_mangle]
+unsafe extern "C" fn lower_el_aarch32_irq(_e: &mut ExceptionContext) {
+    panic!(
+        "lower_el_aarch32_irq: {:?}. This should not happen!",
+        crate::arch::get_exception_level()
+    );
+}
+
+#[no_mangle]
+unsafe extern "C" fn lower_el_aarch32_serror(_e: &mut ExceptionContext) {
+    panic!(
+        "lower_el_aarch32_serror: {:?}. This should not happen!",
+        crate::arch::get_exception_level()
+    );
 }
 
 /// Human readable SPSR_EL1.
@@ -187,28 +239,44 @@ impl fmt::Display for ExceptionContext {
     }
 }
 
+extern "C" {
+    pub static __exception_vector_start: u8;
+    pub static __el2_exception_vector_start: u8;
+}
+
 /// Init exception handling by setting the exception vector base address register.
-///
-/// # Safety
-///
-/// - Changes the HW state of the executing core.
-/// - The vector table and the symbol `__exception_vector_table_start` from the linker script must
-///   adhere to the alignment and size constraints demanded by the ARMv8-A Architecture Reference
-///   Manual.
-pub unsafe fn handling_init() {
-    // Provided by exceptions.s
-    extern "Rust" {
-        pub static __exception_vector_start: UnsafeCell<()>;
-    }
-
-    #[cfg(not(test))]
-    let vectors = __exception_vector_start.get() as *const ();
-
-    #[cfg(test)]
-    let vectors = core::ptr::null() as *const ();
-
+pub fn handling_init() {
+    let vectors = unsafe { &__exception_vector_start as *const _ };
     VBAR_EL1.set(vectors as u64);
-
     // Force VBAR update to complete before next instruction.
-    barrier::isb(barrier::SY);
+    unsafe { barrier::isb(barrier::SY) };
+
+    if matches!(
+        CurrentEL.read_as_enum(CurrentEL::EL),
+        Some(CurrentEL::EL::Value::EL2)
+    ) {
+        HCR_EL2.write(
+            HCR_EL2::RW::EL1IsAarch64
+                // These settings would make EL2 work just like an OS and also trap any exceptions
+                // from EL1 to EL2. EL1 cannot be used with them.
+                //
+                // + HCR_EL2::API::NoTrapPointerAuthInstToEl2
+                // + HCR_EL2::APK::NoTrapPointerAuthKeyRegsToEl2
+                // + HCR_EL2::TEA::RouteSyncExtAborts
+                // + HCR_EL2::E2H::EnableOsAtEl2
+                // + HCR_EL2::TGE::TrapGeneralExceptions
+                // + HCR_EL2::AMO::SET
+                // + HCR_EL2::IMO::SET
+                // + HCR_EL2::FMO::SET,
+        );
+
+        // Force HCR update to complete before next instruction.
+        unsafe { barrier::isb(barrier::SY) };
+
+        let vectors = unsafe { &__el2_exception_vector_start as *const _ };
+        VBAR_EL12.set(vectors as u64);
+
+        // Force VBAR update to complete before next instruction.
+        unsafe { barrier::isb(barrier::SY) };
+    }
 }
