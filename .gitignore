@@ -1,3 +1,4 @@
 **/target
 **/*.macho
 **/*.map
+**/.DS_Store
