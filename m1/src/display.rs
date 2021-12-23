@@ -4,7 +4,7 @@ use core::fmt::{self, Write};
 use embedded_graphics::{
     draw_target::DrawTarget,
     image::Image,
-    mono_font::{ascii::FONT_5X7, MonoFont, MonoTextStyle},
+    mono_font::{ascii::FONT_7X14, MonoFont, MonoTextStyle},
     pixelcolor::Rgb888,
     prelude::*,
     text::{Baseline, Text},
@@ -46,7 +46,7 @@ impl Display {
     pub fn init<T: ImageDrawable<Color = Rgb888>>(logo: &T) {
         let video_args = &get_boot_args().boot_video;
         let retina = (video_args.depth & RETINA_DEPTH_FLAG) != 0;
-        let font = if retina { &FIRA_CODE_30 } else { &FONT_5X7 };
+        let font = if retina { &FIRA_CODE_30 } else { &FONT_7X14 };
         let max_rows = (video_args.height as u32 - ROW_MARGIN * 2) / font.character_size.height;
 
         let mut base = new_aligned_vector();
