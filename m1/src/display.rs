@@ -13,14 +13,14 @@ use embedded_graphics::{
 use crate::collections::{new_aligned_vector, AlignedVec};
 use crate::font::FIRA_CODE_30;
 
+use spin::Mutex;
+
 const RETINA_DEPTH_FLAG: usize = 1 << 16;
 
 const ROW_MARGIN: u32 = 10;
 const COL_MARGIN: u32 = 10;
 
-// TODO(javier-varez): This should be protected by a spin mutex (and run in a critical section to
-// prevent deadlocks). At this point using spin mutex causes a crash, that needs to be investigated.
-static mut DISPLAY: Option<Display> = None;
+static DISPLAY: LockedDisplay = LockedDisplay::new();
 
 pub struct Display {
     // Align this to 128 bits to use _memcpy128_aligned, which makes the display update much faster.
@@ -35,6 +35,39 @@ pub struct Display {
     current_row: u32,
     current_col: u32,
     max_rows: u32,
+}
+
+struct LockedDisplay(Mutex<Option<Display>>);
+
+impl LockedDisplay {
+    const fn new() -> Self {
+        LockedDisplay(Mutex::new(None))
+    }
+}
+
+/// Safety:
+/// The locked display is behind a lock, so it is not possible to mutate them.
+/// Internal pointers/references don't leak to the outside of this type, which means they are only
+/// used internally
+unsafe impl Sync for LockedDisplay {}
+
+/// Safety:
+/// The locked display is behind a lock, so it is not possible to mutate them.
+/// Internal pointers/references don't leak to the outside of this type, which means they are only
+/// used internally
+unsafe impl Send for LockedDisplay {}
+
+impl core::ops::Deref for LockedDisplay {
+    type Target = Mutex<Option<Display>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl core::ops::DerefMut for LockedDisplay {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 extern "C" {
@@ -66,7 +99,7 @@ impl Display {
         disp.draw_logo(logo);
         disp.flush();
 
-        unsafe { DISPLAY.replace(disp) };
+        DISPLAY.lock().replace(disp);
     }
 
     fn draw_logo<T: ImageDrawable<Color = Rgb888>>(&mut self, logo: &T) {
@@ -186,7 +219,11 @@ impl fmt::Write for Display {
 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
-    if let Some(display) = unsafe { DISPLAY.as_mut() } {
-        display.write_fmt(args).expect("Printing to display failed");
+    // If the MMU is not initialized the memory is not shareable and atomic operations just won't
+    // work and will trigger an exception.
+    if crate::arch::mmu::is_initialized() {
+        if let Some(display) = DISPLAY.lock().as_mut() {
+            display.write_fmt(args).expect("Printing to display failed");
+        }
     }
 }
