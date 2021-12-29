@@ -258,16 +258,9 @@ unsafe impl GlobalAlloc for LockedHeapAllocator {
 }
 
 /// Safety:
-/// The allocator is behind a lock, so it is not possible to mutate it without holding the lock.
-/// Internal pointers/references don't leak to the outside of this type, which means they are only
-/// used internally
-unsafe impl Sync for LockedHeapAllocator {}
-
-/// Safety:
-/// The allocator is behind a lock, so it is not possible to mutate it without holding the lock.
-/// Internal pointers/references don't leak to the outside of this type, which means they are only
-/// used internally
-unsafe impl Send for LockedHeapAllocator {}
+/// The allocator can be sent to a different thread without causing any undefinded behavior. No
+/// shared data with other instances is used.
+unsafe impl Send for HeapAllocator {}
 
 #[cfg(test)]
 mod test {

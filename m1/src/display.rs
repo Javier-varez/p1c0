@@ -46,16 +46,9 @@ impl LockedDisplay {
 }
 
 /// Safety:
-/// The locked display is behind a lock, so it is not possible to mutate them.
-/// Internal pointers/references don't leak to the outside of this type, which means they are only
-/// used internally
-unsafe impl Sync for LockedDisplay {}
-
-/// Safety:
-/// The locked display is behind a lock, so it is not possible to mutate them.
-/// Internal pointers/references don't leak to the outside of this type, which means they are only
-/// used internally
-unsafe impl Send for LockedDisplay {}
+///   The display completely owns the memory it references or never mutates it (such is the case of
+///   the font reference, with is never mutated anywhere in the program).
+unsafe impl Send for Display {}
 
 impl core::ops::Deref for LockedDisplay {
     type Target = Mutex<Option<Display>>;
