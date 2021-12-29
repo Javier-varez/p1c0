@@ -178,7 +178,7 @@ impl OriginDimensions for Display {
 
 impl fmt::Write for Display {
     fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
-        let splits = s.split_inclusive("\n");
+        let splits = s.split_inclusive('\n');
 
         let style = MonoTextStyle::new(self.font, Rgb888::WHITE);
         for sub in splits {
