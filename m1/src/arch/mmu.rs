@@ -21,7 +21,7 @@ const VA_MASK: u64 = (1 << 48) - (1 << 14);
 const PA_MASK: u64 = (1 << 48) - (1 << 14);
 const PAGE_SIZE: usize = 1 << 14;
 
-const EARLY_ALLOCATOR_SIZE: usize = 128 * 1024;
+const EARLY_ALLOCATOR_SIZE: usize = 64 * 1024;
 static EARLY_ALLOCATOR: EarlyAllocator<EARLY_ALLOCATOR_SIZE> = EarlyAllocator::new();
 static mut MMU: MemoryManagementUnit = MemoryManagementUnit::new();
 
@@ -139,7 +139,7 @@ impl DescriptorEntry {
         Self(0)
     }
 
-    fn new_table_desc(level: TranslationLevel, early: bool) -> Self {
+    fn new_table_desc(early: bool) -> Self {
         let table_addr = if early {
             // FIXME: I'd love to use box here, but it seems to be triggering a compiler failure at
             // the time this code was written (Rust 1.59.0 nightly). Hopefully this gets fixed soon
@@ -149,10 +149,10 @@ impl DescriptorEntry {
                 .allocate(layout)
                 .expect("We have enough early memory")
                 .as_ptr() as *mut MaybeUninit<LevelTable>;
-            unsafe { (*table).write(LevelTable::new(level)) };
+            unsafe { (*table).write(LevelTable::new()) };
             table as *mut LevelTable
         } else {
-            let table = Box::new(LevelTable::new(level));
+            let table = Box::new(LevelTable::new());
             Box::leak(table) as *mut _
         };
         let early_bit = if early { Self::EARLY_BIT } else { 0 };
@@ -322,10 +322,6 @@ impl TranslationLevel {
 #[repr(C, align(0x4000))]
 struct LevelTable {
     table: [DescriptorEntry; 2048],
-    // FIXME: The TranslationLevel entry here is causing the size of this struct to bloat to 32kB
-    // instead of 16kB. That is not nice at all and we can probably work around the translation level
-    // by keeping track of it implicitly in table traversals anyway. But that's for another day.
-    level: TranslationLevel,
 }
 
 impl Deref for LevelTable {
@@ -342,10 +338,9 @@ impl DerefMut for LevelTable {
 }
 
 impl LevelTable {
-    const fn new(level: TranslationLevel) -> Self {
+    const fn new() -> Self {
         Self {
             table: [INVALID_DESCRIPTOR; 2048],
-            level,
         }
     }
 
@@ -357,14 +352,14 @@ impl LevelTable {
         attributes: Attributes,
         permissions: Permissions,
         early_mapping: bool,
+        level: TranslationLevel,
     ) -> Result<(), Error> {
-        let level = self.level;
         let entry_size = level.entry_size();
 
         let mut remaining_size = size;
         while remaining_size != 0 {
-            let index = self.level.table_index_for_addr(va);
-            let aligned = self.level.is_address_aligned(va);
+            let index = level.table_index_for_addr(va);
+            let aligned = level.is_address_aligned(va);
             let descriptor_entry = &mut self.table[index];
 
             let chunk_size = if !aligned {
@@ -408,8 +403,7 @@ impl LevelTable {
                         return Err(Error::OverlapsExistingMapping(va, level));
                     }
                     DescriptorType::Invalid => {
-                        *descriptor_entry =
-                            DescriptorEntry::new_table_desc(level.next(), early_mapping);
+                        *descriptor_entry = DescriptorEntry::new_table_desc(early_mapping);
                     }
                     _ => {}
                 }
@@ -417,7 +411,15 @@ impl LevelTable {
                 descriptor_entry
                     .get_table()
                     .expect("Is a table")
-                    .map_region(va, pa, chunk_size, attributes, permissions, early_mapping)?;
+                    .map_region(
+                        va,
+                        pa,
+                        chunk_size,
+                        attributes,
+                        permissions,
+                        early_mapping,
+                        level.next(),
+                    )?;
             }
 
             unsafe {
@@ -440,7 +442,7 @@ impl MemoryManagementUnit {
     const fn new() -> Self {
         Self {
             initialized: false,
-            level0: LevelTable::new(TranslationLevel::Level0),
+            level0: LevelTable::new(),
         }
     }
 
@@ -567,8 +569,15 @@ impl MemoryManagementUnit {
             size = size + PAGE_SIZE - (size % PAGE_SIZE);
         }
 
-        self.level0
-            .map_region(va, pa, size, attributes, permissions, !self.initialized)
+        self.level0.map_region(
+            va,
+            pa,
+            size,
+            attributes,
+            permissions,
+            !self.initialized,
+            TranslationLevel::Level0,
+        )
     }
 }
 
@@ -601,12 +610,10 @@ mod test {
             .expect("Adding region was successful");
 
         let level0 = &mut mmu.level0;
-        assert_eq!(level0.level, TranslationLevel::Level0);
         assert!(matches!(level0[0].ty(), DescriptorType::Table));
         assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
-        assert_eq!(level1.level, TranslationLevel::Level1);
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -616,7 +623,6 @@ mod test {
         }
 
         let level2 = level1[0x12].get_table().expect("Is a table");
-        assert_eq!(level2.level, TranslationLevel::Level2);
 
         for (idx, desc) in level2.table.iter().enumerate() {
             if idx == 0x1a2 {
@@ -627,7 +633,6 @@ mod test {
         }
 
         let level3 = level2[0x1a2].get_table().expect("Is a table");
-        assert_eq!(level3.level, TranslationLevel::Level3);
 
         for (idx, desc) in level3.table.iter().enumerate() {
             if idx == 0x59e {
@@ -656,12 +661,10 @@ mod test {
             .expect("Adding region was successful");
 
         let level0 = &mut mmu.level0;
-        assert_eq!(level0.level, TranslationLevel::Level0);
         assert!(matches!(level0[0].ty(), DescriptorType::Table));
         assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
-        assert_eq!(level1.level, TranslationLevel::Level1);
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -671,7 +674,6 @@ mod test {
         }
 
         let level2 = level1[0x12].get_table().expect("Is a table");
-        assert_eq!(level2.level, TranslationLevel::Level2);
 
         for (idx, desc) in level2.table.iter().enumerate() {
             if idx == 0x1a2 {
@@ -703,12 +705,10 @@ mod test {
             .expect("Adding region was successful");
 
         let level0 = &mut mmu.level0;
-        assert_eq!(level0.level, TranslationLevel::Level0);
         assert!(matches!(level0[0].ty(), DescriptorType::Table));
         assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
-        assert_eq!(level1.level, TranslationLevel::Level1);
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -718,7 +718,6 @@ mod test {
         }
 
         let level2 = level1[0x12].get_table().expect("Is a table");
-        assert_eq!(level2.level, TranslationLevel::Level2);
 
         for (idx, desc) in level2.table.iter().enumerate() {
             if idx == 0x1a2 {
@@ -732,7 +731,6 @@ mod test {
         }
 
         let level3 = level2[0x1a3].get_table().expect("Is a table");
-        assert_eq!(level3.level, TranslationLevel::Level3);
         for (idx, desc) in level3.table.iter().enumerate() {
             if idx < 4 {
                 assert!(matches!(desc.ty(), DescriptorType::Page));
@@ -766,12 +764,10 @@ mod test {
             .expect("Adding region was successful");
 
         let level0 = &mut mmu.level0;
-        assert_eq!(level0.level, TranslationLevel::Level0);
         assert!(matches!(level0[0].ty(), DescriptorType::Table));
         assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
-        assert_eq!(level1.level, TranslationLevel::Level1);
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -781,7 +777,6 @@ mod test {
         }
 
         let level2 = level1[0x12].get_table().expect("Is a table");
-        assert_eq!(level2.level, TranslationLevel::Level2);
 
         for (idx, desc) in level2.table.iter().enumerate() {
             if idx == 0x1a2 {
@@ -797,7 +792,6 @@ mod test {
         }
 
         let level3 = level2[0x1a2].get_table().expect("Is a table");
-        assert_eq!(level3.level, TranslationLevel::Level3);
 
         for (idx, desc) in level3.table.iter().enumerate() {
             if idx >= 2044 {
@@ -822,12 +816,10 @@ mod test {
         mmu.add_default_mappings();
 
         let level0 = &mut mmu.level0;
-        assert_eq!(level0.level, TranslationLevel::Level0);
         assert!(matches!(level0[0].ty(), DescriptorType::Table));
         assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
 
         let level1 = level0[0].get_table().expect("Is a table");
-        assert_eq!(level1.level, TranslationLevel::Level1);
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x10 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -835,7 +827,6 @@ mod test {
         }
 
         let level2 = level1[0x10].get_table().expect("Is a table");
-        assert_eq!(level2.level, TranslationLevel::Level2);
 
         for (idx, desc) in level2.table.iter().enumerate() {
             if idx < 1024 {

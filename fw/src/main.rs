@@ -45,7 +45,7 @@ pub extern "C" fn kernel_main() {
 
     println!("p1c0 running on Apple M1 Pro");
     println!("Exception level: {:?}", m1::arch::get_exception_level());
-    println!("");
+    println!();
 
     let boot_args = get_boot_args();
     print_boot_args(boot_args);
