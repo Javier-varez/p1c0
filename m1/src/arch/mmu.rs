@@ -1,12 +1,18 @@
 extern crate alloc;
 
+mod early_alloc;
+
 use alloc::boxed::Box;
+use core::alloc::Allocator;
 use core::ops::{Deref, DerefMut};
 use cortex_a::{
     asm::barrier,
     registers::{MAIR_EL1, SCTLR_EL1, TCR_EL1, TTBR0_EL1, TTBR1_EL1},
 };
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+
+use core::mem::MaybeUninit;
+use early_alloc::{AllocRef, EarlyAllocator};
 
 #[cfg(not(test))]
 use crate::println;
@@ -15,6 +21,8 @@ const VA_MASK: u64 = (1 << 48) - (1 << 14);
 const PA_MASK: u64 = (1 << 48) - (1 << 14);
 const PAGE_SIZE: usize = 1 << 14;
 
+const EARLY_ALLOCATOR_SIZE: usize = 128 * 1024;
+static EARLY_ALLOCATOR: EarlyAllocator<EARLY_ALLOCATOR_SIZE> = EarlyAllocator::new();
 static mut MMU: MemoryManagementUnit = MemoryManagementUnit::new();
 
 #[derive(Debug)]
@@ -114,16 +122,31 @@ impl DescriptorEntry {
     const TABLE_BIT: u64 = 1 << 1;
     const ACCESS_FLAG: u64 = 1 << 10;
     const PAGE_BIT: u64 = 1 << 55;
+    const EARLY_BIT: u64 = 1 << 56;
     const SHAREABILITY: u64 = 0b10 << 8; // Output shareable
 
     const fn new_invalid() -> Self {
         Self(0)
     }
 
-    fn new_table_desc(level: TranslationLevel) -> Self {
-        let table = Box::new(LevelTable::new(level));
-        let table_addr = Box::leak(table) as *mut _;
-        Self(Self::VALID_BIT | Self::TABLE_BIT | (table_addr as u64 & PA_MASK))
+    fn new_table_desc(level: TranslationLevel, early: bool) -> Self {
+        let table_addr = if early {
+            // FIXME: I'd love to use box here, but it seems to be triggering a compiler failure at
+            // the time this code was written (Rust 1.59.0 nightly). Hopefully this gets fixed soon
+            // and then we could use Box::new_in.
+            let layout = core::alloc::Layout::new::<LevelTable>();
+            let table = AllocRef::new(&EARLY_ALLOCATOR)
+                .allocate(layout)
+                .expect("We have enough early memory")
+                .as_ptr() as *mut MaybeUninit<LevelTable>;
+            unsafe { (*table).write(LevelTable::new(level)) };
+            table as *mut LevelTable
+        } else {
+            let table = Box::new(LevelTable::new(level));
+            Box::leak(table) as *mut _
+        };
+        let early_bit = if early { Self::EARLY_BIT } else { 0 };
+        Self(Self::VALID_BIT | Self::TABLE_BIT | (table_addr as u64 & PA_MASK) | early_bit)
     }
 
     fn new_block_desc(
@@ -168,6 +191,10 @@ impl DescriptorEntry {
         }
     }
 
+    fn is_early_table(&self) -> bool {
+        (self.ty() == DescriptorType::Table) && (self.0 & Self::EARLY_BIT) != 0
+    }
+
     fn ty(&self) -> DescriptorType {
         if (self.0 & Self::VALID_BIT) == 0 {
             DescriptorType::Invalid
@@ -192,10 +219,19 @@ impl DescriptorEntry {
 
 impl Drop for DescriptorEntry {
     fn drop(&mut self) {
+        let early_table = self.is_early_table();
         if let Some(table) = self.get_table() {
-            // Free table
-            let table_box = unsafe { Box::from_raw(table as *mut _) };
-            drop(table_box);
+            if early_table {
+                // FIXME: I'd love to use box here, but it seems to be triggering a compiler failure at
+                // the time this code was written (Rust 1.59.0 nightly). Hopefully this gets fixed soon
+                // and then we could use Box::new_in.
+                let ptr = unsafe { core::ptr::NonNull::new_unchecked(table as *mut _ as *mut u8) };
+                let layout = core::alloc::Layout::new::<LevelTable>();
+                unsafe { AllocRef::new(&EARLY_ALLOCATOR).deallocate(ptr, layout) };
+            } else {
+                let table_box = unsafe { Box::from_raw(table as *mut _) };
+                drop(table_box);
+            }
         }
     }
 }
@@ -276,6 +312,9 @@ impl TranslationLevel {
 #[repr(C, align(0x4000))]
 struct LevelTable {
     table: [DescriptorEntry; 2048],
+    // FIXME: The TranslationLevel entry here is causing the size of this struct to bloat to 32kB
+    // instead of 16kB. That is not nice at all and we can probably work around the translation level
+    // by keeping track of it implicitly in table traversals anyway. But that's for another day.
     level: TranslationLevel,
 }
 
@@ -307,6 +346,7 @@ impl LevelTable {
         size: usize,
         attributes: Attributes,
         permissions: Permissions,
+        early_mapping: bool,
     ) -> Result<(), Error> {
         let level = self.level;
         let entry_size = level.entry_size();
@@ -358,7 +398,8 @@ impl LevelTable {
                         return Err(Error::OverlapsExistingMapping(va, level));
                     }
                     DescriptorType::Invalid => {
-                        *descriptor_entry = DescriptorEntry::new_table_desc(level.next());
+                        *descriptor_entry =
+                            DescriptorEntry::new_table_desc(level.next(), early_mapping);
                     }
                     _ => {}
                 }
@@ -366,7 +407,7 @@ impl LevelTable {
                 descriptor_entry
                     .get_table()
                     .expect("Is a table")
-                    .map_region(va, pa, chunk_size, attributes, permissions)?;
+                    .map_region(va, pa, chunk_size, attributes, permissions, early_mapping)?;
             }
 
             unsafe {
@@ -506,8 +547,6 @@ impl MemoryManagementUnit {
         attributes: Attributes,
         permissions: Permissions,
     ) -> Result<(), Error> {
-        let translation_table = &mut self.level0;
-
         println!(
             "Adding mapping from {:?} to {:?}, size 0x{:x}",
             va, pa, size
@@ -518,7 +557,8 @@ impl MemoryManagementUnit {
             size = size + PAGE_SIZE - (size % PAGE_SIZE);
         }
 
-        translation_table.map_region(va, pa, size, attributes, permissions)
+        self.level0
+            .map_region(va, pa, size, attributes, permissions, !self.initialized)
     }
 }
 
@@ -537,6 +577,10 @@ mod test {
     #[test]
     fn single_page_mapping() {
         let mut mmu = MemoryManagementUnit::new();
+        // Let's trick the test to use the global allocator instead of the early allocator. On
+        // tests our assumptions don't hold for the global allocator, so we need to make sure to
+        // use an adequate allocator.
+        mmu.initialized = true;
 
         assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
@@ -588,6 +632,10 @@ mod test {
     #[test]
     fn single_block_mapping() {
         let mut mmu = MemoryManagementUnit::new();
+        // Let's trick the test to use the global allocator instead of the early allocator. On
+        // tests our assumptions don't hold for the global allocator, so we need to make sure to
+        // use an adequate allocator.
+        mmu.initialized = true;
 
         assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
@@ -628,6 +676,10 @@ mod test {
     #[test]
     fn large_aligned_block_mapping() {
         let mut mmu = MemoryManagementUnit::new();
+        // Let's trick the test to use the global allocator instead of the early allocator. On
+        // tests our assumptions don't hold for the global allocator, so we need to make sure to
+        // use an adequate allocator.
+        mmu.initialized = true;
 
         assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
@@ -686,6 +738,10 @@ mod test {
     #[test]
     fn large_unaligned_block_mapping() {
         let mut mmu = MemoryManagementUnit::new();
+        // Let's trick the test to use the global allocator instead of the early allocator. On
+        // tests our assumptions don't hold for the global allocator, so we need to make sure to
+        // use an adequate allocator.
+        mmu.initialized = true;
 
         assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
@@ -748,6 +804,11 @@ mod test {
     #[test]
     fn real_mapping() {
         let mut mmu = MemoryManagementUnit::new();
+        // Let's trick the test to use the global allocator instead of the early allocator. On
+        // tests our assumptions don't hold for the global allocator, so we need to make sure to
+        // use an adequate allocator.
+        mmu.initialized = true;
+
         mmu.add_default_mappings();
 
         let level0 = &mut mmu.level0;
