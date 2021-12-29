@@ -118,7 +118,7 @@ impl HeapAllocator {
 
         // Walk the free list to split/remove an entry matching the requested allocation
         let mut entry = &mut self.head;
-        while *entry != core::ptr::null_mut() {
+        while !entry.is_null() {
             let entry_base = *entry as *mut u8;
             let entry_size = (**entry).size;
             if let Some((ptr, remaining_entry_size)) =
@@ -206,9 +206,9 @@ impl HeapAllocator {
         }
 
         let mut entry = &mut self.head;
-        while *entry != core::ptr::null_mut() {
+        while !entry.is_null() {
             let next = (**entry).next;
-            if next == core::ptr::null_mut() || ptr.offset_from(next as *mut u8) < 0 {
+            if next.is_null() || ptr.offset_from(next as *mut u8) < 0 {
                 // We need to insert it here! The next one might already be too late
                 Self::append_and_consolidate_entries(entry, new_entry);
                 return;
