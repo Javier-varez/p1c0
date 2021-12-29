@@ -93,6 +93,8 @@ extern "C" {
     static _arena_size: u8;
 }
 
+/// # Safety
+///   This function must be called with the MMU off and exceptions masked while running in EL1.
 pub unsafe extern "C" fn el1_entry() {
     exceptions::handling_init();
     mmu::initialize();
