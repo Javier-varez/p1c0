@@ -98,6 +98,11 @@ extern "C" {
 pub unsafe extern "C" fn el1_entry() {
     exceptions::handling_init();
     mmu::initialize();
+
+    let arena_size = (&_arena_size) as *const u8 as usize;
+    let arena_start = (&mut _arena_start) as *mut u8;
+    alloc::init(arena_start, arena_size);
+
     kernel_main();
 }
 
@@ -107,12 +112,6 @@ pub extern "C" fn start_rust(boot_args: &BootArgs, _base: *const (), stack_botto
     // This is safe because at this point there is only one thread running and no one has accessed
     // the boot args yet.
     unsafe { crate::boot_args::set_boot_args(boot_args) };
-
-    unsafe {
-        let arena_size = (&_arena_size) as *const u8 as usize;
-        let arena_start = (&mut _arena_start) as *mut u8;
-        alloc::init(arena_start, arena_size);
-    }
 
     match CurrentEL.read_as_enum(CurrentEL::EL).expect("Valid EL") {
         CurrentEL::EL::Value::EL2 => {
