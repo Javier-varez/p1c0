@@ -1,0 +1,4 @@
+[toolchain]
+channel = "nightly"
+components = [ "rust-src", "clippy", "rustfmt", "rustc", "rust-std" ]
+targets = [ "aarch64-unknown-none-softfloat" ]
