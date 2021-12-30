@@ -5,12 +5,17 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+emulator = ["arm-semihosting"]
+default = []
+
 [dependencies]
 m1 = { path = "../m1" }
 embedded-graphics = "0.7.1"
 tinybmp = "0.3.1"
 cortex-a = "7.0.0"
 tock-registers = "0.7.0"
+arm-semihosting = { path = "../arm_semihosting", optional = true }
 
 [build-dependencies]
 cc = "1.0"

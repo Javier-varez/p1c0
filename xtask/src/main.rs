@@ -18,6 +18,10 @@ enum Options {
         /// Builds with the `release` profile.
         #[structopt(long)]
         release: bool,
+
+        /// Targets the emulator and adds semihosting support
+        #[structopt(long)]
+        emulator: bool,
     },
     /// Runs all tests.
     Test,
@@ -25,12 +29,18 @@ enum Options {
     Clippy,
 }
 
-fn build(release: bool) -> Result<(), anyhow::Error> {
+fn build(release: bool, emulator: bool) -> Result<(), anyhow::Error> {
     let _dir = xshell::pushd("fw")?;
     let release = if release { Some("--release") } else { None };
-    cmd!("cargo build").args(release).run()?;
+    let emulator = if emulator {
+        Some("--features=emulator")
+    } else {
+        None
+    };
+    cmd!("cargo build").args(release).args(emulator).run()?;
     cmd!("cargo objcopy")
         .args(release)
+        .args(emulator)
         .arg("--")
         .arg("-O")
         .arg("binary")
@@ -52,8 +62,8 @@ fn run_clippy() -> Result<(), anyhow::Error> {
 }
 
 fn run_qemu(release: bool) -> Result<(), anyhow::Error> {
-    build(release)?;
-    cmd!("qemu-system-aarch64 -machine apple-m1 -bios fw/p1c0.macho -serial stdio --display none")
+    build(release, true)?;
+    cmd!("qemu-system-aarch64 -machine apple-m1 -bios fw/p1c0.macho -serial stdio --display none -semihosting")
         .run()?;
     Ok(())
 }
@@ -63,7 +73,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     match opts {
         Options::Run { release } => run_qemu(release)?,
-        Options::Build { release } => build(release)?,
+        Options::Build { release, emulator } => build(release, emulator)?,
         Options::Test => run_tests()?,
         Options::Clippy => run_clippy()?,
     };
