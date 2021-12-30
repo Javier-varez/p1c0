@@ -4,10 +4,10 @@ use core::arch::asm;
 
 #[inline]
 #[cfg_attr(target_cpu = "arm", instruction_set(arm::a32))]
-pub fn call_host(op: &Operation) -> HostResult {
+pub(crate) fn call_host(op: &Operation) -> HostResult {
     let op_code = op.code();
     let args = op.args();
-    let mut result: usize;
+    let mut result: isize;
 
     unsafe {
         asm!(

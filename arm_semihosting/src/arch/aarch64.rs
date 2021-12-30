@@ -3,10 +3,10 @@ use crate::{HostResult, Operation};
 use core::arch::asm;
 
 #[inline]
-pub fn call_host(op: &Operation) -> HostResult {
+pub(crate) fn call_host(op: &Operation) -> HostResult {
     let op_code = op.code();
     let args = op.args();
-    let mut result: usize;
+    let mut result: i32;
 
     unsafe {
         asm!(
@@ -17,5 +17,5 @@ pub fn call_host(op: &Operation) -> HostResult {
         )
     }
 
-    HostResult(result)
+    HostResult(result as isize)
 }

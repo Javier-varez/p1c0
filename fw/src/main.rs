@@ -41,6 +41,17 @@ fn print_boot_args(boot_args: &BootArgs) {
     println!("Device tree size:   0x{:x}", boot_args.device_tree_size);
     println!("Boot flags:         {}", boot_args.boot_flags);
     println!("Mem size actual:    0x{:x}", boot_args.mem_size_actual);
+    println!();
+}
+
+#[cfg(feature = "emulator")]
+fn print_semihosting_caps() {
+    let ext = arm_semihosting::load_extensions().unwrap();
+
+    println!("Running emulator with semihosting extensions:");
+    println!("Extended exit:          {}", ext.supports_extended_exit());
+    println!("Stdout-stderr support:  {}", ext.supports_stdout_stderr());
+    println!();
 }
 
 #[no_mangle]
@@ -54,6 +65,9 @@ pub extern "C" fn kernel_main() -> ! {
 
     let boot_args = get_boot_args();
     print_boot_args(boot_args);
+
+    #[cfg(feature = "emulator")]
+    print_semihosting_caps();
 
     let addr = 0x00007FFFFFFFFFFF as *const u64;
     println!("let's cause a page fault!");
