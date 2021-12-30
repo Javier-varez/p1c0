@@ -3,6 +3,10 @@
 version = 3
 
 [[package]]
+name = "arm-semihosting"
+version = "0.1.0"
+
+[[package]]
 name = "autocfg"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -121,6 +125,7 @@ dependencies = [
 name = "p1c0"
 version = "0.1.0"
 dependencies = [
+ "arm-semihosting",
  "cc",
  "cortex-a",
  "embedded-graphics",

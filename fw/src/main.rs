@@ -14,6 +14,11 @@ const ATE_LOGO_DATA: &[u8] = include_bytes!("../ate_logo.bmp");
 #[panic_handler]
 fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     println!("Panicked with message: {:?}", panic_info);
+
+    #[cfg(feature = "emulator")]
+    arm_semihosting::exit(1);
+
+    #[cfg(not(feature = "emulator"))]
     loop {}
 }
 
@@ -39,7 +44,7 @@ fn print_boot_args(boot_args: &BootArgs) {
 }
 
 #[no_mangle]
-pub extern "C" fn kernel_main() {
+pub extern "C" fn kernel_main() -> ! {
     let logo = Bmp::<Rgb888>::from_slice(ATE_LOGO_DATA).unwrap();
     Display::init(&logo);
 
@@ -54,4 +59,10 @@ pub extern "C" fn kernel_main() {
     println!("let's cause a page fault!");
     let val = unsafe { *addr };
     println!("Hah, value is {}", val);
+
+    #[cfg(feature = "emulator")]
+    arm_semihosting::exit(0);
+
+    #[cfg(not(feature = "emulator"))]
+    loop {}
 }
