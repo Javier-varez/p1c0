@@ -63,6 +63,13 @@ pub(crate) struct WriteArgs<'a> {
 
 impl<'a> PointerArgs for WriteArgs<'a> {}
 
+#[repr(C)]
+pub(crate) struct CloseArgs {
+    fd: usize,
+}
+
+impl PointerArgs for CloseArgs {}
+
 fn open_with_mode(path: &str, mode: usize) -> Result<File<ReadWriteable>, Error> {
     let cpath = match CString::new(path) {
         Ok(path) => path,
@@ -178,17 +185,26 @@ impl File<ReadWriteable> {
     }
 
     pub fn as_readonly(self) -> File<Readable> {
+        let file = core::mem::ManuallyDrop::new(self);
         File {
-            fd: self.fd,
+            fd: file.fd,
             _pd: core::marker::PhantomData,
         }
     }
 
     pub fn as_writeonly(self) -> File<Writeable> {
+        let file = core::mem::ManuallyDrop::new(self);
         File {
-            fd: self.fd,
+            fd: file.fd,
             _pd: core::marker::PhantomData,
         }
+    }
+}
+
+impl<MODE> Drop for File<MODE> {
+    fn drop(&mut self) {
+        let op = Operation::Close(CloseArgs { fd: self.fd });
+        let _result = call_host(&op);
     }
 }
 
