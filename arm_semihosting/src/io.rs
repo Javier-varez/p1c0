@@ -80,6 +80,13 @@ pub(crate) struct SeekArgs {
 
 impl PointerArgs for SeekArgs {}
 
+#[repr(C)]
+pub(crate) struct FlenArgs {
+    fd: usize,
+}
+
+impl PointerArgs for FlenArgs {}
+
 fn open_with_mode(path: &str, mode: usize) -> Result<File<ReadWriteable>, Error> {
     let cpath = match CString::new(path) {
         Ok(path) => path,
@@ -188,6 +195,18 @@ impl<MODE> File<MODE> {
             Err(Error::Errno(read_errno()))
         } else {
             Ok(())
+        }
+    }
+
+    pub fn length(&self) -> Result<usize, Error> {
+        let op = Operation::Flen(FlenArgs { fd: self.fd });
+
+        let result = call_host(&op).0;
+
+        if result < 0 {
+            Err(Error::Errno(read_errno()))
+        } else {
+            Ok(result as usize)
         }
     }
 }
