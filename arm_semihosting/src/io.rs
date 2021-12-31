@@ -1,3 +1,5 @@
+use crate::{read_errno, Errno};
+
 use super::{arch::call_host, Operation, PointerArgs};
 use cstr_core::CString;
 
@@ -5,11 +7,10 @@ use core::fmt;
 
 #[derive(Debug)]
 pub enum Error {
-    FileNotFound,
     InvalidPath,
-    ReadError,
+    EndOfFile,
     WriteError(isize),
-    SeekError,
+    Errno(Errno),
 }
 
 pub struct Readable;
@@ -94,7 +95,7 @@ fn open_with_mode(path: &str, mode: usize) -> Result<File<ReadWriteable>, Error>
     let result = call_host(&op).0;
 
     if result == -1 {
-        Err(Error::FileNotFound)
+        Err(Error::Errno(read_errno()))
     } else {
         Ok(File {
             fd: result as usize,
@@ -147,7 +148,9 @@ impl<MODE> File<MODE> {
 
         let result = call_host(&op).0;
 
-        if result != 0 {
+        if result < 0 {
+            Err(Error::Errno(read_errno()))
+        } else if result != 0 {
             Err(Error::WriteError(result))
         } else {
             Ok(())
@@ -164,8 +167,10 @@ impl<MODE> File<MODE> {
 
         let result = call_host(&op).0;
 
-        if result == -1 {
-            Err(Error::ReadError)
+        if result < 0 {
+            Err(Error::Errno(read_errno()))
+        } else if result as usize == length {
+            Err(Error::EndOfFile)
         } else {
             Ok(length - result as usize)
         }
@@ -180,7 +185,7 @@ impl<MODE> File<MODE> {
         let result = call_host(&op).0;
 
         if result < 0 {
-            Err(Error::SeekError)
+            Err(Error::Errno(read_errno()))
         } else {
             Ok(())
         }
