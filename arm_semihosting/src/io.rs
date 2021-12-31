@@ -1,15 +1,28 @@
 use super::{arch::call_host, Operation, PointerArgs};
 use cstr_core::CString;
 
+use core::fmt;
+
 #[derive(Debug)]
 pub enum Error {
     FileNotFound,
     InvalidPath,
     ReadError,
+    WriteError(isize),
 }
 
-pub struct File {
+pub struct Readable;
+pub struct Writeable;
+pub struct ReadWriteable;
+
+pub enum AccessType {
+    Binary,
+    Text,
+}
+
+pub struct File<MODE> {
     fd: usize,
+    _pd: core::marker::PhantomData<MODE>,
 }
 
 #[repr(usize)]
@@ -41,65 +54,91 @@ pub(crate) struct ReadArgs<'a> {
 
 impl<'a> PointerArgs for ReadArgs<'a> {}
 
-pub struct OpenOptions<'a> {
-    path: &'a str,
-    binary: bool,
-    read_and_write: bool,
-    mode: Mode,
+#[repr(C)]
+pub(crate) struct WriteArgs<'a> {
+    fd: usize,
+    buffer: &'a u8,
+    length: usize,
 }
 
-impl<'a> OpenOptions<'a> {
-    pub fn new(path: &'a str, mode: Mode) -> Self {
-        Self {
-            path,
-            mode,
-            read_and_write: false,
-            binary: false,
-        }
+impl<'a> PointerArgs for WriteArgs<'a> {}
+
+fn open_with_mode(path: &str, mode: usize) -> Result<File<ReadWriteable>, Error> {
+    let cpath = match CString::new(path) {
+        Ok(path) => path,
+        Err(_) => return Err(Error::InvalidPath),
+    };
+
+    let op = Operation::Open(OpenArgs {
+        file_path: cpath.as_c_str() as *const _ as *const _,
+        mode,
+        length: path.len(),
+    });
+
+    let result = call_host(&op).0;
+
+    if result == -1 {
+        Err(Error::FileNotFound)
+    } else {
+        Ok(File {
+            fd: result as usize,
+            _pd: core::marker::PhantomData,
+        })
     }
+}
 
-    pub fn set_binary(&mut self, binary: bool) {
-        self.binary = binary;
-    }
+pub fn open(path: &str, access_type: AccessType) -> Result<File<Readable>, Error> {
+    let binary = matches!(access_type, AccessType::Binary);
+    let mode =
+        ((Mode::Read as usize) << MODE_BIT_OFFSET) | ((binary as usize) << BINARY_BIT_OFFSET);
 
-    pub fn set_read_write(&mut self, read_and_write: bool) {
-        self.read_and_write = read_and_write;
-    }
+    open_with_mode(path, mode).map(|file| file.as_readonly())
+}
 
-    pub fn open(self) -> Result<File, Error> {
-        let cpath = match CString::new(self.path) {
-            Ok(path) => path,
-            Err(_) => return Err(Error::InvalidPath),
-        };
+pub fn open_read_write(path: &str, access_type: AccessType) -> Result<File<ReadWriteable>, Error> {
+    let binary = matches!(access_type, AccessType::Binary);
+    let mode = ((Mode::Write as usize) << MODE_BIT_OFFSET)
+        | ((binary as usize) << BINARY_BIT_OFFSET)
+        | (1 << READ_WRITE_BIT_OFFSET);
 
-        let mode = ((self.mode as usize) << MODE_BIT_OFFSET)
-            | ((self.binary as usize) << BINARY_BIT_OFFSET)
-            | ((self.read_and_write as usize) << READ_WRITE_BIT_OFFSET);
+    open_with_mode(path, mode)
+}
 
-        let op = Operation::Open(OpenArgs {
-            file_path: cpath.as_c_str() as *const _ as *const _,
-            mode,
-            length: self.path.len(),
+pub fn create(path: &str, access_type: AccessType) -> Result<File<Writeable>, Error> {
+    let binary = matches!(access_type, AccessType::Binary);
+    let mode =
+        ((Mode::Write as usize) << MODE_BIT_OFFSET) | ((binary as usize) << BINARY_BIT_OFFSET);
+
+    open_with_mode(path, mode).map(|file| file.as_writeonly())
+}
+
+pub fn append(path: &str, access_type: AccessType) -> Result<File<Writeable>, Error> {
+    let binary = matches!(access_type, AccessType::Binary);
+    let mode =
+        ((Mode::Append as usize) << MODE_BIT_OFFSET) | ((binary as usize) << BINARY_BIT_OFFSET);
+
+    open_with_mode(path, mode).map(|file| file.as_writeonly())
+}
+
+impl<MODE> File<MODE> {
+    fn write_internal(&mut self, buffer: &[u8]) -> Result<(), Error> {
+        let length = buffer.len();
+        let op = Operation::Write(WriteArgs {
+            fd: self.fd,
+            buffer: &buffer[0],
+            length,
         });
 
         let result = call_host(&op).0;
 
-        if result == -1 {
-            Err(Error::FileNotFound)
+        if result != 0 {
+            Err(Error::WriteError(result))
         } else {
-            Ok(File {
-                fd: result as usize,
-            })
+            Ok(())
         }
     }
-}
 
-impl File {
-    pub fn open(path: &str) -> Result<File, Error> {
-        OpenOptions::new(path, Mode::Read).open()
-    }
-
-    pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
+    fn read_internal(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
         let length = buffer.len();
         let op = Operation::Read(ReadArgs {
             fd: self.fd,
@@ -114,5 +153,55 @@ impl File {
         } else {
             Ok(length - result as usize)
         }
+    }
+}
+
+impl File<Readable> {
+    pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
+        self.read_internal(buffer)
+    }
+}
+
+impl File<Writeable> {
+    pub fn write(&mut self, buffer: &[u8]) -> Result<(), Error> {
+        self.write_internal(buffer)
+    }
+}
+
+impl File<ReadWriteable> {
+    pub fn write(&mut self, buffer: &[u8]) -> Result<(), Error> {
+        self.write_internal(buffer)
+    }
+
+    pub fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
+        self.read_internal(buffer)
+    }
+
+    pub fn as_readonly(self) -> File<Readable> {
+        File {
+            fd: self.fd,
+            _pd: core::marker::PhantomData,
+        }
+    }
+
+    pub fn as_writeonly(self) -> File<Writeable> {
+        File {
+            fd: self.fd,
+            _pd: core::marker::PhantomData,
+        }
+    }
+}
+
+impl fmt::Write for File<Writeable> {
+    fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
+        self.write(s.as_bytes()).expect("No error writing files?");
+        Ok(())
+    }
+}
+
+impl fmt::Write for File<ReadWriteable> {
+    fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
+        self.write(s.as_bytes()).expect("No error writing files?");
+        Ok(())
     }
 }
