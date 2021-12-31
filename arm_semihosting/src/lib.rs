@@ -8,7 +8,7 @@ pub mod arch;
 
 pub mod io;
 
-use io::{OpenArgs, ReadArgs};
+use io::{OpenArgs, ReadArgs, WriteArgs};
 
 use core::convert::From;
 
@@ -33,6 +33,7 @@ enum ExitReason {
 enum Operation<'a> {
     Open(OpenArgs),
     Read(ReadArgs<'a>),
+    Write(WriteArgs<'a>),
     ExitExtended(ExitArgs),
 }
 
@@ -56,6 +57,7 @@ impl<'a> Operation<'a> {
     fn code(&self) -> usize {
         match *self {
             Operation::Open(_) => 0x01,
+            Operation::Write(_) => 0x05,
             Operation::Read(_) => 0x06,
             Operation::ExitExtended(_) => 0x20,
         }
@@ -65,6 +67,7 @@ impl<'a> Operation<'a> {
     fn args(&self) -> usize {
         match self {
             Operation::Open(args) => args.get_args(),
+            Operation::Write(args) => args.get_args(),
             Operation::Read(args) => args.get_args(),
             Operation::ExitExtended(args) => args.get_args(),
         }
@@ -99,7 +102,7 @@ impl Extensions {
 }
 
 pub fn load_extensions() -> Result<Extensions, Error> {
-    let mut extensions_file = io::File::open(":semihosting-features")?;
+    let mut extensions_file = io::open(":semihosting-features", io::AccessType::Binary)?;
 
     let mut buffer = [0u8; 5];
     let total_read = extensions_file.read(&mut buffer)?;
@@ -109,7 +112,7 @@ pub fn load_extensions() -> Result<Extensions, Error> {
     match total_read.cmp(&4) {
         core::cmp::Ordering::Less => Err(Error::CouldNotReadExtensions),
         core::cmp::Ordering::Equal => Ok(Extensions::default()),
-        core::cmp::Ordering::Greater if &buffer[..4] != EXPECTED_MAGIC => {
+        core::cmp::Ordering::Greater if buffer[..4] != EXPECTED_MAGIC => {
             Err(Error::CouldNotReadExtensions)
         }
         core::cmp::Ordering::Greater => Ok(Extensions {
