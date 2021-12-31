@@ -9,6 +9,7 @@ pub enum Error {
     InvalidPath,
     ReadError,
     WriteError(isize),
+    SeekError,
 }
 
 pub struct Readable;
@@ -69,6 +70,14 @@ pub(crate) struct CloseArgs {
 }
 
 impl PointerArgs for CloseArgs {}
+
+#[repr(C)]
+pub(crate) struct SeekArgs {
+    fd: usize,
+    offset: usize,
+}
+
+impl PointerArgs for SeekArgs {}
 
 fn open_with_mode(path: &str, mode: usize) -> Result<File<ReadWriteable>, Error> {
     let cpath = match CString::new(path) {
@@ -159,6 +168,21 @@ impl<MODE> File<MODE> {
             Err(Error::ReadError)
         } else {
             Ok(length - result as usize)
+        }
+    }
+
+    pub fn seek(&mut self, byte_offset: usize) -> Result<(), Error> {
+        let op = Operation::Seek(SeekArgs {
+            fd: self.fd,
+            offset: byte_offset,
+        });
+
+        let result = call_host(&op).0;
+
+        if result < 0 {
+            Err(Error::SeekError)
+        } else {
+            Ok(())
         }
     }
 }
