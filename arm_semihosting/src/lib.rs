@@ -8,7 +8,7 @@ pub mod arch;
 
 pub mod io;
 
-use io::{CloseArgs, OpenArgs, ReadArgs, SeekArgs, WriteArgs};
+use io::{CloseArgs, FlenArgs, OpenArgs, ReadArgs, SeekArgs, WriteArgs};
 
 use core::convert::From;
 use core::fmt::Display;
@@ -185,6 +185,7 @@ enum Operation<'a> {
     Read(ReadArgs<'a>),
     Write(WriteArgs<'a>),
     Seek(SeekArgs),
+    Flen(FlenArgs),
     ExitExtended(ExitArgs),
     Errno,
 }
@@ -213,6 +214,7 @@ impl<'a> Operation<'a> {
             Operation::Write(_) => 0x05,
             Operation::Read(_) => 0x06,
             Operation::Seek(_) => 0x0A,
+            Operation::Flen(_) => 0x0C,
             Operation::Errno => 0x13,
             Operation::ExitExtended(_) => 0x20,
         }
@@ -226,6 +228,7 @@ impl<'a> Operation<'a> {
             Operation::Write(args) => args.get_args(),
             Operation::Read(args) => args.get_args(),
             Operation::Seek(args) => args.get_args(),
+            Operation::Flen(args) => args.get_args(),
             Operation::Errno => 0,
             Operation::ExitExtended(args) => args.get_args(),
         }
