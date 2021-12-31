@@ -187,6 +187,7 @@ enum Operation<'a> {
     Seek(SeekArgs),
     Flen(FlenArgs),
     ExitExtended(ExitArgs),
+    Iserror(IserrorArgs),
     Errno,
 }
 
@@ -205,6 +206,13 @@ struct ExitArgs {
 
 impl PointerArgs for ExitArgs {}
 
+#[repr(C)]
+struct IserrorArgs {
+    code: isize,
+}
+
+impl PointerArgs for IserrorArgs {}
+
 impl<'a> Operation<'a> {
     #[inline]
     fn code(&self) -> usize {
@@ -215,6 +223,7 @@ impl<'a> Operation<'a> {
             Operation::Read(_) => 0x06,
             Operation::Seek(_) => 0x0A,
             Operation::Flen(_) => 0x0C,
+            Operation::Iserror(_) => 0x08,
             Operation::Errno => 0x13,
             Operation::ExitExtended(_) => 0x20,
         }
@@ -229,13 +238,34 @@ impl<'a> Operation<'a> {
             Operation::Read(args) => args.get_args(),
             Operation::Seek(args) => args.get_args(),
             Operation::Flen(args) => args.get_args(),
+            Operation::Iserror(args) => args.get_args(),
             Operation::Errno => 0,
             Operation::ExitExtended(args) => args.get_args(),
         }
     }
 }
 
-struct HostResult(isize);
+fn get_error(code: isize) -> Option<Errno> {
+    let op = Operation::Iserror(IserrorArgs { code });
+    let result = unsafe { arch::call_host_unchecked(&op) };
+
+    if result == 0 {
+        None
+    } else {
+        let op = Operation::Errno;
+        Some(Errno(unsafe { arch::call_host_unchecked(&op) as u32 }))
+    }
+}
+
+fn call_host(op: &Operation) -> Result<usize, Errno> {
+    let result = unsafe { arch::call_host_unchecked(op) };
+
+    if let Some(err) = get_error(result) {
+        Err(err)
+    } else {
+        Ok(result as usize)
+    }
+}
 
 pub fn exit(exit_code: u32) -> ! {
     let op = Operation::ExitExtended(ExitArgs {
@@ -243,7 +273,7 @@ pub fn exit(exit_code: u32) -> ! {
         exit_code: exit_code as usize,
     });
 
-    arch::call_host(&op);
+    call_host(&op).ok();
     unreachable!();
 }
 
@@ -281,9 +311,4 @@ pub fn load_extensions() -> Result<Extensions, Error> {
             stdout_stderr: (buffer[4] & (1 << 1)) != 0,
         }),
     }
-}
-
-fn read_errno() -> Errno {
-    let op = Operation::Errno;
-    Errno(arch::call_host(&op).0 as u32)
 }

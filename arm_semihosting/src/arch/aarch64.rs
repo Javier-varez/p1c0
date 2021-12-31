@@ -1,21 +1,19 @@
-use crate::{HostResult, Operation};
+use crate::Operation;
 
 use core::arch::asm;
 
 #[inline]
-pub(crate) fn call_host(op: &Operation) -> HostResult {
+pub(crate) unsafe fn call_host_unchecked(op: &Operation) -> isize {
     let op_code = op.code();
     let args = op.args();
     let mut result: i32;
 
-    unsafe {
-        asm!(
-            "hlt #0xF000",
-            in("w0") op_code,
-            in("x1") args,
-            lateout("x0") result
-        )
-    }
+    asm!(
+        "hlt #0xF000",
+        in("w0") op_code,
+        in("x1") args,
+        lateout("x0") result
+    );
 
-    HostResult(result as isize)
+    result as isize
 }

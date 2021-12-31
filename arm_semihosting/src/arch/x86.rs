@@ -1,6 +1,6 @@
-use crate::{HostResult, Operation};
+use crate::Operation;
 
 #[inline]
-pub(crate) fn call_host(_op: &Operation) -> HostResult {
-    HostResult(0)
+pub(crate) unsafe fn call_host_unchecked(_op: &Operation) -> isize {
+    0
 }

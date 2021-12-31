@@ -1,6 +1,5 @@
-use crate::{read_errno, Errno};
+use super::{call_host, Errno, Operation, PointerArgs};
 
-use super::{arch::call_host, Operation, PointerArgs};
 use cstr_core::CString;
 
 use core::fmt;
@@ -9,8 +8,14 @@ use core::fmt;
 pub enum Error {
     InvalidPath,
     EndOfFile,
-    WriteError(isize),
+    WriteError(usize),
     Errno(Errno),
+}
+
+impl From<Errno> for Error {
+    fn from(errno: Errno) -> Self {
+        Error::Errno(errno)
+    }
 }
 
 pub struct Readable;
@@ -99,16 +104,12 @@ fn open_with_mode(path: &str, mode: usize) -> Result<File<ReadWriteable>, Error>
         length: path.len(),
     });
 
-    let result = call_host(&op).0;
+    let result = call_host(&op)?;
 
-    if result == -1 {
-        Err(Error::Errno(read_errno()))
-    } else {
-        Ok(File {
-            fd: result as usize,
-            _pd: core::marker::PhantomData,
-        })
-    }
+    Ok(File {
+        fd: result,
+        _pd: core::marker::PhantomData,
+    })
 }
 
 pub fn open(path: &str, access_type: AccessType) -> Result<File<Readable>, Error> {
@@ -153,11 +154,9 @@ impl<MODE> File<MODE> {
             length,
         });
 
-        let result = call_host(&op).0;
+        let result = call_host(&op)?;
 
-        if result < 0 {
-            Err(Error::Errno(read_errno()))
-        } else if result != 0 {
+        if result != 0 {
             Err(Error::WriteError(result))
         } else {
             Ok(())
@@ -172,14 +171,12 @@ impl<MODE> File<MODE> {
             length,
         });
 
-        let result = call_host(&op).0;
+        let result = call_host(&op)?;
 
-        if result < 0 {
-            Err(Error::Errno(read_errno()))
-        } else if result as usize == length {
+        if result == length {
             Err(Error::EndOfFile)
         } else {
-            Ok(length - result as usize)
+            Ok(length - result)
         }
     }
 
@@ -189,25 +186,15 @@ impl<MODE> File<MODE> {
             offset: byte_offset,
         });
 
-        let result = call_host(&op).0;
-
-        if result < 0 {
-            Err(Error::Errno(read_errno()))
-        } else {
-            Ok(())
-        }
+        call_host(&op)?;
+        Ok(())
     }
 
     pub fn length(&self) -> Result<usize, Error> {
         let op = Operation::Flen(FlenArgs { fd: self.fd });
 
-        let result = call_host(&op).0;
-
-        if result < 0 {
-            Err(Error::Errno(read_errno()))
-        } else {
-            Ok(result as usize)
-        }
+        let result = call_host(&op)?;
+        Ok(result as usize)
     }
 }
 
@@ -252,7 +239,7 @@ impl File<ReadWriteable> {
 impl<MODE> Drop for File<MODE> {
     fn drop(&mut self) {
         let op = Operation::Close(CloseArgs { fd: self.fd });
-        let _result = call_host(&op);
+        call_host(&op).ok();
     }
 }
 
