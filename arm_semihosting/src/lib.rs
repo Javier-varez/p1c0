@@ -8,7 +8,7 @@ pub mod arch;
 
 pub mod io;
 
-use io::{CloseArgs, OpenArgs, ReadArgs, WriteArgs};
+use io::{CloseArgs, OpenArgs, ReadArgs, SeekArgs, WriteArgs};
 
 use core::convert::From;
 
@@ -35,6 +35,7 @@ enum Operation<'a> {
     Close(CloseArgs),
     Read(ReadArgs<'a>),
     Write(WriteArgs<'a>),
+    Seek(SeekArgs),
     ExitExtended(ExitArgs),
 }
 
@@ -61,6 +62,7 @@ impl<'a> Operation<'a> {
             Operation::Close(_) => 0x02,
             Operation::Write(_) => 0x05,
             Operation::Read(_) => 0x06,
+            Operation::Seek(_) => 0x0A,
             Operation::ExitExtended(_) => 0x20,
         }
     }
@@ -72,6 +74,7 @@ impl<'a> Operation<'a> {
             Operation::Close(args) => args.get_args(),
             Operation::Write(args) => args.get_args(),
             Operation::Read(args) => args.get_args(),
+            Operation::Seek(args) => args.get_args(),
             Operation::ExitExtended(args) => args.get_args(),
         }
     }
