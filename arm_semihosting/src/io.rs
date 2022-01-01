@@ -100,6 +100,16 @@ pub(crate) struct RemoveArgs {
 
 impl PointerArgs for RemoveArgs {}
 
+#[repr(C)]
+pub(crate) struct RenameArgs {
+    file_path: *const u8,
+    length: usize,
+    new_file_path: *const u8,
+    new_length: usize,
+}
+
+impl PointerArgs for RenameArgs {}
+
 fn open_with_mode(path: &str, mode: usize) -> Result<File<ReadWriteable>, Error> {
     let cpath = match CString::new(path) {
         Ok(path) => path,
@@ -162,6 +172,28 @@ pub fn remove(path: &str) -> Result<(), Error> {
     let op = Operation::Remove(RemoveArgs {
         file_path: cpath.as_c_str() as *const _ as *const _,
         length: path.len(),
+    });
+
+    call_host(&op)?;
+    Ok(())
+}
+
+pub fn rename(path: &str, new_path: &str) -> Result<(), Error> {
+    let cpath = match CString::new(path) {
+        Ok(path) => path,
+        Err(_) => return Err(Error::InvalidPath),
+    };
+
+    let new_cpath = match CString::new(new_path) {
+        Ok(path) => path,
+        Err(_) => return Err(Error::InvalidPath),
+    };
+
+    let op = Operation::Rename(RenameArgs {
+        file_path: cpath.as_c_str() as *const _ as *const _,
+        length: path.len(),
+        new_file_path: new_cpath.as_c_str() as *const _ as *const _,
+        new_length: new_path.len(),
     });
 
     call_host(&op)?;
