@@ -92,6 +92,14 @@ pub(crate) struct FlenArgs {
 
 impl PointerArgs for FlenArgs {}
 
+#[repr(C)]
+pub(crate) struct RemoveArgs {
+    file_path: *const u8,
+    length: usize,
+}
+
+impl PointerArgs for RemoveArgs {}
+
 fn open_with_mode(path: &str, mode: usize) -> Result<File<ReadWriteable>, Error> {
     let cpath = match CString::new(path) {
         Ok(path) => path,
@@ -143,6 +151,21 @@ pub fn append(path: &str, access_type: AccessType) -> Result<File<Writeable>, Er
         ((Mode::Append as usize) << MODE_BIT_OFFSET) | ((binary as usize) << BINARY_BIT_OFFSET);
 
     open_with_mode(path, mode).map(|file| file.as_writeonly())
+}
+
+pub fn remove(path: &str) -> Result<(), Error> {
+    let cpath = match CString::new(path) {
+        Ok(path) => path,
+        Err(_) => return Err(Error::InvalidPath),
+    };
+
+    let op = Operation::Remove(RemoveArgs {
+        file_path: cpath.as_c_str() as *const _ as *const _,
+        length: path.len(),
+    });
+
+    call_host(&op)?;
+    Ok(())
 }
 
 impl<MODE> File<MODE> {
