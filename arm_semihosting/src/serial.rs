@@ -30,8 +30,8 @@ impl Write0Args {
 }
 
 pub fn write_char(c: u8) {
-    let op = Operation::Writec(WritecArgs { c });
-    unsafe { call_host_unchecked(&op) };
+    let mut op = Operation::Writec(WritecArgs { c });
+    unsafe { call_host_unchecked(&mut op) };
 }
 
 #[cfg(feature = "alloc")]
@@ -39,8 +39,8 @@ pub fn write_line(s: &str) {
     let mut string = String::from(s);
     string.push('\n');
     let string = CString::new(string).unwrap();
-    let op = Operation::Write0(Write0Args { string });
-    unsafe { call_host_unchecked(&op) };
+    let mut op = Operation::Write0(Write0Args { string });
+    unsafe { call_host_unchecked(&mut op) };
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -50,8 +50,8 @@ pub fn write_line(s: &str) {
 }
 
 pub fn read_char() -> u8 {
-    let op = Operation::Readc;
-    let byte = unsafe { call_host_unchecked(&op) } as u8;
+    let mut op = Operation::Readc;
+    let byte = unsafe { call_host_unchecked(&mut op) } as u8;
     byte
 }
 

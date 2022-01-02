@@ -51,6 +51,10 @@ fn print_semihosting_caps() {
     println!("Running emulator with semihosting extensions:");
     println!("Extended exit:          {}", ext.supports_extended_exit());
     println!("Stdout-stderr support:  {}", ext.supports_stdout_stderr());
+    println!(
+        "Cmdline arguments: [{}]",
+        arm_semihosting::get_cmd_line().unwrap()
+    );
     println!();
 }
 
