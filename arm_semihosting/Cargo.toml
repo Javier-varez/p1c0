@@ -3,5 +3,9 @@ name = "arm-semihosting"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+alloc = []
+
 [dependencies]
 cstr_core = "0.2.4"

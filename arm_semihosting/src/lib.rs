@@ -7,8 +7,14 @@
 pub mod arch;
 
 pub mod io;
+pub mod serial;
 
 use io::{CloseArgs, FlenArgs, OpenArgs, ReadArgs, RemoveArgs, RenameArgs, SeekArgs, WriteArgs};
+
+use serial::WritecArgs;
+
+#[cfg(feature = "alloc")]
+use serial::Write0Args;
 
 use core::convert::From;
 use core::fmt::Display;
@@ -190,6 +196,10 @@ enum Operation<'a> {
     Rename(RenameArgs),
     ExitExtended(ExitArgs),
     Iserror(IserrorArgs),
+    Readc,
+    Writec(WritecArgs),
+    #[cfg(feature = "alloc")]
+    Write0(Write0Args),
     Errno,
 }
 
@@ -221,13 +231,17 @@ impl<'a> Operation<'a> {
         match *self {
             Operation::Open(_) => 0x01,
             Operation::Close(_) => 0x02,
+            Operation::Writec(_) => 0x03,
+            #[cfg(feature = "alloc")]
+            Operation::Write0(_) => 0x04,
             Operation::Write(_) => 0x05,
             Operation::Read(_) => 0x06,
+            Operation::Readc => 0x07,
+            Operation::Iserror(_) => 0x08,
             Operation::Seek(_) => 0x0A,
             Operation::Flen(_) => 0x0C,
             Operation::Remove(_) => 0x0E,
             Operation::Rename(_) => 0x0F,
-            Operation::Iserror(_) => 0x08,
             Operation::Errno => 0x13,
             Operation::ExitExtended(_) => 0x20,
         }
@@ -238,8 +252,12 @@ impl<'a> Operation<'a> {
         match self {
             Operation::Open(args) => args.get_args(),
             Operation::Close(args) => args.get_args(),
+            Operation::Writec(args) => args.get_args(),
+            #[cfg(feature = "alloc")]
+            Operation::Write0(args) => args.get_args(),
             Operation::Write(args) => args.get_args(),
             Operation::Read(args) => args.get_args(),
+            Operation::Readc => 0,
             Operation::Seek(args) => args.get_args(),
             Operation::Flen(args) => args.get_args(),
             Operation::Remove(args) => args.get_args(),
