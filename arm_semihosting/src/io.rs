@@ -116,13 +116,13 @@ fn open_with_mode(path: &str, mode: usize) -> Result<File<ReadWriteable>, Error>
         Err(_) => return Err(Error::InvalidPath),
     };
 
-    let op = Operation::Open(OpenArgs {
+    let mut op = Operation::Open(OpenArgs {
         file_path: cpath.as_c_str() as *const _ as *const _,
         mode,
         length: path.len(),
     });
 
-    let result = call_host(&op)?;
+    let result = call_host(&mut op)?;
 
     Ok(File {
         fd: result,
@@ -169,12 +169,12 @@ pub fn remove(path: &str) -> Result<(), Error> {
         Err(_) => return Err(Error::InvalidPath),
     };
 
-    let op = Operation::Remove(RemoveArgs {
+    let mut op = Operation::Remove(RemoveArgs {
         file_path: cpath.as_c_str() as *const _ as *const _,
         length: path.len(),
     });
 
-    call_host(&op)?;
+    call_host(&mut op)?;
     Ok(())
 }
 
@@ -189,27 +189,27 @@ pub fn rename(path: &str, new_path: &str) -> Result<(), Error> {
         Err(_) => return Err(Error::InvalidPath),
     };
 
-    let op = Operation::Rename(RenameArgs {
+    let mut op = Operation::Rename(RenameArgs {
         file_path: cpath.as_c_str() as *const _ as *const _,
         length: path.len(),
         new_file_path: new_cpath.as_c_str() as *const _ as *const _,
         new_length: new_path.len(),
     });
 
-    call_host(&op)?;
+    call_host(&mut op)?;
     Ok(())
 }
 
 impl<MODE> File<MODE> {
     fn write_internal(&mut self, buffer: &[u8]) -> Result<(), Error> {
         let length = buffer.len();
-        let op = Operation::Write(WriteArgs {
+        let mut op = Operation::Write(WriteArgs {
             fd: self.fd,
             buffer: &buffer[0],
             length,
         });
 
-        let result = call_host(&op)?;
+        let result = call_host(&mut op)?;
 
         if result != 0 {
             Err(Error::WriteError(result))
@@ -220,13 +220,13 @@ impl<MODE> File<MODE> {
 
     fn read_internal(&mut self, buffer: &mut [u8]) -> Result<usize, Error> {
         let length = buffer.len();
-        let op = Operation::Read(ReadArgs {
+        let mut op = Operation::Read(ReadArgs {
             fd: self.fd,
             buffer: &mut buffer[0],
             length,
         });
 
-        let result = call_host(&op)?;
+        let result = call_host(&mut op)?;
 
         if result == length {
             Err(Error::EndOfFile)
@@ -236,19 +236,19 @@ impl<MODE> File<MODE> {
     }
 
     pub fn seek(&mut self, byte_offset: usize) -> Result<(), Error> {
-        let op = Operation::Seek(SeekArgs {
+        let mut op = Operation::Seek(SeekArgs {
             fd: self.fd,
             offset: byte_offset,
         });
 
-        call_host(&op)?;
+        call_host(&mut op)?;
         Ok(())
     }
 
     pub fn length(&self) -> Result<usize, Error> {
-        let op = Operation::Flen(FlenArgs { fd: self.fd });
+        let mut op = Operation::Flen(FlenArgs { fd: self.fd });
 
-        let result = call_host(&op)?;
+        let result = call_host(&mut op)?;
         Ok(result as usize)
     }
 }
@@ -293,8 +293,8 @@ impl File<ReadWriteable> {
 
 impl<MODE> Drop for File<MODE> {
     fn drop(&mut self) {
-        let op = Operation::Close(CloseArgs { fd: self.fd });
-        call_host(&op).ok();
+        let mut op = Operation::Close(CloseArgs { fd: self.fd });
+        call_host(&mut op).ok();
     }
 }
 

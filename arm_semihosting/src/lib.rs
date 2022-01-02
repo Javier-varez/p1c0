@@ -9,6 +9,12 @@ pub mod arch;
 pub mod io;
 pub mod serial;
 
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+#[cfg(feature = "alloc")]
+use alloc::string::String;
+
 use io::{CloseArgs, FlenArgs, OpenArgs, ReadArgs, RemoveArgs, RenameArgs, SeekArgs, WriteArgs};
 
 use serial::WritecArgs;
@@ -23,11 +29,18 @@ use core::fmt::Display;
 pub enum Error {
     CouldNotReadExtensions,
     IoError(io::Error),
+    Errno(Errno),
 }
 
 impl From<io::Error> for Error {
     fn from(io_err: io::Error) -> Self {
         Error::IoError(io_err)
+    }
+}
+
+impl From<Errno> for Error {
+    fn from(errno: Errno) -> Self {
+        Error::Errno(errno)
     }
 }
 
@@ -201,6 +214,8 @@ enum Operation<'a> {
     #[cfg(feature = "alloc")]
     Write0(Write0Args),
     Errno,
+    #[cfg(feature = "alloc")]
+    GetCmdLine(GetCmdLineArgs),
 }
 
 trait PointerArgs {
@@ -225,6 +240,16 @@ struct IserrorArgs {
 
 impl PointerArgs for IserrorArgs {}
 
+#[cfg(feature = "alloc")]
+#[repr(C)]
+struct GetCmdLineArgs {
+    ptr: *mut u8,
+    size: usize,
+}
+
+#[cfg(feature = "alloc")]
+impl PointerArgs for GetCmdLineArgs {}
+
 impl<'a> Operation<'a> {
     #[inline]
     fn code(&self) -> usize {
@@ -243,6 +268,8 @@ impl<'a> Operation<'a> {
             Operation::Remove(_) => 0x0E,
             Operation::Rename(_) => 0x0F,
             Operation::Errno => 0x13,
+            #[cfg(feature = "alloc")]
+            Operation::GetCmdLine(_) => 0x15,
             Operation::ExitExtended(_) => 0x20,
         }
     }
@@ -264,24 +291,26 @@ impl<'a> Operation<'a> {
             Operation::Rename(args) => args.get_args(),
             Operation::Iserror(args) => args.get_args(),
             Operation::Errno => 0,
+            #[cfg(feature = "alloc")]
+            Operation::GetCmdLine(args) => args.get_args(),
             Operation::ExitExtended(args) => args.get_args(),
         }
     }
 }
 
 fn get_error(code: isize) -> Option<Errno> {
-    let op = Operation::Iserror(IserrorArgs { code });
-    let result = unsafe { arch::call_host_unchecked(&op) };
+    let mut op = Operation::Iserror(IserrorArgs { code });
+    let result = unsafe { arch::call_host_unchecked(&mut op) };
 
     if result == 0 {
         None
     } else {
-        let op = Operation::Errno;
-        Some(Errno(unsafe { arch::call_host_unchecked(&op) as u32 }))
+        let mut op = Operation::Errno;
+        Some(Errno(unsafe { arch::call_host_unchecked(&mut op) as u32 }))
     }
 }
 
-fn call_host(op: &Operation) -> Result<usize, Errno> {
+fn call_host(op: &mut Operation) -> Result<usize, Errno> {
     let result = unsafe { arch::call_host_unchecked(op) };
 
     if let Some(err) = get_error(result) {
@@ -292,12 +321,12 @@ fn call_host(op: &Operation) -> Result<usize, Errno> {
 }
 
 pub fn exit(exit_code: u32) -> ! {
-    let op = Operation::ExitExtended(ExitArgs {
+    let mut op = Operation::ExitExtended(ExitArgs {
         sh_reason: ExitReason::ApplicationExit,
         exit_code: exit_code as usize,
     });
 
-    call_host(&op).ok();
+    call_host(&mut op).ok();
     unreachable!();
 }
 
@@ -334,5 +363,21 @@ pub fn load_extensions() -> Result<Extensions, Error> {
             extended_exit: (buffer[4] & (1 << 0)) != 0,
             stdout_stderr: (buffer[4] & (1 << 1)) != 0,
         }),
+    }
+}
+
+#[cfg(feature = "alloc")]
+pub fn get_cmd_line() -> Result<String, Error> {
+    let mut buffer = [0u8; 80];
+    let mut op = Operation::GetCmdLine(GetCmdLineArgs {
+        ptr: &mut buffer[0] as *mut _,
+        size: 80,
+    });
+    call_host(&mut op)?;
+
+    if let Operation::GetCmdLine(GetCmdLineArgs { size, .. }) = op {
+        Ok(String::from_utf8((&buffer[..size]).to_vec()).unwrap())
+    } else {
+        unreachable!();
     }
 }

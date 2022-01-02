@@ -3,7 +3,7 @@ use crate::Operation;
 use core::arch::asm;
 
 #[inline]
-pub(crate) unsafe fn call_host_unchecked(op: &Operation) -> isize {
+pub(crate) unsafe fn call_host_unchecked(op: &mut Operation) -> isize {
     let op_code = op.code();
     let args = op.args();
     let mut result: i32;
