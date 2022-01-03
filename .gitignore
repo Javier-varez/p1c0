@@ -2,3 +2,4 @@
 **/*.macho
 **/*.map
 **/.DS_Store
+.tools
