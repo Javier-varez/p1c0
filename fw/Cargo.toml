@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "p1c0-fw"
+path = "src/main.rs"
+
 [features]
 emulator = ["arm-semihosting"]
 default = []
@@ -16,6 +20,12 @@ tinybmp = "0.3.1"
 cortex-a = "7.0.0"
 tock-registers = "0.7.0"
 arm-semihosting = { path = "../arm_semihosting", optional = true, features = ["alloc"]}
+test-fwk = { path = "../test_fwk", optional = true }
+
+# These dependencies are needed for testing
+[dev-dependencies]
+arm-semihosting = { path = "../arm_semihosting", features = ["alloc"]}
+test-fwk = { path = "../test_fwk" }
 
 [build-dependencies]
 cc = "1.0"
