@@ -1,0 +1,17 @@
+[package]
+name = "test-fwk"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "m1_runner"
+required-features = ["m1_runner"]
+
+[features]
+default = []
+m1_runner = ["xshell", "structopt"]
+
+[dependencies]
+arm-semihosting = { path = "../arm_semihosting" }
+xshell = { version = "0.1.17", optional = true }
+structopt = { version = "0.3.25", optional = true }

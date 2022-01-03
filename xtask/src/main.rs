@@ -27,6 +27,9 @@ enum Options {
     Test,
     /// Runs clippy on all sources.
     Clippy,
+    /// Installs requirements for the project
+    /// These are m1_runner
+    InstallRequirements,
 }
 
 fn build(release: bool, emulator: bool) -> Result<(), anyhow::Error> {
@@ -68,6 +71,13 @@ fn run_qemu(release: bool) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+fn install_requirements() -> Result<(), anyhow::Error> {
+    println!("Installing requirements");
+    println!("\tm1_runner:");
+    cmd!("cargo install --path test_fwk --features m1_runner").run()?;
+    Ok(())
+}
+
 fn main() -> Result<(), anyhow::Error> {
     let opts = Options::from_args();
 
@@ -76,6 +86,7 @@ fn main() -> Result<(), anyhow::Error> {
         Options::Build { release, emulator } => build(release, emulator)?,
         Options::Test => run_tests()?,
         Options::Clippy => run_clippy()?,
+        Options::InstallRequirements => install_requirements()?,
     };
 
     Ok(())
