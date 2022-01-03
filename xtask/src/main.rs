@@ -52,7 +52,20 @@ fn build(release: bool, emulator: bool) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+fn check_prerequisites() -> Result<(), anyhow::Error> {
+    if cmd!("m1_runner -V").run().is_err() {
+        install_requirements()?;
+    }
+    Ok(())
+}
+
 fn run_tests() -> Result<(), anyhow::Error> {
+    // Run host tests
+    cmd!("cargo test").run()?;
+
+    // run FW tests
+    check_prerequisites()?;
+    let _dir = xshell::pushd("fw")?;
     cmd!("cargo test").run()?;
     Ok(())
 }
