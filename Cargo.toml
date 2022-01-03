@@ -2,7 +2,8 @@
 
 members = [
     "m1",
-    "arm_semihosting"
+    "arm_semihosting",
+    "test_fwk"
 ]
 
 exclude = [

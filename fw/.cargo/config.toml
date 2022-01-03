@@ -11,3 +11,6 @@ rustflags = [
     "-C", "link-args=-z nocopyreloc",
     "-C", "link-args=-z notext"
 ]
+
+[target.'cfg(target_os = "none")']
+runner = "m1_runner"
