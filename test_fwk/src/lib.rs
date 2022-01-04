@@ -1,6 +1,6 @@
 #![no_std]
 
-use arm_semihosting::println;
+use arm_semihosting::{print, println};
 use core::ops::Fn;
 
 use ansi_rgb::{cyan_blue, green_cyan, red, Foreground};
@@ -41,11 +41,12 @@ where
 {
     fn run(&self) {
         let type_name = core::any::type_name::<Self>();
-        println!(
-            "{} {}",
+        print!(
+            "{} {} ... ",
             "Running test:".fg(cyan_blue()),
             type_name.fg(cyan_blue())
         );
         self();
+        println!("{}", "ok".fg(green_cyan()));
     }
 }
