@@ -1,0 +1,337 @@
+#[derive(Debug, Clone)]
+pub enum Error {
+    InvalidAlignment,
+    InvalidNodeHeader,
+    InvalidPropertyHeader,
+    UnknownNode,
+    InvalidPropertyType,
+}
+
+use core::ops::FnMut;
+use core::{mem, slice, str};
+
+/// ADT Memory layout
+///
+/// There is no header for the ADT. At offset 0 the first node can be found.
+///
+/// A node header has 2 elements in this order:
+///   * N number of properties: 4-bytes le integer
+///   * M number of children: 4-byte le integer
+///
+/// After the node header, the following N elements corerspond to the properties of the node. Each
+/// property has the following structure:
+///   * property name [32 bytes], null terminated
+///   * size of the value: 4-byte le integer
+///   * value of the property. The type of the property is not encoded into the ADT and therefore
+///     needs to be known by the user beforehand (given by the name) in order to parse it adequately.
+///
+/// After the properties for the current node, there are M children, which follow the same
+/// structure.
+
+#[repr(C)]
+struct AdtNodeHeader {
+    num_properties: u32,
+    num_children: u32,
+}
+
+#[repr(C)]
+struct AdtPropertyHeader {
+    name: [u8; 32],
+    value_size: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct Adt {
+    head: AdtNode,
+}
+
+#[derive(Debug, Clone)]
+pub struct AdtNode {
+    header: *const AdtNodeHeader,
+}
+
+impl AdtNode {
+    /// # Safety:
+    ///   `ptr` must point to the beginning of the ADT and contain valid ADT data. The ADT data
+    ///   must be valid for the duration of the program ('static)
+    unsafe fn new(ptr: *const u8) -> Result<Self, Error> {
+        if ptr.align_offset(mem::size_of::<u32>()) != 0 {
+            return Err(Error::InvalidAlignment);
+        }
+
+        let node_header = &*(ptr as *const AdtNodeHeader);
+        if node_header.num_properties == 0 {
+            return Err(Error::InvalidNodeHeader);
+        }
+
+        Ok(AdtNode {
+            header: node_header as *const _,
+        })
+    }
+
+    fn first_child_ptr(&self) -> *const u8 {
+        self.property_iter()
+            .last()
+            .map(|prop| prop.end_ptr())
+            .expect("All nodes should have at least 1 property")
+    }
+
+    fn first_property_ptr(&self) -> *const u8 {
+        let node_base = self.header as *const u8;
+        unsafe { node_base.add(mem::size_of::<AdtNodeHeader>()) }
+    }
+
+    pub fn child_iter(&self) -> NodeIter {
+        NodeIter {
+            curr_ptr: self.first_child_ptr(),
+            num_nodes: unsafe { (*self.header).num_children },
+        }
+    }
+
+    pub fn find_child(&self, name: &str) -> Option<AdtNode> {
+        self.child_iter().find(|child| child.get_name() == name)
+    }
+
+    pub fn get_name(&self) -> &'static str {
+        self.find_property("name")
+            .expect("All nodes have a name property")
+            .str_value()
+            .expect("The content of the \"name\" property is a valid utf8 str")
+    }
+
+    pub fn property_iter(&self) -> PropertyIter {
+        PropertyIter {
+            curr_ptr: self.first_property_ptr(),
+            num_properties: unsafe { (*self.header).num_properties },
+        }
+    }
+
+    pub fn find_property(&self, name: &str) -> Option<AdtProperty> {
+        self.property_iter()
+            .find(|property| property.get_name() == name)
+    }
+
+    fn end_ptr(&self) -> *const u8 {
+        // Try to get the end ptr from the last child (recursively). If there are no childs this is the exit
+        // condition and we return the start of what would be the first child
+        self.child_iter()
+            .last()
+            .map(|node| node.end_ptr())
+            .unwrap_or_else(|| {
+                // There are no children, so the beginning of the children is already the next node
+                self.first_child_ptr()
+            })
+    }
+}
+
+macro_rules! define_value_method {
+    ($func_name: ident, $type: ty) => {
+        pub fn $func_name(&self) -> Result<$type, Error> {
+            const SIZE: usize = core::mem::size_of::<$type>();
+            if self.get_size() < SIZE {
+                return Err($crate::adt::Error::InvalidPropertyType);
+            }
+
+            let data = &self.get_data()[..SIZE];
+            let bytes: [u8; SIZE] = data.try_into().expect("There are exactly SIZE elements");
+            Ok(<$type>::from_le_bytes(bytes))
+        }
+    };
+}
+
+#[derive(Debug, Clone)]
+pub struct AdtProperty {
+    header: *const AdtPropertyHeader,
+}
+
+impl AdtProperty {
+    /// # Safety:
+    ///   `ptr` must point to the beginning of the ADT and contain valid ADT data. The ADT data
+    ///   must be valid for the duration of the program ('static)
+    unsafe fn new(ptr: *const u8) -> Result<Self, Error> {
+        if ptr.align_offset(mem::size_of::<u32>()) != 0 {
+            return Err(Error::InvalidAlignment);
+        }
+
+        const MAX_SIZE: u32 = 1024 * 1024 * 1024; // 1MB prop
+        let prop_header = &*(ptr as *const AdtPropertyHeader);
+        if prop_header.value_size > MAX_SIZE {
+            return Err(Error::InvalidPropertyHeader);
+        }
+
+        Ok(AdtProperty {
+            header: prop_header as *const _,
+        })
+    }
+
+    fn end_ptr(&self) -> *const u8 {
+        let prop_start = self.header as *const u8;
+
+        unsafe {
+            let end = prop_start
+                .add(mem::size_of::<AdtPropertyHeader>())
+                .add((*self.header).value_size as usize);
+
+            // Align the end of the ptr to a 32 bit boundary as required by the ADT spec
+            let alingment = end.align_offset(mem::size_of::<u32>());
+            end.add(alingment)
+        }
+    }
+
+    pub fn get_name(&self) -> &'static str {
+        let prop_name_data = unsafe { &(*self.header).name };
+        let prop_name_data = prop_name_data
+            .split(|val| *val == b'\0')
+            .next()
+            .expect("At least one null character is present in the string");
+        str::from_utf8(prop_name_data).expect("Only UTF8 values in the string")
+    }
+
+    pub fn get_size(&self) -> usize {
+        unsafe { (*self.header).value_size as usize }
+    }
+
+    pub fn str_value(&self) -> Result<&'static str, Error> {
+        let prop_data = self
+            .get_data()
+            .split(|val| *val == b'\0')
+            .next()
+            .ok_or(Error::InvalidPropertyType)?;
+        str::from_utf8(prop_data).map_err(|_| Error::InvalidPropertyType)
+    }
+
+    pub fn str_list_value(&self) -> StrListIter<impl FnMut(&'_ u8) -> bool> {
+        StrListIter {
+            inner_iter: self.get_data().split(|byte| *byte == b'\0'),
+        }
+    }
+
+    define_value_method!(u8_value, u8);
+    define_value_method!(u16_value, u16);
+    define_value_method!(u32_value, u32);
+    define_value_method!(u64_value, u64);
+    define_value_method!(usize_value, usize);
+
+    define_value_method!(i8_value, i8);
+    define_value_method!(i16_value, i16);
+    define_value_method!(i32_value, i32);
+    define_value_method!(i64_value, i64);
+    define_value_method!(isize_value, isize);
+
+    /// Returns a slice with the data contained in value.
+    pub fn get_data(&self) -> &'static [u8] {
+        unsafe {
+            let data_ptr = self.header.add(1) as *const u8;
+            let data_size = (*self.header).value_size;
+            slice::from_raw_parts(data_ptr, data_size.try_into().unwrap())
+        }
+    }
+}
+
+impl Adt {
+    /// # Safety:
+    ///   `ptr` must point to the beginning of the ADT and contain valid ADT data. The ADT data
+    ///   must be valid for the duration of the program ('static)
+    pub unsafe fn new(ptr: *const u8) -> Result<Self, Error> {
+        let head = AdtNode::new(ptr)?;
+        Ok(Adt { head })
+    }
+
+    pub fn find_node(&self, path: &str) -> Option<AdtNode> {
+        if path == "/" {
+            return Some(self.head.clone());
+        }
+
+        // Remove leading and trailing slashes. After this the only slashes present should separate
+        // the node hierarchy levels
+        let path = path.trim_matches('/');
+
+        let mut node = self.head.clone();
+        for node_name in path.split('/') {
+            let result = node.find_child(node_name);
+            if result.is_none() {
+                return None;
+            }
+
+            node = result.unwrap();
+        }
+        Some(node)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeIter {
+    num_nodes: u32,
+    curr_ptr: *const u8,
+}
+
+impl Iterator for NodeIter {
+    type Item = AdtNode;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.num_nodes > 0 {
+            let node = unsafe {
+                AdtNode::new(self.curr_ptr)
+                    .expect("Should be a valid pointer. Otherwise there is an implementation bug")
+            };
+            self.num_nodes -= 1;
+            self.curr_ptr = node.end_ptr();
+            Some(node)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PropertyIter {
+    num_properties: u32,
+    curr_ptr: *const u8,
+}
+
+impl Iterator for PropertyIter {
+    type Item = AdtProperty;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.num_properties > 0 {
+            let property = unsafe {
+                AdtProperty::new(self.curr_ptr)
+                    .expect("Should be a valid pointer. Otherwise there is an implementation bug")
+            };
+            self.num_properties -= 1;
+            self.curr_ptr = property.end_ptr();
+            Some(property)
+        } else {
+            None
+        }
+    }
+}
+
+pub fn get_adt() -> Result<Adt, Error> {
+    let boot_args = crate::boot_args::get_boot_args();
+    unsafe {
+        let addr = boot_args
+            .device_tree
+            .offset(-(boot_args.virt_base as isize))
+            .add(boot_args.phys_base);
+        Adt::new(addr)
+    }
+}
+
+pub struct StrListIter<P>
+where
+    P: FnMut(&u8) -> bool,
+{
+    inner_iter: slice::Split<'static, u8, P>,
+}
+
+impl<P> Iterator for StrListIter<P>
+where
+    P: FnMut(&'_ u8) -> bool,
+{
+    type Item = &'static str;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner_iter
+            .next()
+            .and_then(|data| str::from_utf8(data).ok())
+            .and_then(|str| if str == "" { None } else { Some(str) })
+    }
+}

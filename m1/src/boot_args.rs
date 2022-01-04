@@ -20,7 +20,7 @@ pub struct BootArgs {
     pub top_of_kernel_data: usize,
     pub boot_video: BootVideoArgs,
     pub machine_type: u32,
-    pub device_tree: *mut u8,
+    pub device_tree: *const u8,
     pub device_tree_size: usize,
     pub cmdline: [u8; 608],
     pub boot_flags: u64,
