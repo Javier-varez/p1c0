@@ -8,6 +8,7 @@ edition = "2021"
 [[bin]]
 name = "p1c0-fw"
 path = "src/main.rs"
+test = false
 
 [features]
 emulator = ["arm-semihosting"]

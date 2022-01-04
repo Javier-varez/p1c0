@@ -1,8 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(custom_test_frameworks)]
-#![test_runner(test_fwk::runner_should_panic)]
-#![reexport_test_harness_main = "test_main"]
 #![feature(default_alloc_error_handler)]
 
 extern crate alloc;
@@ -69,7 +66,6 @@ fn kernel_entry() {
 }
 
 #[no_mangle]
-#[cfg(not(test))]
 pub extern "C" fn kernel_main() -> ! {
     kernel_entry();
 
@@ -81,7 +77,6 @@ pub extern "C" fn kernel_main() -> ! {
 }
 
 #[panic_handler]
-#[cfg(not(test))]
 fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     println!("Panicked with message: {:?}", panic_info);
 
@@ -90,23 +85,4 @@ fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
 
     #[cfg(not(feature = "emulator"))]
     loop {}
-}
-
-#[panic_handler]
-#[cfg(test)]
-fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
-    test_fwk::panic_handler_should_panic(panic_info);
-}
-
-#[no_mangle]
-#[cfg(test)]
-pub extern "C" fn kernel_main() {
-    #[cfg(test)]
-    test_main();
-}
-
-#[test_case]
-fn test_kernel_entry() {
-    // Currently this is expected to panic
-    kernel_entry();
 }
