@@ -10,6 +10,10 @@ name = "p1c0-fw"
 path = "src/main.rs"
 test = false
 
+[[test]]
+name = "adt_tests"
+path = "tests/adt_tests.rs"
+
 [features]
 emulator = ["arm-semihosting"]
 default = []
