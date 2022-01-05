@@ -51,7 +51,7 @@ pub struct AdtNode {
 }
 
 impl AdtNode {
-    /// # Safety:
+    /// # Safety
     ///   `ptr` must point to the beginning of the ADT and contain valid ADT data. The ADT data
     ///   must be valid for the duration of the program ('static)
     unsafe fn new(ptr: *const u8) -> Result<Self, Error> {
@@ -145,7 +145,7 @@ pub struct AdtProperty {
 }
 
 impl AdtProperty {
-    /// # Safety:
+    /// # Safety
     ///   `ptr` must point to the beginning of the ADT and contain valid ADT data. The ADT data
     ///   must be valid for the duration of the program ('static)
     unsafe fn new(ptr: *const u8) -> Result<Self, Error> {
@@ -229,7 +229,7 @@ impl AdtProperty {
 }
 
 impl Adt {
-    /// # Safety:
+    /// # Safety
     ///   `ptr` must point to the beginning of the ADT and contain valid ADT data. The ADT data
     ///   must be valid for the duration of the program ('static)
     pub unsafe fn new(ptr: *const u8) -> Result<Self, Error> {
@@ -248,12 +248,7 @@ impl Adt {
 
         let mut node = self.head.clone();
         for node_name in path.split('/') {
-            let result = node.find_child(node_name);
-            if result.is_none() {
-                return None;
-            }
-
-            node = result.unwrap();
+            node = node.find_child(node_name)?;
         }
         Some(node)
     }
@@ -332,6 +327,6 @@ where
         self.inner_iter
             .next()
             .and_then(|data| str::from_utf8(data).ok())
-            .and_then(|str| if str == "" { None } else { Some(str) })
+            .and_then(|str| if str.is_empty() { None } else { Some(str) })
     }
 }
