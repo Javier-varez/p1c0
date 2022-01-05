@@ -139,7 +139,8 @@ impl DescriptorEntry {
         Self(0)
     }
 
-    fn new_table_desc(early: bool) -> Self {
+    fn new_table_desc() -> Self {
+        let early = unsafe { !MMU.is_initialized() };
         let table_addr = if early {
             // FIXME: I'd love to use box here, but it seems to be triggering a compiler failure at
             // the time this code was written (Rust 1.59.0 nightly). Hopefully this gets fixed soon
@@ -351,7 +352,6 @@ impl LevelTable {
         size: usize,
         attributes: Attributes,
         permissions: Permissions,
-        early_mapping: bool,
         level: TranslationLevel,
     ) -> Result<(), Error> {
         let entry_size = level.entry_size();
@@ -403,7 +403,7 @@ impl LevelTable {
                         return Err(Error::OverlapsExistingMapping(va, level));
                     }
                     DescriptorType::Invalid => {
-                        *descriptor_entry = DescriptorEntry::new_table_desc(early_mapping);
+                        *descriptor_entry = DescriptorEntry::new_table_desc();
                     }
                     _ => {}
                 }
@@ -411,15 +411,7 @@ impl LevelTable {
                 descriptor_entry
                     .get_table()
                     .expect("Is a table")
-                    .map_region(
-                        va,
-                        pa,
-                        chunk_size,
-                        attributes,
-                        permissions,
-                        early_mapping,
-                        level.next(),
-                    )?;
+                    .map_region(va, pa, chunk_size, attributes, permissions, level.next())?;
             }
 
             unsafe {
@@ -575,7 +567,6 @@ impl MemoryManagementUnit {
             size,
             attributes,
             permissions,
-            !self.initialized,
             TranslationLevel::Level0,
         )
     }
@@ -599,7 +590,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        mmu.initialized = true;
+        unsafe { MMU.initialized = true };
 
         assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
@@ -650,7 +641,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        mmu.initialized = true;
+        unsafe { MMU.initialized = true };
 
         assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
@@ -691,7 +682,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        mmu.initialized = true;
+        unsafe { MMU.initialized = true };
 
         assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
@@ -749,7 +740,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        mmu.initialized = true;
+        unsafe { MMU.initialized = true };
 
         assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
 
@@ -811,7 +802,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        mmu.initialized = true;
+        unsafe { MMU.initialized = true };
 
         mmu.add_default_mappings();
 
