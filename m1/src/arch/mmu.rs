@@ -371,41 +371,37 @@ impl LevelTable {
                 core::cmp::min(entry_size, remaining_size)
             };
 
+            if matches!(
+                descriptor_entry.ty(),
+                DescriptorType::Block | DescriptorType::Page
+            ) {
+                if descriptor_entry.pa().expect("Desc is a page/block") != pa {
+                    return Err(Error::OverlapsExistingMapping(va, level));
+                } else {
+                    // The mapping is already present
+                    unsafe {
+                        pa = pa.offset(chunk_size);
+                        va = va.offset(chunk_size);
+                    }
+
+                    remaining_size = remaining_size.saturating_sub(chunk_size);
+                    continue;
+                };
+            }
+
             if aligned
                 && (chunk_size == entry_size)
                 && (level.supports_block_descriptors() || level.is_last())
+                && !matches!(descriptor_entry.ty(), DescriptorType::Table)
             {
-                // We could allocate a block or page descriptor here. Else we would need a next
-                // level table
-                match descriptor_entry.ty() {
-                    DescriptorType::Invalid => {
-                        *descriptor_entry = if level.is_last() {
-                            DescriptorEntry::new_page_desc(pa, attributes, permissions)
-                        } else {
-                            DescriptorEntry::new_block_desc(pa, attributes, permissions)
-                        };
-                    }
-                    DescriptorType::Table => {
-                        // TODO(javier-varez): Handle consolidation of mappings
-                        return Err(Error::OverlapsExistingMapping(va, level));
-                    }
-                    DescriptorType::Page | DescriptorType::Block
-                        if descriptor_entry.pa().expect("Desc is a page/block") != pa =>
-                    {
-                        return Err(Error::OverlapsExistingMapping(va, level));
-                    }
-                    _ => {}
-                }
+                *descriptor_entry = if level.is_last() {
+                    DescriptorEntry::new_page_desc(pa, attributes, permissions)
+                } else {
+                    DescriptorEntry::new_block_desc(pa, attributes, permissions)
+                };
             } else {
-                match descriptor_entry.ty() {
-                    DescriptorType::Block | DescriptorType::Page => {
-                        // Need to have a table and some granularity inside
-                        return Err(Error::OverlapsExistingMapping(va, level));
-                    }
-                    DescriptorType::Invalid => {
-                        *descriptor_entry = DescriptorEntry::new_table_desc();
-                    }
-                    _ => {}
+                if matches!(descriptor_entry.ty(), DescriptorType::Invalid) {
+                    *descriptor_entry = DescriptorEntry::new_table_desc();
                 }
 
                 descriptor_entry
