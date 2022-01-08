@@ -2,3 +2,4 @@
 xtask = "run --manifest-path ./xtask/Cargo.toml --"
 rr = "run --manifest-path ./xtask/Cargo.toml -- run --release"
 br = "run --manifest-path ./xtask/Cargo.toml -- build --release"
+t = "run --manifest-path ./xtask/Cargo.toml -- test"
