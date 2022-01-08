@@ -6,6 +6,7 @@ use tock_registers::{
     registers::InMemoryRegister,
 };
 
+#[cfg(target_arch = "aarch64")]
 use core::arch::global_asm;
 
 // Assembly code for the exception table ane entry points
