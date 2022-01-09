@@ -2,10 +2,11 @@
 
 TOOLS_DIR=.tools
 
-QEMU_VERSION=0.1.1
+QEMU_VERSION=0.1.2
 QEMU_DIR=${PWD}/${TOOLS_DIR}/qemu
 
-QEMU_ZIP=${QEMU_VERSION}_M1_Pro.zip
+OS=$(uname | tr '[:upper:]' '[:lower:]')
+QEMU_ZIP=${QEMU_VERSION}_M1_Pro_${OS}.zip
 QEMU_URL=https://github.com/Javier-varez/qemu-apple-m1/releases/download/Apple_M1_Pro_${QEMU_VERSION}/${QEMU_ZIP}
 
 ZIP_DIR=${PWD}
