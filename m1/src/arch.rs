@@ -9,6 +9,8 @@ pub mod alloc;
 pub mod exceptions;
 pub mod mmu;
 
+use crate::uart;
+
 #[repr(C)]
 pub struct RelaEntry {
     offset: usize,
@@ -112,6 +114,7 @@ pub extern "C" fn start_rust(boot_args: &BootArgs, _base: *const (), stack_botto
     // This is safe because at this point there is only one thread running and no one has accessed
     // the boot args yet.
     unsafe { crate::boot_args::set_boot_args(boot_args) };
+    uart::initialize();
 
     match CurrentEL.read_as_enum(CurrentEL::EL).expect("Valid EL") {
         CurrentEL::EL::Value::EL2 => {
