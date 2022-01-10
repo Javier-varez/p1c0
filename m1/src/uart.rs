@@ -14,7 +14,7 @@ register_bitfields![u32,
     ],
 ];
 
-static mut UART: Uart = Uart::new();
+static mut UART: Option<Uart> = None;
 
 #[repr(C)]
 struct UartRegs {
@@ -29,8 +29,10 @@ struct Uart {
 }
 
 impl Uart {
-    const fn new() -> Self {
-        let regs = 0x39b200000 as *mut _;
+    fn new() -> Self {
+        let adt = crate::adt::get_adt().unwrap();
+        let (device_addr, _) = adt.get_device_addr("/arm-io/uart0", 0).unwrap();
+        let regs = device_addr as *mut _;
         Self { regs }
     }
 
@@ -61,5 +63,12 @@ impl fmt::Write for Uart {
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     let uart = unsafe { &mut UART };
-    uart.write_fmt(args).expect("Printing to uart failed");
+    if let Some(uart) = uart {
+        uart.write_fmt(args).expect("Printing to uart failed");
+    }
+}
+
+pub fn initialize() {
+    let uart = unsafe { &mut UART };
+    uart.replace(Uart::new());
 }
