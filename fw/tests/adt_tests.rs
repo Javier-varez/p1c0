@@ -57,3 +57,19 @@ fn test_adt_get_valid_property() {
     let compatibles: Vec<_> = prop.str_list_value().collect();
     assert_eq!(compatibles, vec!["uart-1,samsung"]);
 }
+
+#[test_case]
+fn test_adt_get_device_addr() {
+    let adt = get_adt().unwrap();
+    let (addr, size) = adt.get_device_addr("/arm-io/uart0", 0).unwrap();
+    assert_eq!(addr, 0x39b200000);
+    assert_eq!(size, 0x4000);
+
+    let (addr, size) = adt.get_device_addr("/arm-io/spi1", 0).unwrap();
+    assert_eq!(addr, 0x39B104000);
+    assert_eq!(size, 0x4000);
+
+    let (addr, size) = adt.get_device_addr("/arm-io/i2c0", 0).unwrap();
+    assert_eq!(addr, 0x39B040000);
+    assert_eq!(size, 0x4000);
+}

@@ -5,10 +5,14 @@ pub enum Error {
     InvalidPropertyHeader,
     UnknownNode,
     InvalidPropertyType,
+    InvalidRangeDataSize,
+    InvalidRegDataSize,
 }
 
 use core::ops::FnMut;
 use core::{mem, slice, str};
+
+use heapless::Vec;
 
 /// ADT Memory layout
 ///
@@ -109,6 +113,53 @@ impl AdtNode {
     pub fn find_property(&self, name: &str) -> Option<AdtProperty> {
         self.property_iter()
             .find(|property| property.get_name() == name)
+    }
+
+    pub fn get_address_cells(&self) -> Option<u32> {
+        self.find_property("#address-cells").and_then(|prop| {
+            prop.u32_value()
+                .map(|val| {
+                    debug_assert!(val <= 2 && val > 0);
+                    val
+                })
+                .ok()
+        })
+    }
+
+    pub fn get_size_cells(&self) -> Option<u32> {
+        self.find_property("#size-cells").and_then(|prop| {
+            prop.u32_value()
+                .map(|val| {
+                    debug_assert!(val <= 2);
+                    val
+                })
+                .ok()
+        })
+    }
+
+    pub fn range_iter(&self, parent_address_cells: Option<u32>) -> AdtRangeIter {
+        let size_cells = self.get_size_cells().unwrap_or(2);
+        let address_cells = self.get_address_cells().unwrap_or(2);
+        let parent_address_cells = parent_address_cells.unwrap_or(2);
+        let data = self
+            .find_property("ranges")
+            .map(|prop| prop.get_data())
+            .unwrap_or(&[]);
+        AdtRangeIter::new(data, address_cells, size_cells, parent_address_cells)
+    }
+
+    pub fn reg_iter(
+        &self,
+        parent_address_cells: Option<u32>,
+        parent_size_cells: Option<u32>,
+    ) -> AdtRegIter {
+        let parent_address_cells = parent_address_cells.unwrap_or(2);
+        let parent_size_cells = parent_size_cells.unwrap_or(2);
+        let data = self
+            .find_property("reg")
+            .map(|prop| prop.get_data())
+            .unwrap_or(&[]);
+        AdtRegIter::new(data, parent_address_cells, parent_size_cells)
     }
 
     fn end_ptr(&self) -> *const u8 {
@@ -252,6 +303,50 @@ impl Adt {
         }
         Some(node)
     }
+
+    pub fn path_iter<'a>(&self, path: &'a str) -> PathIter<'a> {
+        PathIter {
+            node: self.head.clone(),
+            path,
+        }
+    }
+
+    pub fn get_device_addr(&self, path: &str, reg_index: usize) -> Option<(usize, usize)> {
+        let nodes: Vec<AdtNode, 8> = self.path_iter(path).collect();
+
+        let mut iter = nodes.iter().rev();
+        let mut child = iter.next()?;
+        let mut maybe_parent = iter.clone().next();
+        let pa_cells = maybe_parent
+            .clone()
+            .and_then(|node| node.get_address_cells());
+        let ps_cells = maybe_parent.clone().and_then(|node| node.get_size_cells());
+
+        let reg = child.reg_iter(pa_cells, ps_cells).skip(reg_index).next()?;
+
+        let mut addr = reg.get_addr();
+        let size = reg.get_size();
+
+        for node in iter {
+            child = maybe_parent.unwrap();
+            maybe_parent = Some(node);
+
+            let pa_cells = maybe_parent
+                .clone()
+                .and_then(|node| node.get_address_cells());
+
+            child.range_iter(pa_cells).for_each(|range| {
+                // Only use those in the region
+                if (addr >= range.get_bus_addr())
+                    && ((addr + size) < (range.get_bus_addr() + range.get_size()))
+                {
+                    addr += range.get_parent_addr() - range.get_bus_addr();
+                }
+            });
+        }
+
+        Some((addr, size))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -328,5 +423,323 @@ where
             .next()
             .and_then(|data| str::from_utf8(data).ok())
             .and_then(|str| if str.is_empty() { None } else { Some(str) })
+    }
+}
+
+/// Sizes for the AdtRange might be different from u32
+///   * sizeof::<bus_addr>() = child.address_cells
+///   * sizeof::<parent_addr>() = parent.address_cells
+///   * sizeof::<size>() = child.address_cells
+///
+#[derive(Clone, Debug)]
+pub struct AdtRange {
+    data: &'static [u8],
+    address_cells: u32,
+    parent_address_cells: u32,
+    size_cells: u32,
+}
+
+impl AdtRange {
+    fn new(
+        data: &'static [u8],
+        address_cells: u32,
+        size_cells: u32,
+        parent_address_cells: u32,
+    ) -> Result<Self, Error> {
+        let entry_size = core::mem::size_of::<u32>()
+            * (address_cells + size_cells + parent_address_cells) as usize;
+        if data.len() != entry_size {
+            return Err(Error::InvalidRangeDataSize);
+        }
+
+        Ok(Self {
+            data,
+            address_cells,
+            parent_address_cells,
+            size_cells,
+        })
+    }
+
+    fn bus_addr_offset(&self) -> usize {
+        0
+    }
+
+    fn parent_addr_offset(&self) -> usize {
+        self.address_cells as usize * core::mem::size_of::<u32>()
+    }
+
+    fn size_offset(&self) -> usize {
+        self.address_cells as usize * core::mem::size_of::<u32>()
+            + self.parent_address_cells as usize * core::mem::size_of::<u32>()
+    }
+
+    pub fn get_bus_addr(&self) -> usize {
+        let offset = self.bus_addr_offset();
+        match self.address_cells {
+            1 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<u32>()];
+                let bytes: [u8; core::mem::size_of::<u32>()] =
+                    borrow.try_into().expect("There are exactly 4 elements");
+                u32::from_le_bytes(bytes) as usize
+            }
+            2 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<usize>()];
+                let bytes: [u8; core::mem::size_of::<usize>()] =
+                    borrow.try_into().expect("There are exactly 4 elements");
+                usize::from_le_bytes(bytes)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn get_parent_addr(&self) -> usize {
+        let offset = self.parent_addr_offset();
+        match self.parent_address_cells {
+            1 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<u32>()];
+                let bytes: [u8; core::mem::size_of::<u32>()] =
+                    borrow.try_into().expect("There are exactly 4 elements");
+                u32::from_le_bytes(bytes) as usize
+            }
+            2 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<usize>()];
+                let bytes: [u8; core::mem::size_of::<usize>()] =
+                    borrow.try_into().expect("There are exactly 8 elements");
+                usize::from_le_bytes(bytes)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn get_size(&self) -> usize {
+        let offset = self.size_offset();
+        match self.size_cells {
+            1 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<u32>()];
+                let bytes: [u8; core::mem::size_of::<u32>()] =
+                    borrow.try_into().expect("There are exactly 4 elements");
+                u32::from_le_bytes(bytes) as usize
+            }
+            2 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<usize>()];
+                let bytes: [u8; core::mem::size_of::<usize>()] =
+                    borrow.try_into().expect("There are exactly 8 elements");
+                usize::from_le_bytes(bytes)
+            }
+            _ => unimplemented!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AdtRangeIter {
+    data: &'static [u8],
+    address_cells: u32,
+    parent_address_cells: u32,
+    size_cells: u32,
+}
+
+impl AdtRangeIter {
+    fn new(
+        data: &'static [u8],
+        address_cells: u32,
+        size_cells: u32,
+        parent_address_cells: u32,
+    ) -> Self {
+        let entry_size = core::mem::size_of::<u32>()
+            * (address_cells + size_cells + parent_address_cells) as usize;
+        let data = if (data.len() % entry_size) == 0 {
+            data
+        } else {
+            &[]
+        };
+
+        Self {
+            data,
+            address_cells,
+            parent_address_cells,
+            size_cells,
+        }
+    }
+
+    fn get_entry_size(&self) -> usize {
+        core::mem::size_of::<u32>()
+            * (self.address_cells + self.size_cells + self.parent_address_cells) as usize
+    }
+}
+
+impl Iterator for AdtRangeIter {
+    type Item = AdtRange;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.data.is_empty() {
+            None
+        } else {
+            let (next, new_data) = self.data.split_at(self.get_entry_size());
+            self.data = new_data;
+            Some(
+                AdtRange::new(
+                    next,
+                    self.address_cells,
+                    self.size_cells,
+                    self.parent_address_cells,
+                )
+                .ok()?,
+            )
+        }
+    }
+}
+
+/// Sizes for the AdtRange might be different from u32
+///   * sizeof::<bus_addr>() = child.address_cells
+///   * sizeof::<parent_addr>() = parent.address_cells
+///   * sizeof::<size>() = child.address_cells
+///
+#[derive(Clone, Debug)]
+pub struct AdtReg {
+    data: &'static [u8],
+    parent_address_cells: u32,
+    parent_size_cells: u32,
+}
+
+impl AdtReg {
+    fn new(
+        data: &'static [u8],
+        parent_address_cells: u32,
+        parent_size_cells: u32,
+    ) -> Result<Self, Error> {
+        let entry_size =
+            core::mem::size_of::<u32>() * (parent_address_cells + parent_size_cells) as usize;
+        if data.len() != entry_size {
+            return Err(Error::InvalidRangeDataSize);
+        }
+
+        Ok(Self {
+            data,
+            parent_address_cells,
+            parent_size_cells,
+        })
+    }
+
+    fn addr_offset(&self) -> usize {
+        0
+    }
+
+    fn size_offset(&self) -> usize {
+        self.parent_address_cells as usize * core::mem::size_of::<u32>()
+    }
+
+    pub fn get_addr(&self) -> usize {
+        let offset = self.addr_offset();
+        match self.parent_address_cells {
+            1 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<u32>()];
+                let bytes: [u8; core::mem::size_of::<u32>()] =
+                    borrow.try_into().expect("There are exactly 4 elements");
+                u32::from_le_bytes(bytes) as usize
+            }
+            2 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<usize>()];
+                let bytes: [u8; core::mem::size_of::<usize>()] =
+                    borrow.try_into().expect("There are exactly 8 elements");
+                usize::from_le_bytes(bytes)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn get_size(&self) -> usize {
+        let offset = self.size_offset();
+        match self.parent_size_cells {
+            1 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<u32>()];
+                let bytes: [u8; core::mem::size_of::<u32>()] =
+                    borrow.try_into().expect("There are exactly 4 elements");
+                u32::from_le_bytes(bytes) as usize
+            }
+            2 => {
+                let borrow = &self.data[offset..offset + core::mem::size_of::<usize>()];
+                let bytes: [u8; core::mem::size_of::<usize>()] =
+                    borrow.try_into().expect("There are exactly 8 elements");
+                usize::from_le_bytes(bytes)
+            }
+            _ => unimplemented!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AdtRegIter {
+    data: &'static [u8],
+    parent_address_cells: u32,
+    parent_size_cells: u32,
+}
+
+impl AdtRegIter {
+    fn new(data: &'static [u8], parent_address_cells: u32, parent_size_cells: u32) -> Self {
+        let entry_size =
+            core::mem::size_of::<u32>() * (parent_size_cells + parent_address_cells) as usize;
+        let data = if (data.len() % entry_size) == 0 {
+            data
+        } else {
+            &[]
+        };
+
+        Self {
+            data,
+            parent_address_cells,
+            parent_size_cells,
+        }
+    }
+
+    fn get_entry_size(&self) -> usize {
+        core::mem::size_of::<u32>() * (self.parent_size_cells + self.parent_address_cells) as usize
+    }
+}
+
+impl Iterator for AdtRegIter {
+    type Item = AdtReg;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.data.is_empty() {
+            None
+        } else {
+            let (next, new_data) = self.data.split_at(self.get_entry_size());
+            self.data = new_data;
+            Some(AdtReg::new(next, self.parent_address_cells, self.parent_size_cells).ok()?)
+        }
+    }
+}
+
+pub struct PathIter<'a> {
+    node: AdtNode,
+    path: &'a str,
+}
+
+impl<'a> Iterator for PathIter<'a> {
+    type Item = AdtNode;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.path == "/" || self.path.is_empty() {
+            return None;
+        }
+
+        let path = self.path.trim_start_matches('/');
+
+        let mut splits = path.splitn(2, '/');
+        let node_name = splits.next().unwrap();
+        let node_or_none = self.node.find_child(node_name);
+        if node_or_none.is_none() {
+            self.path = "";
+            return None;
+        }
+
+        let node = node_or_none.unwrap();
+
+        if let Some(remaining_path) = splits.next() {
+            self.path = remaining_path;
+        } else {
+            self.path = "";
+        }
+        self.node = node.clone();
+
+        Some(node)
     }
 }
