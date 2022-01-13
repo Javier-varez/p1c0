@@ -137,9 +137,8 @@ dependencies = [
 
 [[package]]
 name = "cortex-a"
-version = "7.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b27f5d071b671f9799dfdf0c0afcec11de65195383d36e186639c83b00705e4f"
+version = "6.1.0"
+source = "git+https://github.com/Javier-varez/cortex-a.git?branch=master#d4558c20ec42034f27db5f1cb526908724cbb52e"
 dependencies = [
  "tock-registers",
 ]
@@ -170,9 +169,9 @@ dependencies = [
 
 [[package]]
 name = "cstr_core"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "917ba9efe9e1e736671d5a03f006afc4e7e3f32503e2077e0bcaf519c0c8c1d3"
+checksum = "644828c273c063ab0d39486ba42a5d1f3a499d35529c759e763a9c6cb8a0fb08"
 dependencies = [
  "cty",
  "memchr",
@@ -499,9 +498,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.84"
+version = "1.0.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecb2e6da8ee5eb9a61068762a32fa9619cc591ceb055b3687f4cd4051ec2e06b"
+checksum = "a684ac3dcd8913827e18cd09a68384ee66c1de24157e3c556c9ab16d85695fb7"
 dependencies = [
  "proc-macro2",
  "quote",
