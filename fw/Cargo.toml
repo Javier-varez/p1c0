@@ -22,7 +22,7 @@ default = []
 m1 = { path = "../m1" }
 embedded-graphics = "0.7.1"
 tinybmp = "0.3.1"
-cortex-a = "7.0.0"
+cortex-a = { git = "https://github.com/Javier-varez/cortex-a.git", branch = "master" }
 tock-registers = "0.7.0"
 arm-semihosting = { path = "../arm_semihosting", optional = true, features = ["alloc"]}
 test-fwk = { path = "../test_fwk", optional = true }
