@@ -526,7 +526,10 @@ impl MemoryManagementUnit {
         SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
 
         unsafe {
-            barrier::isb(barrier::SY);
+            core::arch::asm!("dsb ishst");
+            core::arch::asm!("tlbi vmalle1is");
+            core::arch::asm!("dsb ish");
+            core::arch::asm!("isb");
         }
 
         if matches!(
