@@ -4,9 +4,12 @@
 pub mod adt;
 pub mod arch;
 pub mod boot_args;
+pub mod chickens;
 mod collections;
 pub mod display;
 pub mod font;
+pub mod macros;
+pub mod registers;
 pub mod uart;
 pub mod wdt;
 

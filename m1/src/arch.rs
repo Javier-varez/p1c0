@@ -1,4 +1,4 @@
-use crate::boot_args::BootArgs;
+use crate::{boot_args::BootArgs, chickens};
 use cortex_a::{
     asm,
     registers::{CurrentEL, CNTHCTL_EL2, CNTVOFF_EL2, ELR_EL2, HCR_EL2, SPSR_EL2, SP_EL1},
@@ -116,6 +116,8 @@ pub extern "C" fn start_rust(boot_args: &BootArgs, _base: *const (), stack_botto
     unsafe { crate::boot_args::set_boot_args(boot_args) };
     exceptions::handling_init();
     uart::initialize();
+
+    chickens::init_cpu();
 
     // This services and initializes the watchdog (on first call). To avoid a reboot we should
     // periodically call this function

@@ -103,7 +103,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 [[package]]
 name = "cortex-a"
 version = "6.1.0"
-source = "git+https://github.com/Javier-varez/cortex-a.git?branch=master#d4558c20ec42034f27db5f1cb526908724cbb52e"
+source = "git+https://github.com/Javier-varez/cortex-a.git?branch=master#4da9593da3d33d4a4a7462c6e093110b6245d7ba"
 dependencies = [
  "tock-registers",
 ]
