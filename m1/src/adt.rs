@@ -317,12 +317,10 @@ impl Adt {
         let mut iter = nodes.iter().rev();
         let mut child = iter.next()?;
         let mut maybe_parent = iter.clone().next();
-        let pa_cells = maybe_parent
-            .clone()
-            .and_then(|node| node.get_address_cells());
-        let ps_cells = maybe_parent.clone().and_then(|node| node.get_size_cells());
+        let pa_cells = maybe_parent.and_then(|node| node.get_address_cells());
+        let ps_cells = maybe_parent.and_then(|node| node.get_size_cells());
 
-        let reg = child.reg_iter(pa_cells, ps_cells).skip(reg_index).next()?;
+        let reg = child.reg_iter(pa_cells, ps_cells).nth(reg_index)?;
 
         let mut addr = reg.get_addr();
         let size = reg.get_size();
@@ -331,9 +329,7 @@ impl Adt {
             child = maybe_parent.unwrap();
             maybe_parent = Some(node);
 
-            let pa_cells = maybe_parent
-                .clone()
-                .and_then(|node| node.get_address_cells());
+            let pa_cells = maybe_parent.and_then(|node| node.get_address_cells());
 
             child.range_iter(pa_cells).for_each(|range| {
                 // Only use those in the region
