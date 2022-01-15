@@ -452,7 +452,7 @@ impl MemoryManagementUnit {
             VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
             PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
             mmio_region_size,
-            Attributes::DevicenGnRE,
+            Attributes::DevicenGnRnE,
             Permissions::RWX,
         )
         .expect("No other mapping overlaps");
@@ -463,7 +463,7 @@ impl MemoryManagementUnit {
             VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
             PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
             mmio_region_size,
-            Attributes::DevicenGnRE,
+            Attributes::DevicenGnRnE,
             Permissions::RWX,
         )
         .expect("No other mapping overlaps");
@@ -474,7 +474,7 @@ impl MemoryManagementUnit {
             VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
             PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
             mmio_region_size,
-            Attributes::DevicenGnRE,
+            Attributes::DevicenGnRnE,
             Permissions::RWX,
         )
         .expect("No other mapping overlaps");
