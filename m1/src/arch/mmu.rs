@@ -88,6 +88,7 @@ impl VirtualAddress {
     /// # Safety
     ///   The user must guarantee that the resulting pointer is a valid VirtualAddress after this
     ///   operation. This means that it is within the limits of addressable virtual memory.
+    #[must_use]
     pub unsafe fn offset(&self, offset: usize) -> Self {
         Self(self.0.add(offset))
     }
@@ -110,6 +111,7 @@ impl PhysicalAddress {
     ///   operation. This means that it is within the limits of addressable physical memory and
     ///   points to a valid physical address backed by some memory device (either memory mapped IO or
     ///   regular memory).
+    #[must_use]
     pub unsafe fn offset(&self, offset: usize) -> Self {
         Self(self.0.add(offset))
     }
