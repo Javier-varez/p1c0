@@ -10,6 +10,7 @@ pub mod display;
 pub mod font;
 pub mod macros;
 pub mod registers;
+pub mod spi;
 pub mod uart;
 pub mod wdt;
 
