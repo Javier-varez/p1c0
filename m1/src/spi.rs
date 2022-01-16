@@ -206,6 +206,8 @@ enum TransactionSize {
 pub enum Error {
     AdtNodeNotFound,
     AdtNodeNotCompatible,
+    RxUnderrun,
+    TxOverflow,
 }
 
 pub struct Spi {
@@ -374,15 +376,35 @@ impl Spi {
         }
     }
 
+    fn poll_for_errors(&self) -> Result<(), Error> {
+        let rx_underrun = self.regs.if_fifo.read(InterruptFlagFifo::RX_UNDERRUN) != 0;
+        let tx_overflow = self.regs.if_fifo.read(InterruptFlagFifo::TX_OVERFLOW) != 0;
+
+        if rx_underrun {
+            return Err(Error::RxUnderrun);
+        }
+        if tx_overflow {
+            return Err(Error::TxOverflow);
+        }
+
+        Ok(())
+    }
+
     fn poll_completion(&self, tx_len: usize, rx_len: usize) -> Result<(), Error> {
         if tx_len != 0 && rx_len != 0 {
             while self.regs.status.read(Status::TX_COMPLETE) == 0
                 || self.regs.status.read(Status::RX_COMPLETE) == 0
-            {}
+            {
+                self.poll_for_errors()?;
+            }
         } else if tx_len != 0 {
-            while self.regs.status.read(Status::TX_COMPLETE) == 0 {}
+            while self.regs.status.read(Status::TX_COMPLETE) == 0 {
+                self.poll_for_errors()?;
+            }
         } else if rx_len != 0 {
-            while self.regs.status.read(Status::RX_COMPLETE) == 0 {}
+            while self.regs.status.read(Status::RX_COMPLETE) == 0 {
+                self.poll_for_errors()?;
+            }
         }
         Ok(())
     }
@@ -415,6 +437,8 @@ impl Spi {
 
         // Clear status registers
         self.regs.status.set(0xFFFFFFFF);
+        self.regs.if_fifo.set(0xFFFFFFFF);
+        self.regs.if_xfer.set(0xFFFFFFFF);
 
         self.regs.rx_count.set(rx_len as u32);
         self.regs.tx_count.set(tx_len as u32);
@@ -429,20 +453,32 @@ impl Spi {
         self.regs.control.write(Control::RUN::SET);
         self.set_cs(true);
 
+        let cleanup = |instance: &mut Self| {
+            instance.set_cs(false);
+            instance
+                .regs
+                .control
+                .write(Control::RUN::CLEAR + Control::RX_RESET::SET + Control::TX_RESET::SET);
+        };
+
         while tx_data_iter.peek().is_some() || rx_data_iter.peek().is_some() {
             unsafe {
                 self.push_tx(&mut tx_data_iter, ts_size);
                 self.pop_rx(&mut rx_data_iter, ts_size);
             }
 
-            // TODO(javier-varez): Check error status and exit if needed
+            self.poll_for_errors().map_err(|err| {
+                cleanup(self);
+                err
+            })?;
         }
-        self.poll_completion(tx_len, rx_len)?;
 
-        self.set_cs(false);
-        self.regs
-            .control
-            .write(Control::RUN::CLEAR + Control::RX_RESET::SET + Control::TX_RESET::SET);
+        self.poll_completion(tx_len, rx_len).map_err(|err| {
+            cleanup(self);
+            err
+        })?;
+
+        cleanup(self);
         Ok(())
     }
 }
