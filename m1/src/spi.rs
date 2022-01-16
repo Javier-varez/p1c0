@@ -133,7 +133,7 @@ const FIFO_DEPTH: u32 = 16;
 struct SpiRegisters {
     control: ReadWrite<u32, Control::Register>,        // 0x00
     config: ReadWrite<u32, Config::Register>,          // 0x04
-    status: ReadOnly<u32, Status::Register>,           // 0x08
+    status: ReadWrite<u32, Status::Register>,          // 0x08
     pin: ReadWrite<u32, Pin::Register>,                // 0x0C
     tx_data: WriteOnly<u32>,                           // 0x10
     reserved_1: [u32; 3],                              // 0x14
@@ -412,6 +412,9 @@ impl Spi {
                 )
             }
         };
+
+        // Clear status registers
+        self.regs.status.set(0xFFFFFFFF);
 
         self.regs.rx_count.set(rx_len as u32);
         self.regs.tx_count.set(tx_len as u32);
