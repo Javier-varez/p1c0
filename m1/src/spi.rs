@@ -410,6 +410,11 @@ impl Spi {
     }
 
     pub fn transact(&mut self, tx_data: &[u8], rx_data: &mut [u8]) -> Result<(), Error> {
+        if tx_data.len() == 0 && rx_data.len() == 0 {
+            // This is effectively a noop
+            return Ok(());
+        }
+
         let ts_size = deduct_transaction_size(tx_data, rx_data);
 
         let (tx_len, rx_len) = match ts_size {
