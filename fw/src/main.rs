@@ -15,6 +15,7 @@ use m1::{
     boot_args::get_boot_args,
     display::Display,
     println,
+    spi::Spi,
 };
 
 #[cfg(feature = "emulator")]
@@ -59,10 +60,32 @@ fn kernel_entry() {
     print_compatible(&adt);
     print_uart_reg(&adt);
 
-    let addr = 0x00007FFFFFFFFFFF as *const u64;
-    println!("let's cause a page fault!");
-    let val = unsafe { *addr };
-    println!("Hah, value is {}", val);
+    let mut spi3 = unsafe { Spi::new("/arm-io/spi3").unwrap() };
+
+    // 1 byte packing
+    let buffer = [1u8, 2, 3, 4, 5];
+    let mut recv = [31u8; 4];
+    spi3.transact(&buffer, &mut recv).unwrap();
+
+    // 2 byte packing
+    let buffer = [1u8, 2, 3, 4, 5, 6];
+    let mut recv = [31u8; 12];
+    spi3.transact(&buffer, &mut recv).unwrap();
+
+    // 4 byte packing
+    let buffer = [1u8, 2, 3, 4, 5, 6, 7, 8];
+    let mut recv = [31u8; 16];
+    spi3.transact(&buffer, &mut recv).unwrap();
+
+    // only rx
+    let buffer = [];
+    let mut recv = [31u8; 16];
+    spi3.transact(&buffer, &mut recv).unwrap();
+
+    // only tx
+    let buffer = [1u8, 2, 3, 4, 5, 6, 7, 8];
+    let mut recv = [];
+    spi3.transact(&buffer, &mut recv).unwrap();
 }
 
 #[no_mangle]
