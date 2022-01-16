@@ -374,6 +374,19 @@ impl Spi {
         }
     }
 
+    fn poll_completion(&self, tx_len: usize, rx_len: usize) -> Result<(), Error> {
+        if tx_len != 0 && rx_len != 0 {
+            while self.regs.status.read(Status::TX_COMPLETE) == 0
+                || self.regs.status.read(Status::RX_COMPLETE) == 0
+            {}
+        } else if tx_len != 0 {
+            while self.regs.status.read(Status::TX_COMPLETE) == 0 {}
+        } else if rx_len != 0 {
+            while self.regs.status.read(Status::RX_COMPLETE) == 0 {}
+        }
+        Ok(())
+    }
+
     pub fn transact(&mut self, tx_data: &[u8], rx_data: &mut [u8]) -> Result<(), Error> {
         let ts_size = deduct_transaction_size(tx_data, rx_data);
 
@@ -419,14 +432,9 @@ impl Spi {
                 self.pop_rx(&mut rx_data_iter, ts_size);
             }
 
-            // TODO(javier-varez): Check error status and exist if needed
+            // TODO(javier-varez): Check error status and exit if needed
         }
-
-        // TODO(javier-varez): Properly check for completion rather than just polling tx complete.
-        // This doesn't seem to work for tx only transactions.
-        while self.regs.status.read(Status::TX_COMPLETE) == 0 {
-            // Wait while the transaction fully finishes
-        }
+        self.poll_completion(tx_len, rx_len)?;
 
         self.set_cs(false);
         self.regs
