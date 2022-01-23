@@ -527,6 +527,19 @@ impl AdtRange {
     }
 }
 
+impl core::fmt::Display for AdtRange {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Range [bus address 0x{:x}, parent address 0x{:x}, size 0x{:x}]",
+            self.get_bus_addr(),
+            self.get_parent_addr(),
+            self.get_size()
+        )?;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AdtRangeIter {
     data: &'static [u8],
