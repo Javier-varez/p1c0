@@ -437,8 +437,9 @@ impl MemoryManagementUnit {
     }
 
     fn add_default_mappings(&mut self) {
-        let ram_base = 0x10000000000 as *const u8;
-        let ram_size = 0x800000000;
+        let boot_args = crate::boot_args::get_boot_args();
+        let ram_base = boot_args.phys_base as *const u8;
+        let ram_size = boot_args.mem_size_actual as usize;
         self.map_region(
             VirtualAddress::new(ram_base).expect("Address is aligned to page size"),
             PhysicalAddress::new(ram_base).expect("Address is aligned to page size"),
@@ -448,38 +449,24 @@ impl MemoryManagementUnit {
         )
         .expect("No other mapping overlaps");
 
-        let mmio_region_base = 0x0000000200000000 as *const u8;
-        let mmio_region_size = 0x0000000400000000;
-        self.map_region(
-            VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
-            PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
-            mmio_region_size,
-            Attributes::DevicenGnRnE,
-            Permissions::RWX,
-        )
-        .expect("No other mapping overlaps");
+        // Map mmio ranges as defined in the ADT
+        let adt = crate::adt::get_adt().unwrap();
 
-        let mmio_region_base = 0x0000000580000000 as *const u8;
-        let mmio_region_size = 0x0000000180000000;
-        self.map_region(
-            VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
-            PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
-            mmio_region_size,
-            Attributes::DevicenGnRnE,
-            Permissions::RWX,
-        )
-        .expect("No other mapping overlaps");
-
-        let mmio_region_base = 0x0000000700000000 as *const u8;
-        let mmio_region_size = 0x0000000F80000000;
-        self.map_region(
-            VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
-            PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
-            mmio_region_size,
-            Attributes::DevicenGnRnE,
-            Permissions::RWX,
-        )
-        .expect("No other mapping overlaps");
+        let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
+        let node = adt.find_node("/arm-io").expect("There is an arm-io");
+        let range_iter = node.range_iter(root_address_cells);
+        for range in range_iter {
+            let mmio_region_base = range.get_parent_addr() as *const u8;
+            let mmio_region_size = range.get_size();
+            self.map_region(
+                VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
+                PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
+                mmio_region_size,
+                Attributes::DevicenGnRnE,
+                Permissions::RWX,
+            )
+            .expect("No other mapping overlaps");
+        }
     }
 
     pub fn init_and_enable(&mut self) {
@@ -789,42 +776,6 @@ mod test {
             if idx >= 2044 {
                 assert!(matches!(desc.ty(), DescriptorType::Page));
                 let to_usize = to.0 as usize + page_size * (idx - 2044);
-                let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
-                assert_eq!(desc.pa(), Some(to));
-            } else {
-                assert!(matches!(desc.ty(), DescriptorType::Invalid));
-            }
-        }
-    }
-
-    #[test]
-    fn real_mapping() {
-        let mut mmu = MemoryManagementUnit::new();
-        // Let's trick the test to use the global allocator instead of the early allocator. On
-        // tests our assumptions don't hold for the global allocator, so we need to make sure to
-        // use an adequate allocator.
-        unsafe { MMU.initialized = true };
-
-        mmu.add_default_mappings();
-
-        let level0 = &mut mmu.level0;
-        assert!(matches!(level0[0].ty(), DescriptorType::Table));
-        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
-
-        let level1 = level0[0].get_table().expect("Is a table");
-        for (idx, desc) in level1.table.iter().enumerate() {
-            if idx == 0x10 {
-                assert!(matches!(desc.ty(), DescriptorType::Table));
-            }
-        }
-
-        let level2 = level1[0x10].get_table().expect("Is a table");
-
-        for (idx, desc) in level2.table.iter().enumerate() {
-            if idx < 1024 {
-                assert!(matches!(desc.ty(), DescriptorType::Block));
-                let block_size = 1 << 25;
-                let to_usize = 0x10000000000 as usize + block_size * idx;
                 let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
