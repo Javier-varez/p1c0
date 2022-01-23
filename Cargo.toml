@@ -2,7 +2,6 @@
 
 members = [
     "m1",
-    "arm_semihosting",
     "test_fwk"
 ]
 

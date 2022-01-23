@@ -12,7 +12,7 @@ default = []
 m1_runner = ["xshell", "structopt"]
 
 [dependencies]
-arm-semihosting = { path = "../arm_semihosting" }
+arm-semihosting = "0.1.0"
 ansi_rgb = "0.2.0"
 xshell = { version = "0.1.17", optional = true }
 structopt = { version = "0.3.25", optional = true }

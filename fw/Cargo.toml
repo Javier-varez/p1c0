@@ -24,12 +24,12 @@ embedded-graphics = "0.7.1"
 tinybmp = "0.3.1"
 cortex-a = { git = "https://github.com/Javier-varez/cortex-a.git", branch = "master" }
 tock-registers = "0.7.0"
-arm-semihosting = { path = "../arm_semihosting", optional = true, features = ["alloc"]}
+arm-semihosting = { version = "0.1.0", optional = true }
 test-fwk = { path = "../test_fwk", optional = true }
 
 # These dependencies are needed for testing
 [dev-dependencies]
-arm-semihosting = { path = "../arm_semihosting", features = ["alloc"]}
+arm-semihosting = "0.1.0"
 test-fwk = { path = "../test_fwk" }
 
 [build-dependencies]
