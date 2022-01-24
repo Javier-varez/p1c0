@@ -23,7 +23,7 @@ const PAGE_SIZE: usize = 1 << 14;
 
 const EARLY_ALLOCATOR_SIZE: usize = 64 * 1024;
 static EARLY_ALLOCATOR: EarlyAllocator<EARLY_ALLOCATOR_SIZE> = EarlyAllocator::new();
-static mut MMU: MemoryManagementUnit = MemoryManagementUnit::new();
+pub static mut MMU: MemoryManagementUnit = MemoryManagementUnit::new();
 
 #[derive(Debug)]
 pub enum Error {
@@ -91,6 +91,17 @@ impl VirtualAddress {
     #[must_use]
     pub unsafe fn offset(&self, offset: usize) -> Self {
         Self(self.0.add(offset))
+    }
+
+    fn is_high_address(&self) -> bool {
+        let high_bits = self.0 as usize >> 48;
+        if high_bits == 0xFFFF {
+            true
+        } else if high_bits == 0x0000 {
+            false
+        } else {
+            panic!("Virtual address is invalid");
+        }
     }
 }
 
@@ -425,14 +436,16 @@ impl LevelTable {
 
 pub struct MemoryManagementUnit {
     initialized: bool,
-    level0: LevelTable,
+    high_table: LevelTable,
+    low_table: LevelTable,
 }
 
 impl MemoryManagementUnit {
     const fn new() -> Self {
         Self {
             initialized: false,
-            level0: LevelTable::new(),
+            high_table: LevelTable::new(),
+            low_table: LevelTable::new(),
         }
     }
 
@@ -504,8 +517,8 @@ impl MemoryManagementUnit {
                 + TCR_EL1::T1SZ.val(16),
         );
 
-        TTBR0_EL1.set_baddr(self.level0.table.as_ptr() as u64);
-        TTBR1_EL1.set_baddr(self.level0.table.as_ptr() as u64);
+        TTBR0_EL1.set_baddr(self.low_table.table.as_ptr() as u64);
+        TTBR1_EL1.set_baddr(self.high_table.table.as_ptr() as u64);
 
         unsafe {
             barrier::dsb(barrier::ISHST);
@@ -549,7 +562,13 @@ impl MemoryManagementUnit {
             size = size + PAGE_SIZE - (size % PAGE_SIZE);
         }
 
-        self.level0.map_region(
+        let table = if va.is_high_address() {
+            &mut self.high_table
+        } else {
+            &mut self.low_table
+        };
+
+        table.map_region(
             va,
             pa,
             size,
@@ -580,7 +599,7 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
+        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
         let from = VirtualAddress::new(0x012345678000 as *const u8).unwrap();
         let to = PhysicalAddress::new(0x012345678000 as *const u8).unwrap();
@@ -588,11 +607,11 @@ mod test {
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
 
-        let level0 = &mut mmu.level0;
-        assert!(matches!(level0[0].ty(), DescriptorType::Table));
-        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
+        let low_table = &mut mmu.low_table;
+        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
+        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = level0[0].get_table().expect("Is a table");
+        let level1 = low_table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -631,7 +650,7 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
+        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
         let from = VirtualAddress::new(0x12344000000 as *const u8).unwrap();
         let to = PhysicalAddress::new(0x12344000000 as *const u8).unwrap();
@@ -639,11 +658,11 @@ mod test {
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
 
-        let level0 = &mut mmu.level0;
-        assert!(matches!(level0[0].ty(), DescriptorType::Table));
-        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
+        let low_table = &mut mmu.low_table;
+        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
+        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = level0[0].get_table().expect("Is a table");
+        let level1 = low_table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -672,7 +691,7 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
+        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
         let block_size = 1 << 25;
         let page_size = 1 << 14;
@@ -683,11 +702,11 @@ mod test {
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
 
-        let level0 = &mut mmu.level0;
-        assert!(matches!(level0[0].ty(), DescriptorType::Table));
-        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
+        let low_table = &mut mmu.low_table;
+        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
+        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = level0[0].get_table().expect("Is a table");
+        let level1 = low_table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -730,7 +749,7 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.level0[0].ty(), DescriptorType::Invalid));
+        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
         let block_size = 1 << 25;
         let page_size = 1 << 14;
@@ -742,11 +761,11 @@ mod test {
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
 
-        let level0 = &mut mmu.level0;
-        assert!(matches!(level0[0].ty(), DescriptorType::Table));
-        assert!(matches!(level0[1].ty(), DescriptorType::Invalid));
+        let low_table = &mut mmu.low_table;
+        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
+        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = level0[0].get_table().expect("Is a table");
+        let level1 = low_table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
