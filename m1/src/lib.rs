@@ -8,6 +8,7 @@ pub mod chickens;
 mod collections;
 pub mod display;
 pub mod font;
+pub mod init;
 pub mod macros;
 pub mod registers;
 pub mod spi;
