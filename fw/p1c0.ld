@@ -187,7 +187,7 @@ SECTIONS {
     _end = .;
     _arena_start = .;
     . += _arena_size;
-    arena_end = .;
+    _arena_end = .;
     . = ALIGN(0x4000);
     _payload_start = .;
     _payload_end = . + _max_payload_size;
