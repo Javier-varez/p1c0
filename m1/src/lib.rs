@@ -15,6 +15,8 @@ pub mod spi;
 pub mod uart;
 pub mod wdt;
 
+const KERNEL_LOGICAL_BASE: usize = 0xFFFF020000000000;
+
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     display::_print(args);
