@@ -14,6 +14,8 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use core::mem::MaybeUninit;
 use early_alloc::{AllocRef, EarlyAllocator};
 
+use crate::KERNEL_LOGICAL_BASE;
+
 #[cfg(not(test))]
 use crate::println;
 
@@ -21,7 +23,7 @@ const VA_MASK: u64 = (1 << 48) - (1 << 14);
 const PA_MASK: u64 = (1 << 48) - (1 << 14);
 const PAGE_SIZE: usize = 1 << 14;
 
-const EARLY_ALLOCATOR_SIZE: usize = 64 * 1024;
+const EARLY_ALLOCATOR_SIZE: usize = 128 * 1024;
 static EARLY_ALLOCATOR: EarlyAllocator<EARLY_ALLOCATOR_SIZE> = EarlyAllocator::new();
 pub static mut MMU: MemoryManagementUnit = MemoryManagementUnit::new();
 
@@ -451,12 +453,25 @@ impl MemoryManagementUnit {
 
     fn add_default_mappings(&mut self) {
         let boot_args = crate::boot_args::get_boot_args();
-        let ram_base = boot_args.phys_base as *const u8;
-        let ram_size = boot_args.mem_size_actual as usize;
+        let program_base = boot_args.phys_base as *const u8;
+        let program_size = boot_args.mem_size_actual as usize;
+
+        // Add initial identity mapping. To be removed after relocation.
         self.map_region(
-            VirtualAddress::new(ram_base).expect("Address is aligned to page size"),
-            PhysicalAddress::new(ram_base).expect("Address is aligned to page size"),
-            ram_size,
+            VirtualAddress::new(program_base).expect("Address is aligned to page size"),
+            PhysicalAddress::new(program_base).expect("Address is aligned to page size"),
+            program_size,
+            Attributes::Normal,
+            Permissions::RWX,
+        )
+        .expect("No other mapping overlaps");
+
+        // Add secondary mapping at high_kernel_addr.
+        let high_kernel_addr = (KERNEL_LOGICAL_BASE + (program_base as usize)) as *const u8;
+        self.map_region(
+            VirtualAddress::new(high_kernel_addr).expect("Address is aligned to page size"),
+            PhysicalAddress::new(program_base).expect("Address is aligned to page size"),
+            program_size,
             Attributes::Normal,
             Permissions::RWX,
         )
