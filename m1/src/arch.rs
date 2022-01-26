@@ -1,4 +1,4 @@
-use cortex_a::registers::CurrentEL;
+use cortex_a::{asm, registers::CurrentEL};
 use tock_registers::interfaces::Readable;
 
 pub mod alloc;
@@ -58,18 +58,25 @@ pub fn get_exception_level() -> ExceptionLevel {
 }
 
 #[inline(always)]
+#[cfg(target_arch = "aarch64")]
 pub fn read_pc() -> *const () {
     let mut pc: *const ();
-
-    #[cfg(not(test))]
-    unsafe {
-        core::arch::asm!("adr {}, .", out(reg) pc)
-    };
-
-    #[cfg(test)]
-    {
-        pc = core::ptr::null();
-    }
-
+    unsafe { core::arch::asm!("adr {}, .", out(reg) pc) };
     pc
+}
+
+#[inline(always)]
+#[cfg(not(target_arch = "aarch64"))]
+pub fn read_pc() -> *const () {
+    core::ptr::null()
+}
+
+#[inline(always)]
+pub unsafe fn jump_to_addr(_addr: usize) -> ! {
+    #[cfg(target_arch = "aarch64")]
+    core::arch::asm!("blr {}", in(reg) _addr);
+
+    loop {
+        asm::wfi();
+    }
 }
