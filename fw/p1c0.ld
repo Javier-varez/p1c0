@@ -189,8 +189,6 @@ SECTIONS {
     . += _arena_size;
     _arena_end = .;
     . = ALIGN(0x4000);
-    _payload_start = .;
-    _payload_end = . + _max_payload_size;
 
     .symtab 0 : { *(.symtab) }
     .strtab 0 : { *(.strtab) }
