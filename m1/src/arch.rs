@@ -56,3 +56,20 @@ pub fn get_exception_level() -> ExceptionLevel {
         CurrentEL::EL::Value::EL3 => ExceptionLevel::SecureMonitor,
     }
 }
+
+#[inline(always)]
+pub fn read_pc() -> *const () {
+    let mut pc: *const ();
+
+    #[cfg(not(test))]
+    unsafe {
+        core::arch::asm!("adr {}, .", out(reg) pc)
+    };
+
+    #[cfg(test)]
+    {
+        pc = core::ptr::null();
+    }
+
+    pc
+}
