@@ -119,6 +119,12 @@ impl PhysicalAddress {
         Ok(Self(addr))
     }
 
+    pub fn from_unaligned(addr: *const u8) -> Result<Self, Error> {
+        let mut addr_usize = addr as usize;
+        addr_usize &= !(PAGE_SIZE - 1);
+        Ok(Self(addr_usize as *const u8))
+    }
+
     /// # Safety
     ///   The user must guarantee that the resulting pointer is a valid PhysicalAddress after this
     ///   operation. This means that it is within the limits of addressable physical memory and

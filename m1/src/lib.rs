@@ -15,6 +15,7 @@ pub mod spi;
 pub mod uart;
 pub mod wdt;
 
+const ADT_VIRT_BASE: usize = 0xFFFF000000000000;
 const KERNEL_LOGICAL_BASE: usize = 0xFFFF020000000000;
 
 pub fn pa_to_kla<T>(pa: *const T) -> *const T {
