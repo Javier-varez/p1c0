@@ -394,10 +394,15 @@ impl Iterator for PropertyIter {
 pub fn get_adt() -> Result<Adt, Error> {
     let boot_args = crate::boot_args::get_boot_args();
     unsafe {
-        let addr = boot_args
-            .device_tree
-            .offset(-(boot_args.virt_base as isize))
-            .add(boot_args.phys_base);
+        // After the MMU is initialized, the adt has been remapped as RO to the ADT_VIRT_BASE
+        let addr = if !crate::arch::mmu::is_initialized() {
+            boot_args
+                .device_tree
+                .offset(-(boot_args.virt_base as isize))
+                .add(boot_args.phys_base)
+        } else {
+            crate::ADT_VIRT_BASE as *const u8
+        };
         Adt::new(addr)
     }
 }

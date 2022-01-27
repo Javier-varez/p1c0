@@ -5,9 +5,13 @@ use cortex_a::{
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::{
-    arch::{alloc, apply_rela, exceptions, jump_to_addr, mmu, read_pc, RelaEntry},
+    arch::{
+        alloc, apply_rela, exceptions, jump_to_addr,
+        mmu::{self, Attributes, Permissions, PhysicalAddress, VirtualAddress, MMU},
+        read_pc, RelaEntry,
+    },
     boot_args::BootArgs,
-    chickens, println, uart, wdt, KERNEL_LOGICAL_BASE,
+    chickens, println, uart, wdt, ADT_VIRT_BASE, KERNEL_LOGICAL_BASE,
 };
 
 /// This is the original base passed by iBoot into the kernel. Does NOT change after kernel
@@ -83,6 +87,19 @@ unsafe fn kernel_prelude() {
 
     alloc::init(arena_start, arena_size);
 
+    // Here we relocate the adt
+    let boot_args = crate::boot_args::get_boot_args();
+    let device_tree = boot_args.device_tree as usize - boot_args.virt_base + boot_args.phys_base;
+    let device_tree_size = boot_args.device_tree_size as usize;
+    MMU.map_region(
+        VirtualAddress::new(ADT_VIRT_BASE as *const _).unwrap(),
+        PhysicalAddress::from_unaligned(device_tree as *const _).unwrap(),
+        device_tree_size,
+        Attributes::Normal,
+        Permissions::RO,
+    )
+    .expect("Boot args can be mapped");
+
     // This services and initializes the watchdog (on first call). To avoid a reboot we should
     // periodically call this function
     wdt::service();
@@ -106,6 +123,7 @@ pub extern "C" fn start_rust(boot_args: &BootArgs, base: *const u8, stack_bottom
     // the boot args yet.
     unsafe { crate::boot_args::set_boot_args(boot_args) };
     unsafe { BASE = base };
+
     exceptions::handling_init();
     uart::initialize();
 
