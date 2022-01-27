@@ -730,7 +730,17 @@ impl MemoryManagementUnit {
             &mut self.low_table
         };
 
-        table.unmap_region(va, size, TranslationLevel::Level0)
+        table.unmap_region(va, size, TranslationLevel::Level0)?;
+
+        #[cfg(all(not(test), target_arch = "aarch64"))]
+        unsafe {
+            core::arch::asm!("dsb ishst");
+            core::arch::asm!("tlbi vmalle1is");
+            core::arch::asm!("dsb ish");
+            core::arch::asm!("isb");
+        }
+
+        Ok(())
     }
 }
 
