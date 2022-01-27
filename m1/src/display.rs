@@ -75,10 +75,12 @@ impl Display {
         let font = if retina { &FIRA_CODE_30 } else { &FONT_7X14 };
         let max_rows = (video_args.height as u32 - ROW_MARGIN * 2) / font.character_size.height;
 
+        let video_base = crate::pa_to_kla_mut(video_args.base as *mut u32);
+
         let mut base = new_aligned_vector();
         base.resize_with(video_args.width * video_args.height, Default::default);
         let mut disp = Self {
-            hwbase: video_args.base as *mut u32,
+            hwbase: video_base,
             width: video_args.width as u32,
             height: video_args.height as u32,
             stride: video_args.stride as u32 / 4,
