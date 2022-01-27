@@ -14,7 +14,7 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use core::mem::MaybeUninit;
 use early_alloc::{AllocRef, EarlyAllocator};
 
-use crate::KERNEL_LOGICAL_BASE;
+use crate::pa_to_kla;
 
 #[cfg(not(test))]
 use crate::println;
@@ -485,9 +485,8 @@ impl MemoryManagementUnit {
         .expect("No other mapping overlaps");
 
         // Add secondary mapping at high_kernel_addr.
-        let high_kernel_addr = (KERNEL_LOGICAL_BASE + (program_base as usize)) as *const u8;
         self.map_region(
-            VirtualAddress::new(high_kernel_addr).expect("Address is aligned to page size"),
+            VirtualAddress::new(pa_to_kla(program_base)).expect("Address is aligned to page size"),
             PhysicalAddress::new(program_base).expect("Address is aligned to page size"),
             program_size,
             Attributes::Normal,
