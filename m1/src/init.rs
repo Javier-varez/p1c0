@@ -102,6 +102,8 @@ unsafe fn kernel_prelude() {
     )
     .expect("Boot args can be mapped");
 
+    exceptions::handling_init();
+
     // This services and initializes the watchdog (on first call). To avoid a reboot we should
     // periodically call this function
     wdt::service();
