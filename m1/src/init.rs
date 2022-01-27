@@ -64,20 +64,22 @@ unsafe fn jump_to_high_kernel() -> ! {
         new_base, rela_start, rela_size
     );
 
+    let high_kernel_addr = crate::pa_to_kla(kernel_prelude as unsafe fn() as *const u8); // as usize + KERNEL_LOGICAL_BASE;
+    let high_stack = crate::pa_to_kla(&_stack_bot as *const u8);
+
     // Relocate ourselves again to the correct location
     apply_rela(new_base, rela_start, rela_size);
 
-    let high_kernel_addr = kernel_prelude as unsafe fn() as usize + KERNEL_LOGICAL_BASE;
-
     println!(
-        "Jumping to relocated kernel at: 0x{:x}, current PC {:?}",
+        "Jumping to relocated kernel at: {:?}, stack: {:?}, current PC {:?}",
         high_kernel_addr,
+        high_stack,
         read_pc()
     );
 
     // FROM this point onwards the execution is redirected to the new kernel_prelude entrypoint.
     // We restore the initial stack using the new base address and.
-    jump_to_addr(high_kernel_addr, &_stack_bot as *const u8);
+    jump_to_addr(high_kernel_addr as usize, high_stack);
 }
 
 unsafe fn kernel_prelude() {
