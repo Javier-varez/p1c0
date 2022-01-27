@@ -11,7 +11,7 @@ use crate::{
         read_pc, RelaEntry,
     },
     boot_args::BootArgs,
-    chickens, println, uart, wdt, ADT_VIRT_BASE, KERNEL_LOGICAL_BASE,
+    chickens, println, uart, wdt, ADT_VIRT_BASE,
 };
 
 /// This is the original base passed by iBoot into the kernel. Does NOT change after kernel
@@ -54,7 +54,7 @@ extern "C" {
 }
 
 unsafe fn jump_to_high_kernel() -> ! {
-    let new_base = BASE as usize + KERNEL_LOGICAL_BASE as usize;
+    let new_base = crate::pa_to_kla(BASE) as usize;
     let rela_start = &_rela_start as *const _ as *const RelaEntry;
     let rela_end = &_rela_end as *const _ as *const RelaEntry;
     let rela_size = rela_end.offset_from(rela_start) as usize * core::mem::size_of::<RelaEntry>();
@@ -64,7 +64,7 @@ unsafe fn jump_to_high_kernel() -> ! {
         new_base, rela_start, rela_size
     );
 
-    let high_kernel_addr = crate::pa_to_kla(kernel_prelude as unsafe fn() as *const u8); // as usize + KERNEL_LOGICAL_BASE;
+    let high_kernel_addr = crate::pa_to_kla(kernel_prelude as unsafe fn() as *const u8);
     let high_stack = crate::pa_to_kla(&_stack_bot as *const u8);
 
     // Relocate ourselves again to the correct location
