@@ -104,6 +104,22 @@ unsafe fn kernel_prelude() {
 
     exceptions::handling_init();
 
+    // Now unmap identity mapping
+    let adt = crate::adt::get_adt().unwrap();
+    let chosen = adt.find_node("/chosen").expect("There is a chosen node");
+    let dram_base = chosen
+        .find_property("dram-base")
+        .and_then(|prop| prop.usize_value().ok())
+        .map(|addr| addr as *const u8)
+        .expect("There is a dram base");
+    let dram_size = chosen
+        .find_property("dram-size")
+        .and_then(|prop| prop.usize_value().ok())
+        .expect("There is a dram base");
+
+    MMU.unmap_region(VirtualAddress::new(dram_base).unwrap(), dram_size)
+        .expect("Can unmap identity mapping");
+
     // This services and initializes the watchdog (on first call). To avoid a reboot we should
     // periodically call this function
     wdt::service();
