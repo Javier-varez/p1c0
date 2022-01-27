@@ -470,15 +470,23 @@ impl MemoryManagementUnit {
     }
 
     fn add_default_mappings(&mut self) {
-        let boot_args = crate::boot_args::get_boot_args();
-        let program_base = boot_args.phys_base as *const u8;
-        let program_size = boot_args.mem_size_actual as usize;
+        let adt = crate::adt::get_adt().unwrap();
+        let chosen = adt.find_node("/chosen").expect("There is a chosen node");
+        let dram_base = chosen
+            .find_property("dram-base")
+            .and_then(|prop| prop.usize_value().ok())
+            .map(|addr| addr as *const u8)
+            .expect("There is a dram base");
+        let dram_size = chosen
+            .find_property("dram-size")
+            .and_then(|prop| prop.usize_value().ok())
+            .expect("There is a dram base");
 
         // Add initial identity mapping. To be removed after relocation.
         self.map_region(
-            VirtualAddress::new(program_base).expect("Address is aligned to page size"),
-            PhysicalAddress::new(program_base).expect("Address is aligned to page size"),
-            program_size,
+            VirtualAddress::new(dram_base).expect("Address is aligned to page size"),
+            PhysicalAddress::new(dram_base).expect("Address is aligned to page size"),
+            dram_size,
             Attributes::Normal,
             Permissions::RWX,
         )
@@ -486,16 +494,15 @@ impl MemoryManagementUnit {
 
         // Add secondary mapping at high_kernel_addr.
         self.map_region(
-            VirtualAddress::new(pa_to_kla(program_base)).expect("Address is aligned to page size"),
-            PhysicalAddress::new(program_base).expect("Address is aligned to page size"),
-            program_size,
+            VirtualAddress::new(pa_to_kla(dram_base)).expect("Address is aligned to page size"),
+            PhysicalAddress::new(dram_base).expect("Address is aligned to page size"),
+            dram_size,
             Attributes::Normal,
             Permissions::RWX,
         )
         .expect("No other mapping overlaps");
 
         // Map mmio ranges as defined in the ADT
-        let adt = crate::adt::get_adt().unwrap();
 
         let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
         let node = adt.find_node("/arm-io").expect("There is an arm-io");
