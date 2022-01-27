@@ -410,7 +410,7 @@ impl Spi {
     }
 
     pub fn transact(&mut self, tx_data: &[u8], rx_data: &mut [u8]) -> Result<(), Error> {
-        if tx_data.len() == 0 && rx_data.len() == 0 {
+        if tx_data.is_empty() && rx_data.is_empty() {
             // This is effectively a noop
             return Ok(());
         }
