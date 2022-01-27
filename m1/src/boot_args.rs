@@ -21,7 +21,7 @@ pub struct BootArgs {
     pub boot_video: BootVideoArgs,
     pub machine_type: u32,
     pub device_tree: *const u8,
-    pub device_tree_size: usize,
+    pub device_tree_size: u32,
     pub cmdline: [u8; 608],
     pub boot_flags: u64,
     pub mem_size_actual: u64,
