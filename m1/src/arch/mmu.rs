@@ -219,12 +219,11 @@ impl DescriptorEntry {
     fn get_table(&mut self) -> Option<&mut LevelTable> {
         match self.ty() {
             DescriptorType::Table => {
-                if self.is_early_table() {
-                    let table_ptr = (self.0 & VA_MASK) as *mut _;
+                let table_ptr = (self.0 & VA_MASK) as *mut _;
+                if unsafe { MMU.is_initialized() } {
+                    let table_ptr = crate::pa_to_kla_mut(table_ptr);
                     Some(unsafe { &mut *table_ptr })
                 } else {
-                    let table_ptr = (self.0 & VA_MASK) as *mut _;
-                    let table_ptr = crate::pa_to_kla_mut(table_ptr);
                     Some(unsafe { &mut *table_ptr })
                 }
             }
@@ -263,12 +262,7 @@ impl Drop for DescriptorEntry {
         let early_table = self.is_early_table();
         if let Some(table) = self.get_table() {
             if early_table {
-                // FIXME: I'd love to use box here, but it seems to be triggering a compiler failure at
-                // the time this code was written (Rust 1.59.0 nightly). Hopefully this gets fixed soon
-                // and then we could use Box::new_in.
-                let ptr = unsafe { core::ptr::NonNull::new_unchecked(table as *mut _ as *mut u8) };
-                let layout = core::alloc::Layout::new::<LevelTable>();
-                unsafe { AllocRef::new(&EARLY_ALLOCATOR).deallocate(ptr, layout) };
+                // We don't deallocate these
             } else {
                 // These are physical addresses, we need to translate them to kernel logical
                 // addresses, since that is what our kmalloc allocator works with.
