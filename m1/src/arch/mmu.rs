@@ -168,8 +168,11 @@ impl DescriptorEntry {
             unsafe { (*table).write(LevelTable::new()) };
             table as *mut LevelTable
         } else {
+            // This gives a virtual memory address, we need to translate it to its physical
+            // address for the table
             let table = Box::new(LevelTable::new());
-            Box::leak(table) as *mut _
+            let addr = Box::leak(table) as *mut LevelTable;
+            crate::kla_to_pa_mut(addr)
         };
         let early_bit = if early { Self::EARLY_BIT } else { 0 };
         Self(Self::VALID_BIT | Self::TABLE_BIT | (table_addr as u64 & PA_MASK) | early_bit)
@@ -210,8 +213,14 @@ impl DescriptorEntry {
     fn get_table(&mut self) -> Option<&mut LevelTable> {
         match self.ty() {
             DescriptorType::Table => {
-                let table_ptr = (self.0 & VA_MASK) as *mut _;
-                Some(unsafe { &mut *table_ptr })
+                if self.is_early_table() {
+                    let table_ptr = (self.0 & VA_MASK) as *mut _;
+                    Some(unsafe { &mut *table_ptr })
+                } else {
+                    let table_ptr = (self.0 & VA_MASK) as *mut _;
+                    let table_ptr = crate::pa_to_kla_mut(table_ptr);
+                    Some(unsafe { &mut *table_ptr })
+                }
             }
             _ => None,
         }
@@ -255,7 +264,10 @@ impl Drop for DescriptorEntry {
                 let layout = core::alloc::Layout::new::<LevelTable>();
                 unsafe { AllocRef::new(&EARLY_ALLOCATOR).deallocate(ptr, layout) };
             } else {
-                let table_box = unsafe { Box::from_raw(table as *mut _) };
+                // These are physical addresses, we need to translate them to kernel logical
+                // addresses, since that is what our kmalloc allocator works with.
+                let table = table as *mut LevelTable;
+                let table_box = unsafe { Box::from_raw(table) };
                 drop(table_box);
             }
         }
