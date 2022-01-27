@@ -40,10 +40,26 @@ pub enum Attributes {
     DevicenGnRE = 2,
 }
 
+impl TryFrom<u64> for Attributes {
+    type Error = ();
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Attributes::Normal),
+            1 => Ok(Attributes::DevicenGnRE),
+            2 => Ok(Attributes::DevicenGnRnE),
+            _ => Err(()),
+        }
+    }
+}
+
 impl Attributes {
     const MAIR_ATTR_OFFSET: usize = 2;
     fn mair_index(&self) -> u64 {
         ((*self as u64) & 0x7) << Self::MAIR_ATTR_OFFSET
+    }
+
+    fn from_mapping(mapping: u64) -> Result<Attributes, Error> {
+        Ok(Attributes::try_from((mapping >> Self::MAIR_ATTR_OFFSET) & 0x7).unwrap())
     }
 }
 
@@ -72,6 +88,18 @@ impl Permissions {
 
     fn bits(&self) -> u64 {
         self.ap_bits() | self.nx_bits()
+    }
+
+    fn from_mapping(mapping: u64) -> Permissions {
+        let exec = (mapping & (0x03 << 53)) == 0;
+        let writable = (mapping & (0b10 << 6)) == 0;
+
+        match (exec, writable) {
+            (false, false) => Permissions::RO,
+            (true, false) => Permissions::RX,
+            (false, true) => Permissions::RW,
+            (true, true) => Permissions::RWX,
+        }
     }
 }
 
@@ -255,6 +283,20 @@ impl DescriptorEntry {
             _ => None,
         }
     }
+
+    fn attrs(&self) -> Option<Attributes> {
+        match self.ty() {
+            DescriptorType::Page | DescriptorType::Block => Attributes::from_mapping(self.0).ok(),
+            _ => None,
+        }
+    }
+
+    fn permissions(&self) -> Option<Permissions> {
+        match self.ty() {
+            DescriptorType::Page | DescriptorType::Block => Some(Permissions::from_mapping(self.0)),
+            _ => None,
+        }
+    }
 }
 
 impl Drop for DescriptorEntry {
@@ -370,6 +412,69 @@ impl LevelTable {
         Self {
             table: [INVALID_DESCRIPTOR; 2048],
         }
+    }
+
+    fn unmap_region(
+        &mut self,
+        mut va: VirtualAddress,
+        size: usize,
+        level: TranslationLevel,
+    ) -> Result<(), Error> {
+        let entry_size = level.entry_size();
+
+        let mut remaining_size = size;
+        while remaining_size != 0 {
+            let index = level.table_index_for_addr(va);
+            let aligned = level.is_address_aligned(va);
+            let descriptor_entry = &mut self.table[index];
+
+            let chunk_size = if !aligned {
+                let next_level = level.next();
+                let rem_entry_size =
+                    entry_size - next_level.table_index_for_addr(va) * next_level.entry_size();
+                core::cmp::min(rem_entry_size, remaining_size)
+            } else {
+                core::cmp::min(entry_size, remaining_size)
+            };
+
+            let entry_type = descriptor_entry.ty();
+
+            if !matches!(entry_type, DescriptorType::Invalid) {
+                if (aligned && (chunk_size == entry_size))
+                    || matches!(entry_type, DescriptorType::Page)
+                {
+                    *descriptor_entry = DescriptorEntry::new_invalid();
+                } else {
+                    if matches!(entry_type, DescriptorType::Block) {
+                        // Turn it into a table, then go in and remove whatever is left
+                        let attrs = descriptor_entry.attrs().unwrap();
+                        let permissions = descriptor_entry.permissions().unwrap();
+                        let pa = descriptor_entry.pa().unwrap();
+
+                        // Now it is a table!
+                        *descriptor_entry = DescriptorEntry::new_table_desc();
+
+                        descriptor_entry
+                            .get_table()
+                            .expect("Is a table")
+                            .map_region(va, pa, entry_size, attrs, permissions, level.next())?;
+                    }
+
+                    // Now unmap what's left
+                    descriptor_entry
+                        .get_table()
+                        .expect("Is a table")
+                        .unmap_region(va, chunk_size, level.next())?;
+                }
+            }
+
+            unsafe {
+                va = va.offset(chunk_size);
+            }
+
+            remaining_size = remaining_size.saturating_sub(chunk_size);
+        }
+        Ok(())
     }
 
     fn map_region(
@@ -610,6 +715,23 @@ impl MemoryManagementUnit {
             TranslationLevel::Level0,
         )
     }
+
+    pub fn unmap_region(&mut self, va: VirtualAddress, mut size: usize) -> Result<(), Error> {
+        println!("Removing mapping at {:?}, size 0x{:x}", va, size);
+
+        // Size needs to be aligned to page size
+        if (size % PAGE_SIZE) != 0 {
+            size = size + PAGE_SIZE - (size % PAGE_SIZE);
+        }
+
+        let table = if va.is_high_address() {
+            &mut self.high_table
+        } else {
+            &mut self.low_table
+        };
+
+        table.unmap_region(va, size, TranslationLevel::Level0)
+    }
 }
 
 pub fn initialize() {
@@ -833,6 +955,97 @@ mod test {
             } else {
                 assert!(matches!(desc.ty(), DescriptorType::Invalid));
             }
+        }
+    }
+
+    #[test]
+    fn unmap_single_page() {
+        let mut mmu = MemoryManagementUnit::new();
+        // Let's trick the test to use the global allocator instead of the early allocator. On
+        // tests our assumptions don't hold for the global allocator, so we need to make sure to
+        // use an adequate allocator.
+        unsafe { MMU.initialized = true };
+
+        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
+
+        let from = VirtualAddress::new(0x012345678000 as *const u8).unwrap();
+        let to = PhysicalAddress::new(0x012345678000 as *const u8).unwrap();
+        let size = 1 << 14;
+        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .expect("Could add region");
+
+        mmu.unmap_region(from, size).expect("Could remove region");
+
+        let low_table = &mut mmu.low_table;
+        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
+        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
+
+        let level1 = low_table[0].get_table().expect("Is a table");
+        for (idx, desc) in level1.table.iter().enumerate() {
+            if idx == 0x12 {
+                assert!(matches!(desc.ty(), DescriptorType::Table));
+            } else {
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
+            }
+        }
+
+        let level2 = level1[0x12].get_table().expect("Is a table");
+
+        for (idx, desc) in level2.table.iter().enumerate() {
+            if idx == 0x1a2 {
+                assert!(matches!(desc.ty(), DescriptorType::Table));
+            } else {
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
+            }
+        }
+
+        let level3 = level2[0x1a2].get_table().expect("Is a table");
+
+        for (idx, desc) in level3.table.iter().enumerate() {
+            if idx == 0x59e {
+                // This has been removed
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
+            } else {
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
+            }
+        }
+    }
+
+    #[test]
+    fn unmap_multiple_blocks() {
+        let mut mmu = MemoryManagementUnit::new();
+        // Let's trick the test to use the global allocator instead of the early allocator. On
+        // tests our assumptions don't hold for the global allocator, so we need to make sure to
+        // use an adequate allocator.
+        unsafe { MMU.initialized = true };
+
+        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
+
+        let from = VirtualAddress::new(0x10000000000 as *const u8).unwrap();
+        let to = PhysicalAddress::new(0x10000000000 as *const u8).unwrap();
+        let size = 0x800000000;
+        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .expect("Could add region");
+
+        mmu.unmap_region(from, size).expect("Could remove region");
+
+        let low_table = &mut mmu.low_table;
+        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
+        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
+
+        let level1 = low_table[0].get_table().expect("Is a table");
+        for (idx, desc) in level1.table.iter().enumerate() {
+            if idx == 0x10 {
+                assert!(matches!(desc.ty(), DescriptorType::Table));
+            } else {
+                assert!(matches!(desc.ty(), DescriptorType::Invalid));
+            }
+        }
+
+        let level2 = level1[0x10].get_table().expect("Is a table");
+
+        for desc in level2.table.iter() {
+            assert!(matches!(desc.ty(), DescriptorType::Invalid));
         }
     }
 }
