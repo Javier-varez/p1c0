@@ -72,9 +72,18 @@ pub fn read_pc() -> *const () {
 }
 
 #[inline(always)]
-pub unsafe fn jump_to_addr(_addr: usize) -> ! {
+/// # Safety
+/// The stack pointer must be valid, as well as the jumping address. From this point onwards, the
+/// previous memory in the stack will no longer be accessible. Therefore references to the stack
+/// will not be valid anymore.
+pub unsafe fn jump_to_addr(_addr: usize, _stack_ptr: *const u8) -> ! {
     #[cfg(target_arch = "aarch64")]
-    core::arch::asm!("blr {}", in(reg) _addr);
+    core::arch::asm!(
+        "mov sp, {}",
+        "dsb sy",
+        "blr {}",
+        in(reg) _stack_ptr,
+        in(reg) _addr);
 
     loop {
         asm::wfi();

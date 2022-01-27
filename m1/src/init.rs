@@ -46,6 +46,7 @@ extern "C" {
     static _arena_size: u8;
     static _rela_start: u8;
     static _rela_end: u8;
+    static _stack_bot: u8;
 }
 
 unsafe fn jump_to_high_kernel() -> ! {
@@ -69,12 +70,14 @@ unsafe fn jump_to_high_kernel() -> ! {
         high_kernel_addr,
         read_pc()
     );
-    jump_to_addr(high_kernel_addr)
+
+    // FROM this point onwards the execution is redirected to the new kernel_prelude entrypoint.
+    // We restore the initial stack using the new base address and.
+    jump_to_addr(high_kernel_addr, &_stack_bot as *const u8);
 }
 
 unsafe fn kernel_prelude() {
     println!("Entering kernel prelude with PC: {:?}", read_pc());
-
     let arena_size = (&_arena_size) as *const u8 as usize;
     let arena_start = (&mut _arena_start) as *mut u8;
 
@@ -88,8 +91,8 @@ unsafe fn kernel_prelude() {
 }
 
 /// # Safety
-///   This function must be called with the MMU off and exceptions masked while running in EL1.
-pub unsafe extern "C" fn el1_entry() {
+///   This function must be called with the MMU off while running in EL1. It will relocate itself
+unsafe extern "C" fn el1_entry() -> ! {
     mmu::initialize();
     // Right after initializing the MMU we need to relocate ourselves into the high_kernel_addr
     // region.
@@ -114,9 +117,6 @@ pub extern "C" fn start_rust(boot_args: &BootArgs, base: *const u8, stack_bottom
         }
         CurrentEL::EL::Value::EL1 => {
             unsafe { el1_entry() };
-            loop {
-                asm::wfi();
-            }
         }
         _ => {
             panic!();
