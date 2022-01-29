@@ -136,7 +136,9 @@ SECTIONS {
         *(.got.plt)
         . = ALIGN(0x4000);
     } :text
+    _text_end = .;
     _text_size = . - _text_start;
+    _rodata_start = .;
     .rodata : ALIGN(0x4000) {
         *(.rodata)
         *(.rodata.*)
@@ -183,6 +185,7 @@ SECTIONS {
         PROVIDE(_stack_bot = .);
         . = ALIGN(0x4000);
     } :data
+    _data_end = .;
     _data_size = . - _data_start;
     _end = .;
     _arena_start = .;

@@ -553,6 +553,17 @@ impl LevelTable {
     }
 }
 
+extern "C" {
+    static _text_start: u8;
+    static _text_end: u8;
+    static _rodata_start: u8;
+    static _rodata_end: u8;
+    static _data_start: u8;
+    static _data_end: u8;
+    static _arena_start: u8;
+    static _arena_end: u8;
+}
+
 pub struct MemoryManagementUnit {
     initialized: bool,
     high_table: LevelTable,
@@ -566,6 +577,58 @@ impl MemoryManagementUnit {
             high_table: LevelTable::new(),
             low_table: LevelTable::new(),
         }
+    }
+
+    fn add_kernel_mappings(&mut self) -> Result<(), Error> {
+        let text_start_addr = unsafe { &_text_start as *const u8 };
+        let text_end_addr = unsafe { &_text_end as *const u8 };
+        let text_size = unsafe { text_end_addr.offset_from(text_start_addr) as usize };
+        self.map_region(
+            VirtualAddress::new(pa_to_kla(text_start_addr))
+                .expect("Address is aligned to page size"),
+            PhysicalAddress::new(text_start_addr).expect("Address is aligned to page size"),
+            text_size,
+            Attributes::Normal,
+            Permissions::RX,
+        )?;
+
+        let rodata_start_addr = unsafe { &_rodata_start as *const u8 };
+        let rodata_end_addr = unsafe { &_rodata_end as *const u8 };
+        let rodata_size = unsafe { rodata_end_addr.offset_from(rodata_start_addr) as usize };
+        self.map_region(
+            VirtualAddress::new(pa_to_kla(rodata_start_addr))
+                .expect("Address is aligned to page size"),
+            PhysicalAddress::new(rodata_start_addr).expect("Address is aligned to page size"),
+            rodata_size,
+            Attributes::Normal,
+            Permissions::RO,
+        )?;
+
+        let data_start_addr = unsafe { &_data_start as *const u8 };
+        let data_end_addr = unsafe { &_data_end as *const u8 };
+        let data_size = unsafe { data_end_addr.offset_from(data_start_addr) as usize };
+        self.map_region(
+            VirtualAddress::new(pa_to_kla(data_start_addr))
+                .expect("Address is aligned to page size"),
+            PhysicalAddress::new(data_start_addr).expect("Address is aligned to page size"),
+            data_size,
+            Attributes::Normal,
+            Permissions::RW,
+        )?;
+
+        let arena_start_addr = unsafe { &_arena_start as *const u8 };
+        let arena_end_addr = unsafe { &_arena_end as *const u8 };
+        let arena_size = unsafe { arena_end_addr.offset_from(arena_start_addr) as usize };
+        self.map_region(
+            VirtualAddress::new(pa_to_kla(arena_start_addr))
+                .expect("Address is aligned to page size"),
+            PhysicalAddress::new(arena_start_addr).expect("Address is aligned to page size"),
+            arena_size,
+            Attributes::Normal,
+            Permissions::RW,
+        )?;
+
+        Ok(())
     }
 
     fn add_default_mappings(&mut self) {
@@ -591,15 +654,7 @@ impl MemoryManagementUnit {
         )
         .expect("No other mapping overlaps");
 
-        // Add secondary mapping at high_kernel_addr.
-        self.map_region(
-            VirtualAddress::new(pa_to_kla(dram_base)).expect("Address is aligned to page size"),
-            PhysicalAddress::new(dram_base).expect("Address is aligned to page size"),
-            dram_size,
-            Attributes::Normal,
-            Permissions::RWX,
-        )
-        .expect("No other mapping overlaps");
+        self.add_kernel_mappings().expect("Kernel can be mapped");
 
         // Map mmio ranges as defined in the ADT
 
