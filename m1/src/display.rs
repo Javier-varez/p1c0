@@ -13,6 +13,8 @@ use embedded_graphics::{
 use crate::collections::{new_aligned_vector, AlignedVec};
 use crate::font::FIRA_CODE_30;
 
+use crate::arch::mmu;
+
 use spin::Mutex;
 
 const RETINA_DEPTH_FLAG: usize = 1 << 16;
@@ -68,6 +70,23 @@ extern "C" {
 }
 
 impl Display {
+    pub fn map_fb(base: *mut u32, size: usize) -> Result<*mut u32, mmu::Error> {
+        let mm_unit = unsafe { &mut mmu::MMU };
+
+        let va = crate::pa_to_kla_mut(base);
+        let pa = base;
+
+        mm_unit.map_region(
+            mmu::VirtualAddress::new(va as *const u8).unwrap(),
+            mmu::PhysicalAddress::new(pa as *const u8).unwrap(),
+            size,
+            mmu::Attributes::Normal,
+            mmu::Permissions::RW,
+        )?;
+
+        Ok(va)
+    }
+
     /// Initializes the display HW with the given logo to work as a console.
     pub fn init<T: ImageDrawable<Color = Rgb888>>(logo: &T) {
         let video_args = &get_boot_args().boot_video;
@@ -75,7 +94,8 @@ impl Display {
         let font = if retina { &FIRA_CODE_30 } else { &FONT_7X14 };
         let max_rows = (video_args.height as u32 - ROW_MARGIN * 2) / font.character_size.height;
 
-        let video_base = crate::pa_to_kla_mut(video_args.base as *mut u32);
+        let size = video_args.height * video_args.stride;
+        let video_base = Self::map_fb(video_args.base as *mut u32, size).unwrap();
 
         let mut base = new_aligned_vector();
         base.resize_with(video_args.width * video_args.height, Default::default);
