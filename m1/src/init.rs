@@ -6,7 +6,7 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::{
     arch::{
-        alloc, apply_rela, exceptions, jump_to_addr,
+        alloc, apply_rela_from_existing, exceptions, jump_to_addr,
         mmu::{self, Attributes, Permissions, PhysicalAddress, VirtualAddress, MMU},
         read_pc, RelaEntry,
     },
@@ -68,7 +68,7 @@ unsafe fn jump_to_high_kernel() -> ! {
     let high_stack = crate::pa_to_kla(&_stack_bot as *const u8);
 
     // Relocate ourselves again to the correct location
-    apply_rela(new_base, rela_start, rela_size);
+    apply_rela_from_existing(BASE as usize, new_base, rela_start, rela_size);
 
     println!(
         "Jumping to relocated kernel at: {:?}, stack: {:?}, current PC {:?}",
