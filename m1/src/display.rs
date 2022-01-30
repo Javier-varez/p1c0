@@ -77,8 +77,8 @@ impl Display {
         let pa = base;
 
         mm_unit.map_region(
-            mmu::VirtualAddress::new(va as *const u8).unwrap(),
-            mmu::PhysicalAddress::new(pa as *const u8).unwrap(),
+            mmu::VirtualAddress::try_new(va as *const u8).unwrap(),
+            mmu::PhysicalAddress::try_new(pa as *const u8).unwrap(),
             size,
             mmu::Attributes::Normal,
             mmu::Permissions::RW,
