@@ -94,7 +94,7 @@ unsafe fn kernel_prelude() {
     let device_tree = boot_args.device_tree as usize - boot_args.virt_base + boot_args.phys_base;
     let device_tree_size = boot_args.device_tree_size as usize;
     MMU.map_region(
-        VirtualAddress::new(ADT_VIRT_BASE as *const _).unwrap(),
+        VirtualAddress::try_new(ADT_VIRT_BASE as *const _).unwrap(),
         PhysicalAddress::from_unaligned(device_tree as *const _).unwrap(),
         device_tree_size,
         Attributes::Normal,
@@ -117,7 +117,7 @@ unsafe fn kernel_prelude() {
         .and_then(|prop| prop.usize_value().ok())
         .expect("There is a dram base");
 
-    MMU.unmap_region(VirtualAddress::new(dram_base).unwrap(), dram_size)
+    MMU.unmap_region(VirtualAddress::try_new(dram_base).unwrap(), dram_size)
         .expect("Can unmap identity mapping");
 
     // This services and initializes the watchdog (on first call). To avoid a reboot we should

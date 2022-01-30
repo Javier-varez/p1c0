@@ -107,7 +107,7 @@ impl Permissions {
 pub struct VirtualAddress(*const u8);
 
 impl VirtualAddress {
-    pub fn new(addr: *const u8) -> Result<Self, Error> {
+    pub fn try_new(addr: *const u8) -> Result<Self, Error> {
         let addr_usize = addr as usize;
         if (addr_usize & (PAGE_SIZE - 1)) != 0 {
             return Err(Error::UnalignedAddress);
@@ -139,7 +139,7 @@ impl VirtualAddress {
 pub struct PhysicalAddress(*const u8);
 
 impl PhysicalAddress {
-    pub fn new(addr: *const u8) -> Result<Self, Error> {
+    pub fn try_new(addr: *const u8) -> Result<Self, Error> {
         let addr_usize = addr as usize;
         if (addr_usize & (PAGE_SIZE - 1)) != 0 {
             return Err(Error::UnalignedAddress);
@@ -584,9 +584,9 @@ impl MemoryManagementUnit {
         let text_end_addr = unsafe { &_text_end as *const u8 };
         let text_size = unsafe { text_end_addr.offset_from(text_start_addr) as usize };
         self.map_region(
-            VirtualAddress::new(pa_to_kla(text_start_addr))
+            VirtualAddress::try_new(pa_to_kla(text_start_addr))
                 .expect("Address is aligned to page size"),
-            PhysicalAddress::new(text_start_addr).expect("Address is aligned to page size"),
+            PhysicalAddress::try_new(text_start_addr).expect("Address is aligned to page size"),
             text_size,
             Attributes::Normal,
             Permissions::RX,
@@ -596,9 +596,9 @@ impl MemoryManagementUnit {
         let rodata_end_addr = unsafe { &_rodata_end as *const u8 };
         let rodata_size = unsafe { rodata_end_addr.offset_from(rodata_start_addr) as usize };
         self.map_region(
-            VirtualAddress::new(pa_to_kla(rodata_start_addr))
+            VirtualAddress::try_new(pa_to_kla(rodata_start_addr))
                 .expect("Address is aligned to page size"),
-            PhysicalAddress::new(rodata_start_addr).expect("Address is aligned to page size"),
+            PhysicalAddress::try_new(rodata_start_addr).expect("Address is aligned to page size"),
             rodata_size,
             Attributes::Normal,
             Permissions::RO,
@@ -608,9 +608,9 @@ impl MemoryManagementUnit {
         let data_end_addr = unsafe { &_data_end as *const u8 };
         let data_size = unsafe { data_end_addr.offset_from(data_start_addr) as usize };
         self.map_region(
-            VirtualAddress::new(pa_to_kla(data_start_addr))
+            VirtualAddress::try_new(pa_to_kla(data_start_addr))
                 .expect("Address is aligned to page size"),
-            PhysicalAddress::new(data_start_addr).expect("Address is aligned to page size"),
+            PhysicalAddress::try_new(data_start_addr).expect("Address is aligned to page size"),
             data_size,
             Attributes::Normal,
             Permissions::RW,
@@ -620,9 +620,9 @@ impl MemoryManagementUnit {
         let arena_end_addr = unsafe { &_arena_end as *const u8 };
         let arena_size = unsafe { arena_end_addr.offset_from(arena_start_addr) as usize };
         self.map_region(
-            VirtualAddress::new(pa_to_kla(arena_start_addr))
+            VirtualAddress::try_new(pa_to_kla(arena_start_addr))
                 .expect("Address is aligned to page size"),
-            PhysicalAddress::new(arena_start_addr).expect("Address is aligned to page size"),
+            PhysicalAddress::try_new(arena_start_addr).expect("Address is aligned to page size"),
             arena_size,
             Attributes::Normal,
             Permissions::RW,
@@ -646,8 +646,8 @@ impl MemoryManagementUnit {
 
         // Add initial identity mapping. To be removed after relocation.
         self.map_region(
-            VirtualAddress::new(dram_base).expect("Address is aligned to page size"),
-            PhysicalAddress::new(dram_base).expect("Address is aligned to page size"),
+            VirtualAddress::try_new(dram_base).expect("Address is aligned to page size"),
+            PhysicalAddress::try_new(dram_base).expect("Address is aligned to page size"),
             dram_size,
             Attributes::Normal,
             Permissions::RWX,
@@ -665,8 +665,9 @@ impl MemoryManagementUnit {
             let mmio_region_base = range.get_parent_addr() as *const u8;
             let mmio_region_size = range.get_size();
             self.map_region(
-                VirtualAddress::new(mmio_region_base).expect("Address is aligned to page size"),
-                PhysicalAddress::new(mmio_region_base).expect("Address is aligned to page size"),
+                VirtualAddress::try_new(mmio_region_base).expect("Address is aligned to page size"),
+                PhysicalAddress::try_new(mmio_region_base)
+                    .expect("Address is aligned to page size"),
                 mmio_region_size,
                 Attributes::DevicenGnRnE,
                 Permissions::RWX,
@@ -821,8 +822,8 @@ mod test {
 
         assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
-        let from = VirtualAddress::new(0x012345678000 as *const u8).unwrap();
-        let to = PhysicalAddress::new(0x012345678000 as *const u8).unwrap();
+        let from = VirtualAddress::try_new(0x012345678000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_new(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -872,8 +873,8 @@ mod test {
 
         assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
-        let from = VirtualAddress::new(0x12344000000 as *const u8).unwrap();
-        let to = PhysicalAddress::new(0x12344000000 as *const u8).unwrap();
+        let from = VirtualAddress::try_new(0x12344000000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_new(0x12344000000 as *const u8).unwrap();
         let size = 1 << 25;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -916,8 +917,8 @@ mod test {
         let block_size = 1 << 25;
         let page_size = 1 << 14;
 
-        let from = VirtualAddress::new(0x12344000000 as *const u8).unwrap();
-        let to = PhysicalAddress::new(0x12344000000 as *const u8).unwrap();
+        let from = VirtualAddress::try_new(0x12344000000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_new(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -953,7 +954,8 @@ mod test {
             if idx < 4 {
                 assert!(matches!(desc.ty(), DescriptorType::Page));
                 let to_usize = to.0 as usize + block_size + page_size * idx;
-                let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
+                let to =
+                    PhysicalAddress::try_new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
                 assert!(matches!(desc.ty(), DescriptorType::Invalid));
@@ -975,8 +977,8 @@ mod test {
         let page_size = 1 << 14;
         let va = 0x12344000000 + page_size * 2044;
 
-        let from = VirtualAddress::new(va as *const u8).unwrap();
-        let to = PhysicalAddress::new(0x12344000000 as *const u8).unwrap();
+        let from = VirtualAddress::try_new(va as *const u8).unwrap();
+        let to = PhysicalAddress::try_new(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -1002,7 +1004,8 @@ mod test {
             } else if idx == 0x1a3 {
                 assert!(matches!(desc.ty(), DescriptorType::Block));
                 let to_usize = to.0 as usize + page_size * 4;
-                let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
+                let to =
+                    PhysicalAddress::try_new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
                 assert!(matches!(desc.ty(), DescriptorType::Invalid));
@@ -1015,7 +1018,8 @@ mod test {
             if idx >= 2044 {
                 assert!(matches!(desc.ty(), DescriptorType::Page));
                 let to_usize = to.0 as usize + page_size * (idx - 2044);
-                let to = PhysicalAddress::new(to_usize as *const _).expect("Address is aligned");
+                let to =
+                    PhysicalAddress::try_new(to_usize as *const _).expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
                 assert!(matches!(desc.ty(), DescriptorType::Invalid));
@@ -1033,8 +1037,8 @@ mod test {
 
         assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
-        let from = VirtualAddress::new(0x012345678000 as *const u8).unwrap();
-        let to = PhysicalAddress::new(0x012345678000 as *const u8).unwrap();
+        let from = VirtualAddress::try_new(0x012345678000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_new(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Could add region");
@@ -1086,8 +1090,8 @@ mod test {
 
         assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
-        let from = VirtualAddress::new(0x10000000000 as *const u8).unwrap();
-        let to = PhysicalAddress::new(0x10000000000 as *const u8).unwrap();
+        let from = VirtualAddress::try_new(0x10000000000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_new(0x10000000000 as *const u8).unwrap();
         let size = 0x800000000;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Could add region");
