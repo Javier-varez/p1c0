@@ -61,9 +61,22 @@ pub extern "C" fn kernel_main() {
 mod tests {
     use super::print_boot_args;
     use m1::boot_args::get_boot_args;
+    use m1::generic_timer::get_timer;
 
     #[test_case]
     fn test_print_boot_args() {
         print_boot_args(get_boot_args());
+    }
+
+    #[test_case]
+    fn test_system_timer() {
+        let timer = get_timer();
+        let resolution = timer.resolution();
+        crate::println!("Timer resolution is {}", resolution);
+        let old_ticks = timer.ticks();
+        crate::println!("Timer ticks is {}", old_ticks);
+        let new_ticks = timer.ticks();
+        crate::println!("Timer ticks is {}", new_ticks);
+        assert!(new_ticks > old_ticks);
     }
 }
