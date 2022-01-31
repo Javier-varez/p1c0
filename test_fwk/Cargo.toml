@@ -9,10 +9,12 @@ required-features = ["m1_runner"]
 
 [features]
 default = []
-m1_runner = ["xshell", "structopt"]
+m1_runner = ["xshell", "structopt", "toml", "anyhow"]
 
 [dependencies]
 arm-semihosting = "0.1.0"
 ansi_rgb = "0.2.0"
 xshell = { version = "0.1.17", optional = true }
 structopt = { version = "0.3.25", optional = true }
+toml = { version = "0.5.8", optional = true }
+anyhow = { version = "1.0.53", optional = true }

@@ -34,3 +34,8 @@ test-fwk = { path = "../test_fwk" }
 
 [build-dependencies]
 cc = "1.0"
+
+# Enable the following to show output during test runs
+# [m1_runner]
+# show_stdio = true
+# show_display = true
