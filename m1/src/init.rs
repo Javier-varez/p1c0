@@ -20,7 +20,7 @@ static mut BASE: *const u8 = core::ptr::null();
 
 fn transition_to_el1(stack_bottom: *const ()) -> ! {
     // Do not trap timer to EL2.
-    CNTHCTL_EL2.write(CNTHCTL_EL2::EL1PCTEN::CLEAR + CNTHCTL_EL2::EL1PCEN::CLEAR);
+    CNTHCTL_EL2.write(CNTHCTL_EL2::EL1PCTEN::SET + CNTHCTL_EL2::EL1PCEN::SET);
     CNTVOFF_EL2.set(0);
 
     // EL1 is Aarch64
