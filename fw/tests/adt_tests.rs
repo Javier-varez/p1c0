@@ -9,7 +9,7 @@ extern crate alloc;
 
 use alloc::vec;
 use alloc::vec::Vec;
-use m1::adt::get_adt;
+use p1c0_kernel::adt::get_adt;
 
 #[allow(unused_imports)]
 use p1c0::*;

@@ -1,7 +1,7 @@
 [workspace]
 
 members = [
-    "m1",
+    "p1c0_kernel",
     "test_fwk"
 ]
 

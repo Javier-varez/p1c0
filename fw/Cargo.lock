@@ -229,17 +229,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "m1"
-version = "0.1.0"
-dependencies = [
- "cortex-a",
- "embedded-graphics",
- "heapless",
- "spin",
- "tock-registers",
-]
-
-[[package]]
 name = "memchr"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -293,9 +282,20 @@ dependencies = [
  "cc",
  "cortex-a",
  "embedded-graphics",
- "m1",
+ "p1c0-kernel",
  "test-fwk",
  "tinybmp",
+ "tock-registers",
+]
+
+[[package]]
+name = "p1c0-kernel"
+version = "0.1.0"
+dependencies = [
+ "cortex-a",
+ "embedded-graphics",
+ "heapless",
+ "spin",
  "tock-registers",
 ]
 
