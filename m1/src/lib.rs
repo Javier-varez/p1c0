@@ -6,15 +6,11 @@ pub mod arch;
 pub mod boot_args;
 pub mod chickens;
 mod collections;
-pub mod display;
-pub mod font;
-pub mod generic_timer;
+pub mod drivers;
+mod font;
 pub mod init;
 pub mod macros;
 pub mod registers;
-pub mod spi;
-pub mod uart;
-pub mod wdt;
 
 const ADT_VIRT_BASE: usize = 0xFFFF000000000000;
 const KERNEL_LOGICAL_BASE: usize = 0xFFFF020000000000;
@@ -53,8 +49,8 @@ pub fn kla_to_pa_mut<T>(kla: *mut T) -> *mut T {
 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
-    display::_print(args);
-    uart::_print(args);
+    drivers::display::_print(args);
+    drivers::uart::_print(args);
 }
 
 /// Prints to the host through the display console interface

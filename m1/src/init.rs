@@ -11,7 +11,9 @@ use crate::{
         read_pc, RelaEntry,
     },
     boot_args::BootArgs,
-    chickens, println, uart, wdt, ADT_VIRT_BASE,
+    chickens,
+    drivers::{uart, wdt},
+    println, ADT_VIRT_BASE,
 };
 
 /// This is the original base passed by iBoot into the kernel. Does NOT change after kernel
