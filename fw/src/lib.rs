@@ -61,7 +61,7 @@ pub extern "C" fn kernel_main() {
 mod tests {
     use super::print_boot_args;
     use m1::boot_args::get_boot_args;
-    use m1::generic_timer::get_timer;
+    use m1::drivers::generic_timer::get_timer;
 
     #[test_case]
     fn test_print_boot_args() {

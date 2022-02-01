@@ -13,9 +13,8 @@ use p1c0::print_boot_args;
 use m1::{
     adt::{get_adt, Adt},
     boot_args::get_boot_args,
-    display::Display,
+    drivers::{display::Display, spi::Spi},
     println,
-    spi::Spi,
 };
 
 #[cfg(feature = "emulator")]
