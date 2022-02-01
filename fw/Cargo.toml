@@ -19,7 +19,7 @@ emulator = ["arm-semihosting"]
 default = []
 
 [dependencies]
-m1 = { path = "../m1" }
+p1c0-kernel = { path = "../p1c0_kernel" }
 embedded-graphics = "0.7.1"
 tinybmp = "0.3.1"
 cortex-a = { git = "https://github.com/Javier-varez/cortex-a.git", branch = "master" }

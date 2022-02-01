@@ -10,8 +10,9 @@ use tinybmp::Bmp;
 
 use p1c0::print_boot_args;
 
-use m1::{
+use p1c0_kernel::{
     adt::{get_adt, Adt},
+    arch::get_exception_level,
     boot_args::get_boot_args,
     drivers::{display::Display, spi::Spi},
     println,
@@ -46,7 +47,7 @@ fn kernel_entry() {
     Display::init(&logo);
 
     println!("p1c0 running on Apple M1 Pro");
-    println!("Exception level: {:?}", m1::arch::get_exception_level());
+    println!("Exception level: {:?}", get_exception_level());
     println!();
 
     let boot_args = get_boot_args();

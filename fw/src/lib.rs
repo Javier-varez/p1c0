@@ -5,8 +5,7 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(default_alloc_error_handler)]
 
-use m1::boot_args::BootArgs;
-use m1::println;
+use p1c0_kernel::{boot_args::BootArgs, println};
 
 #[panic_handler]
 #[cfg(test)]
@@ -60,8 +59,7 @@ pub extern "C" fn kernel_main() {
 #[cfg(test)]
 mod tests {
     use super::print_boot_args;
-    use m1::boot_args::get_boot_args;
-    use m1::drivers::generic_timer::get_timer;
+    use p1c0_kernel::{boot_args::get_boot_args, drivers::generic_timer::get_timer};
 
     #[test_case]
     fn test_print_boot_args() {
