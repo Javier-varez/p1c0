@@ -14,7 +14,10 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use core::mem::MaybeUninit;
 use early_alloc::{AllocRef, EarlyAllocator};
 
-use crate::memory::address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress};
+use crate::memory::{
+    address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress},
+    Attributes, Permissions,
+};
 
 #[cfg(not(test))]
 use crate::println;
@@ -33,73 +36,42 @@ pub enum Error {
     UnalignedAddress,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Attributes {
-    Normal = 0,
-    DevicenGnRnE = 1,
-    DevicenGnRE = 2,
+const MAIR_ATTR_OFFSET: usize = 2;
+fn mair_index_from_attrs(attrs: Attributes) -> u64 {
+    ((attrs as u64) & 0x7) << MAIR_ATTR_OFFSET
 }
 
-impl TryFrom<u64> for Attributes {
-    type Error = ();
-    fn try_from(value: u64) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Attributes::Normal),
-            1 => Ok(Attributes::DevicenGnRE),
-            2 => Ok(Attributes::DevicenGnRnE),
-            _ => Err(()),
-        }
+fn attributes_from_mapping(mapping: u64) -> Result<Attributes, Error> {
+    Ok(Attributes::try_from((mapping >> MAIR_ATTR_OFFSET) & 0x7).unwrap())
+}
+
+fn permission_ap_bits(permissions: Permissions) -> u64 {
+    match permissions {
+        Permissions::RWX | Permissions::RW => 0b00 << 6,
+        Permissions::RX | Permissions::RO => 0b10 << 6,
     }
 }
 
-impl Attributes {
-    const MAIR_ATTR_OFFSET: usize = 2;
-    fn mair_index(&self) -> u64 {
-        ((*self as u64) & 0x7) << Self::MAIR_ATTR_OFFSET
-    }
-
-    fn from_mapping(mapping: u64) -> Result<Attributes, Error> {
-        Ok(Attributes::try_from((mapping >> Self::MAIR_ATTR_OFFSET) & 0x7).unwrap())
+fn permission_nx_bits(permissions: Permissions) -> u64 {
+    match permissions {
+        Permissions::RWX | Permissions::RX => 0,
+        Permissions::RW | Permissions::RO => 0x3 << 53, // UXN and PXN bits
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Permissions {
-    RWX = 0,
-    RW = 1,
-    RX = 2,
-    RO = 3,
+fn permission_bits(permissions: Permissions) -> u64 {
+    permission_ap_bits(permissions) | permission_nx_bits(permissions)
 }
 
-impl Permissions {
-    fn ap_bits(&self) -> u64 {
-        match *self {
-            Permissions::RWX | Permissions::RW => 0b00 << 6,
-            Permissions::RX | Permissions::RO => 0b10 << 6,
-        }
-    }
+fn permissions_from_mapping(mapping: u64) -> Permissions {
+    let exec = (mapping & (0x03 << 53)) == 0;
+    let writable = (mapping & (0b10 << 6)) == 0;
 
-    fn nx_bits(&self) -> u64 {
-        match *self {
-            Permissions::RWX | Permissions::RX => 0,
-            Permissions::RW | Permissions::RO => 0x3 << 53, // UXN and PXN bits
-        }
-    }
-
-    fn bits(&self) -> u64 {
-        self.ap_bits() | self.nx_bits()
-    }
-
-    fn from_mapping(mapping: u64) -> Permissions {
-        let exec = (mapping & (0x03 << 53)) == 0;
-        let writable = (mapping & (0b10 << 6)) == 0;
-
-        match (exec, writable) {
-            (false, false) => Permissions::RO,
-            (true, false) => Permissions::RX,
-            (false, true) => Permissions::RW,
-            (true, true) => Permissions::RWX,
-        }
+    match (exec, writable) {
+        (false, false) => Permissions::RO,
+        (true, false) => Permissions::RX,
+        (false, true) => Permissions::RW,
+        (true, true) => Permissions::RWX,
     }
 }
 
@@ -161,9 +133,9 @@ impl DescriptorEntry {
             Self::VALID_BIT
                 | Self::ACCESS_FLAG
                 | (physical_addr.as_usize() as u64 & PA_MASK)
-                | attributes.mair_index()
+                | mair_index_from_attrs(attributes)
                 | Self::SHAREABILITY
-                | permissions.bits(),
+                | permission_bits(permissions),
         )
     }
 
@@ -178,9 +150,9 @@ impl DescriptorEntry {
                 | Self::PAGE_BIT
                 | Self::ACCESS_FLAG
                 | (physical_addr.as_u64() & PA_MASK)
-                | attributes.mair_index()
+                | mair_index_from_attrs(attributes)
                 | Self::SHAREABILITY
-                | permissions.bits(),
+                | permission_bits(permissions),
         )
     }
 
@@ -233,14 +205,14 @@ impl DescriptorEntry {
 
     fn attrs(&self) -> Option<Attributes> {
         match self.ty() {
-            DescriptorType::Page | DescriptorType::Block => Attributes::from_mapping(self.0).ok(),
+            DescriptorType::Page | DescriptorType::Block => attributes_from_mapping(self.0).ok(),
             _ => None,
         }
     }
 
     fn permissions(&self) -> Option<Permissions> {
         match self.ty() {
-            DescriptorType::Page | DescriptorType::Block => Some(Permissions::from_mapping(self.0)),
+            DescriptorType::Page | DescriptorType::Block => Some(permissions_from_mapping(self.0)),
             _ => None,
         }
     }

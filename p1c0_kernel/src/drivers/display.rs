@@ -17,7 +17,10 @@ use crate::arch::mmu;
 
 use spin::Mutex;
 
-use crate::memory::address::{Address, PhysicalAddress};
+use crate::memory::{
+    address::{Address, PhysicalAddress},
+    Attributes, Permissions,
+};
 
 const RETINA_DEPTH_FLAG: usize = 1 << 16;
 
@@ -81,7 +84,7 @@ impl Display {
             .map(|kla| kla.into_virtual())
             .expect("Framebuffer does not have a logical address");
 
-        mm_unit.map_region(va, pa, size, mmu::Attributes::Normal, mmu::Permissions::RW)?;
+        mm_unit.map_region(va, pa, size, Attributes::Normal, Permissions::RW)?;
 
         Ok(va.as_ptr() as *mut u32)
     }
