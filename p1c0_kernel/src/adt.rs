@@ -14,6 +14,8 @@ use core::{mem, slice, str};
 
 use heapless::Vec;
 
+use crate::memory::address::Address;
+
 /// ADT Memory layout
 ///
 /// There is no header for the ADT. At offset 0 the first node can be found.
@@ -401,7 +403,7 @@ pub fn get_adt() -> Result<Adt, Error> {
                 .offset(-(boot_args.virt_base as isize))
                 .add(boot_args.phys_base)
         } else {
-            crate::ADT_VIRT_BASE as *const u8
+            crate::memory::map::ADT_VIRTUAL_BASE.as_ptr()
         };
         Adt::new(addr)
     }

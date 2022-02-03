@@ -17,6 +17,8 @@ use crate::arch::mmu;
 
 use spin::Mutex;
 
+use crate::memory::address::{Address, PhysicalAddress};
+
 const RETINA_DEPTH_FLAG: usize = 1 << 16;
 
 const ROW_MARGIN: u32 = 10;
@@ -73,18 +75,15 @@ impl Display {
     pub fn map_fb(base: *mut u32, size: usize) -> Result<*mut u32, mmu::Error> {
         let mm_unit = unsafe { &mut mmu::MMU };
 
-        let va = crate::pa_to_kla_mut(base);
-        let pa = base;
+        let pa = PhysicalAddress::try_from_ptr(base as *const u8).expect("Framebuffer is aligned");
+        let va = pa
+            .try_into_logical()
+            .map(|kla| kla.into_virtual())
+            .expect("Framebuffer does not have a logical address");
 
-        mm_unit.map_region(
-            mmu::VirtualAddress::try_new(va as *const u8).unwrap(),
-            mmu::PhysicalAddress::try_new(pa as *const u8).unwrap(),
-            size,
-            mmu::Attributes::Normal,
-            mmu::Permissions::RW,
-        )?;
+        mm_unit.map_region(va, pa, size, mmu::Attributes::Normal, mmu::Permissions::RW)?;
 
-        Ok(va)
+        Ok(va.as_ptr() as *mut u32)
     }
 
     /// Initializes the display HW with the given logo to work as a console.

@@ -10,42 +10,8 @@ pub mod drivers;
 mod font;
 pub mod init;
 pub mod macros;
+pub mod memory;
 pub mod registers;
-
-const ADT_VIRT_BASE: usize = 0xFFFF000000000000;
-const KERNEL_LOGICAL_BASE: usize = 0xFFFF020000000000;
-
-pub fn pa_to_kla<T>(pa: *const T) -> *const T {
-    if cfg!(test) {
-        pa
-    } else {
-        (pa as usize + KERNEL_LOGICAL_BASE) as *const _
-    }
-}
-
-pub fn pa_to_kla_mut<T>(pa: *mut T) -> *mut T {
-    if cfg!(test) {
-        pa
-    } else {
-        (pa as usize + KERNEL_LOGICAL_BASE) as *mut _
-    }
-}
-
-pub fn kla_to_pa<T>(kla: *const T) -> *const T {
-    if cfg!(test) {
-        kla
-    } else {
-        (kla as usize - KERNEL_LOGICAL_BASE) as *const _
-    }
-}
-
-pub fn kla_to_pa_mut<T>(kla: *mut T) -> *mut T {
-    if cfg!(test) {
-        kla
-    } else {
-        (kla as usize - KERNEL_LOGICAL_BASE) as *mut _
-    }
-}
 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {

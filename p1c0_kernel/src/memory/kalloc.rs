@@ -13,12 +13,18 @@ static ALLOCATOR: LockedHeapAllocator = LockedHeapAllocator::new();
 #[cfg(test)]
 static ALLOCATOR: LockedHeapAllocator = LockedHeapAllocator::new();
 
+extern "C" {
+    static _arena_start: u8;
+    static _arena_size: u8;
+}
+
 /// # Safety
-///   `base_addr` must point to a valid memory block that will be owned by the allocator with size
-///   `size`. No other objects will make use of any memory inside the memory block unless this
+///   No other objects will make use of any memory inside the memory block unless this
 ///   memory has been allocated through the global allocator.
-pub unsafe fn init(base_addr: *mut u8, size: usize) {
-    ALLOCATOR.lock().init(base_addr, size);
+pub unsafe fn init() {
+    let arena_size = (&_arena_size) as *const u8 as usize;
+    let arena_start = (&_arena_start) as *const _ as *mut u8;
+    ALLOCATOR.lock().init(arena_start, arena_size);
 }
 
 fn aligned_address_with_layout(

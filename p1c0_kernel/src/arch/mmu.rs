@@ -14,14 +14,14 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use core::mem::MaybeUninit;
 use early_alloc::{AllocRef, EarlyAllocator};
 
-use crate::pa_to_kla;
+use crate::memory::address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress};
 
 #[cfg(not(test))]
 use crate::println;
 
-const VA_MASK: u64 = (1 << 48) - (1 << 14);
-const PA_MASK: u64 = (1 << 48) - (1 << 14);
-const PAGE_SIZE: usize = 1 << 14;
+pub const VA_MASK: u64 = (1 << 48) - (1 << 14);
+pub const PA_MASK: u64 = (1 << 48) - (1 << 14);
+pub const PAGE_SIZE: usize = 1 << 14;
 
 const EARLY_ALLOCATOR_SIZE: usize = 128 * 1024;
 static EARLY_ALLOCATOR: EarlyAllocator<EARLY_ALLOCATOR_SIZE> = EarlyAllocator::new();
@@ -103,67 +103,6 @@ impl Permissions {
     }
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
-pub struct VirtualAddress(*const u8);
-
-impl VirtualAddress {
-    pub fn try_new(addr: *const u8) -> Result<Self, Error> {
-        let addr_usize = addr as usize;
-        if (addr_usize & (PAGE_SIZE - 1)) != 0 {
-            return Err(Error::UnalignedAddress);
-        }
-        Ok(Self(addr))
-    }
-
-    /// # Safety
-    ///   The user must guarantee that the resulting pointer is a valid VirtualAddress after this
-    ///   operation. This means that it is within the limits of addressable virtual memory.
-    #[must_use]
-    pub unsafe fn offset(&self, offset: usize) -> Self {
-        Self(self.0.add(offset))
-    }
-
-    fn is_high_address(&self) -> bool {
-        let high_bits = self.0 as usize >> 48;
-        if high_bits == 0xFFFF {
-            true
-        } else if high_bits == 0x0000 {
-            false
-        } else {
-            panic!("Virtual address is invalid");
-        }
-    }
-}
-
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
-pub struct PhysicalAddress(*const u8);
-
-impl PhysicalAddress {
-    pub fn try_new(addr: *const u8) -> Result<Self, Error> {
-        let addr_usize = addr as usize;
-        if (addr_usize & (PAGE_SIZE - 1)) != 0 {
-            return Err(Error::UnalignedAddress);
-        }
-        Ok(Self(addr))
-    }
-
-    pub fn from_unaligned(addr: *const u8) -> Result<Self, Error> {
-        let mut addr_usize = addr as usize;
-        addr_usize &= !(PAGE_SIZE - 1);
-        Ok(Self(addr_usize as *const u8))
-    }
-
-    /// # Safety
-    ///   The user must guarantee that the resulting pointer is a valid PhysicalAddress after this
-    ///   operation. This means that it is within the limits of addressable physical memory and
-    ///   points to a valid physical address backed by some memory device (either memory mapped IO or
-    ///   regular memory).
-    #[must_use]
-    pub unsafe fn offset(&self, offset: usize) -> Self {
-        Self(self.0.add(offset))
-    }
-}
-
 #[derive(Eq, PartialEq, Debug)]
 enum DescriptorType {
     Invalid,
@@ -202,11 +141,12 @@ impl DescriptorEntry {
             unsafe { (*table).write(LevelTable::new()) };
             table as *mut LevelTable
         } else {
-            // This gives a virtual memory address, we need to translate it to its physical
+            // This gives a logical memory address, we need to translate it to its physical
             // address for the table
             let table = Box::new(LevelTable::new());
-            let addr = Box::leak(table) as *mut LevelTable;
-            crate::kla_to_pa_mut(addr)
+            let kla = LogicalAddress::try_from_ptr(Box::leak(table) as *mut LevelTable as *mut u8)
+                .expect("Level table is aligned to 16kB");
+            kla.into_physical().as_ptr() as *mut u8 as *mut LevelTable
         };
         let early_bit = if early { Self::EARLY_BIT } else { 0 };
         Self(Self::VALID_BIT | Self::TABLE_BIT | (table_addr as u64 & PA_MASK) | early_bit)
@@ -220,7 +160,7 @@ impl DescriptorEntry {
         Self(
             Self::VALID_BIT
                 | Self::ACCESS_FLAG
-                | (physical_addr.0 as u64 & PA_MASK)
+                | (physical_addr.as_usize() as u64 & PA_MASK)
                 | attributes.mair_index()
                 | Self::SHAREABILITY
                 | permissions.bits(),
@@ -237,7 +177,7 @@ impl DescriptorEntry {
                 | Self::TABLE_BIT
                 | Self::PAGE_BIT
                 | Self::ACCESS_FLAG
-                | (physical_addr.0 as u64 & PA_MASK)
+                | (physical_addr.as_u64() & PA_MASK)
                 | attributes.mair_index()
                 | Self::SHAREABILITY
                 | permissions.bits(),
@@ -247,9 +187,16 @@ impl DescriptorEntry {
     fn get_table(&mut self) -> Option<&mut LevelTable> {
         match self.ty() {
             DescriptorType::Table => {
-                let table_ptr = (self.0 & VA_MASK) as *mut _;
+                let table_ptr = (self.0 & VA_MASK) as *mut LevelTable;
                 if unsafe { MMU.is_initialized() } {
-                    let table_ptr = crate::pa_to_kla_mut(table_ptr);
+                    // If the MMU is initialized we have a physical pointer that should have a
+                    // corresponding logical address.
+                    let pa = PhysicalAddress::try_from_ptr(table_ptr as *const _)
+                        .expect("Tables should always be aligned to 16kB");
+                    let table_ptr = pa
+                        .try_into_logical()
+                        .map(|kla| kla.as_ptr() as *mut LevelTable)
+                        .expect("table ptr is not a logical address");
                     Some(unsafe { &mut *table_ptr })
                 } else {
                     Some(unsafe { &mut *table_ptr })
@@ -278,7 +225,7 @@ impl DescriptorEntry {
     fn pa(&self) -> Option<PhysicalAddress> {
         match self.ty() {
             DescriptorType::Page | DescriptorType::Block => {
-                Some(PhysicalAddress((self.0 & PA_MASK) as *const u8))
+                Some(unsafe { PhysicalAddress::new_unchecked((self.0 & PA_MASK) as *const u8) })
             }
             _ => None,
         }
@@ -368,12 +315,12 @@ impl TranslationLevel {
     }
 
     fn table_index_for_addr(&self, va: VirtualAddress) -> usize {
-        let va = va.0 as usize;
+        let va = va.as_ptr() as usize;
         (va & self.va_mask()) >> self.offset()
     }
 
     fn is_address_aligned(&self, va: VirtualAddress) -> bool {
-        let va = va.0 as usize;
+        let va = va.as_ptr() as usize;
         (va % self.entry_size()) == 0
     }
 
@@ -583,50 +530,54 @@ impl MemoryManagementUnit {
         let text_start_addr = unsafe { &_text_start as *const u8 };
         let text_end_addr = unsafe { &_text_end as *const u8 };
         let text_size = unsafe { text_end_addr.offset_from(text_start_addr) as usize };
-        self.map_region(
-            VirtualAddress::try_new(pa_to_kla(text_start_addr))
-                .expect("Address is aligned to page size"),
-            PhysicalAddress::try_new(text_start_addr).expect("Address is aligned to page size"),
-            text_size,
-            Attributes::Normal,
-            Permissions::RX,
-        )?;
+
+        let pa = PhysicalAddress::try_from_ptr(text_start_addr)
+            .expect("text is not aligned to page size");
+        let va = pa
+            .try_into_logical()
+            .map(|kla| kla.into_virtual())
+            .expect("text can't be mapped as logical");
+
+        self.map_region(va, pa, text_size, Attributes::Normal, Permissions::RX)?;
 
         let rodata_start_addr = unsafe { &_rodata_start as *const u8 };
         let rodata_end_addr = unsafe { &_rodata_end as *const u8 };
         let rodata_size = unsafe { rodata_end_addr.offset_from(rodata_start_addr) as usize };
-        self.map_region(
-            VirtualAddress::try_new(pa_to_kla(rodata_start_addr))
-                .expect("Address is aligned to page size"),
-            PhysicalAddress::try_new(rodata_start_addr).expect("Address is aligned to page size"),
-            rodata_size,
-            Attributes::Normal,
-            Permissions::RO,
-        )?;
+
+        let pa = PhysicalAddress::try_from_ptr(rodata_start_addr)
+            .expect("rodata is not aligned to page size");
+        let va = pa
+            .try_into_logical()
+            .map(|kla| kla.into_virtual())
+            .expect("rodata can't be mapped as logical");
+
+        self.map_region(va, pa, rodata_size, Attributes::Normal, Permissions::RO)?;
 
         let data_start_addr = unsafe { &_data_start as *const u8 };
         let data_end_addr = unsafe { &_data_end as *const u8 };
         let data_size = unsafe { data_end_addr.offset_from(data_start_addr) as usize };
-        self.map_region(
-            VirtualAddress::try_new(pa_to_kla(data_start_addr))
-                .expect("Address is aligned to page size"),
-            PhysicalAddress::try_new(data_start_addr).expect("Address is aligned to page size"),
-            data_size,
-            Attributes::Normal,
-            Permissions::RW,
-        )?;
+
+        let pa = PhysicalAddress::try_from_ptr(data_start_addr)
+            .expect("data is not aligned to page size");
+        let va = pa
+            .try_into_logical()
+            .map(|kla| kla.into_virtual())
+            .expect("data can't be mapped as logical");
+
+        self.map_region(va, pa, data_size, Attributes::Normal, Permissions::RW)?;
 
         let arena_start_addr = unsafe { &_arena_start as *const u8 };
         let arena_end_addr = unsafe { &_arena_end as *const u8 };
         let arena_size = unsafe { arena_end_addr.offset_from(arena_start_addr) as usize };
-        self.map_region(
-            VirtualAddress::try_new(pa_to_kla(arena_start_addr))
-                .expect("Address is aligned to page size"),
-            PhysicalAddress::try_new(arena_start_addr).expect("Address is aligned to page size"),
-            arena_size,
-            Attributes::Normal,
-            Permissions::RW,
-        )?;
+
+        let pa = PhysicalAddress::try_from_ptr(arena_start_addr)
+            .expect("arena is not aligned to page size");
+        let va = pa
+            .try_into_logical()
+            .map(|kla| kla.into_virtual())
+            .expect("arena can't be mapped as logical");
+
+        self.map_region(va, pa, arena_size, Attributes::Normal, Permissions::RW)?;
 
         Ok(())
     }
@@ -646,33 +597,35 @@ impl MemoryManagementUnit {
 
         // Add initial identity mapping. To be removed after relocation.
         self.map_region(
-            VirtualAddress::try_new(dram_base).expect("Address is aligned to page size"),
-            PhysicalAddress::try_new(dram_base).expect("Address is aligned to page size"),
+            VirtualAddress::try_from_ptr(dram_base).expect("Address is not aligned to page size"),
+            PhysicalAddress::try_from_ptr(dram_base).expect("Address is not aligned to page size"),
             dram_size,
             Attributes::Normal,
             Permissions::RWX,
         )
-        .expect("No other mapping overlaps");
+        .expect("Mappings overlap");
 
-        self.add_kernel_mappings().expect("Kernel can be mapped");
+        self.add_kernel_mappings()
+            .expect("Kernel can not be mapped");
 
         // Map mmio ranges as defined in the ADT
 
         let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
-        let node = adt.find_node("/arm-io").expect("There is an arm-io");
+        let node = adt.find_node("/arm-io").expect("There is not an arm-io");
         let range_iter = node.range_iter(root_address_cells);
         for range in range_iter {
             let mmio_region_base = range.get_parent_addr() as *const u8;
             let mmio_region_size = range.get_size();
             self.map_region(
-                VirtualAddress::try_new(mmio_region_base).expect("Address is aligned to page size"),
-                PhysicalAddress::try_new(mmio_region_base)
-                    .expect("Address is aligned to page size"),
+                VirtualAddress::try_from_ptr(mmio_region_base)
+                    .expect("Address is not aligned to page size"),
+                PhysicalAddress::try_from_ptr(mmio_region_base)
+                    .expect("Address is not aligned to page size"),
                 mmio_region_size,
                 Attributes::DevicenGnRnE,
                 Permissions::RWX,
             )
-            .expect("No other mapping overlaps");
+            .expect("Mappings overlap");
         }
     }
 
@@ -822,8 +775,8 @@ mod test {
 
         assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
-        let from = VirtualAddress::try_new(0x012345678000 as *const u8).unwrap();
-        let to = PhysicalAddress::try_new(0x012345678000 as *const u8).unwrap();
+        let from = VirtualAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -873,8 +826,8 @@ mod test {
 
         assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
-        let from = VirtualAddress::try_new(0x12344000000 as *const u8).unwrap();
-        let to = PhysicalAddress::try_new(0x12344000000 as *const u8).unwrap();
+        let from = VirtualAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = 1 << 25;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -917,8 +870,8 @@ mod test {
         let block_size = 1 << 25;
         let page_size = 1 << 14;
 
-        let from = VirtualAddress::try_new(0x12344000000 as *const u8).unwrap();
-        let to = PhysicalAddress::try_new(0x12344000000 as *const u8).unwrap();
+        let from = VirtualAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -953,9 +906,9 @@ mod test {
         for (idx, desc) in level3.table.iter().enumerate() {
             if idx < 4 {
                 assert!(matches!(desc.ty(), DescriptorType::Page));
-                let to_usize = to.0 as usize + block_size + page_size * idx;
-                let to =
-                    PhysicalAddress::try_new(to_usize as *const _).expect("Address is aligned");
+                let to_usize = to.as_usize() + block_size + page_size * idx;
+                let to = PhysicalAddress::try_from_ptr(to_usize as *const _)
+                    .expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
                 assert!(matches!(desc.ty(), DescriptorType::Invalid));
@@ -977,8 +930,8 @@ mod test {
         let page_size = 1 << 14;
         let va = 0x12344000000 + page_size * 2044;
 
-        let from = VirtualAddress::try_new(va as *const u8).unwrap();
-        let to = PhysicalAddress::try_new(0x12344000000 as *const u8).unwrap();
+        let from = VirtualAddress::try_from_ptr(va as *const u8).unwrap();
+        let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
@@ -1003,9 +956,9 @@ mod test {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
             } else if idx == 0x1a3 {
                 assert!(matches!(desc.ty(), DescriptorType::Block));
-                let to_usize = to.0 as usize + page_size * 4;
-                let to =
-                    PhysicalAddress::try_new(to_usize as *const _).expect("Address is aligned");
+                let to_usize = to.as_usize() + page_size * 4;
+                let to = PhysicalAddress::try_from_ptr(to_usize as *const _)
+                    .expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
                 assert!(matches!(desc.ty(), DescriptorType::Invalid));
@@ -1017,9 +970,9 @@ mod test {
         for (idx, desc) in level3.table.iter().enumerate() {
             if idx >= 2044 {
                 assert!(matches!(desc.ty(), DescriptorType::Page));
-                let to_usize = to.0 as usize + page_size * (idx - 2044);
-                let to =
-                    PhysicalAddress::try_new(to_usize as *const _).expect("Address is aligned");
+                let to_usize = to.as_usize() + page_size * (idx - 2044);
+                let to = PhysicalAddress::try_from_ptr(to_usize as *const _)
+                    .expect("Address is aligned");
                 assert_eq!(desc.pa(), Some(to));
             } else {
                 assert!(matches!(desc.ty(), DescriptorType::Invalid));
@@ -1037,8 +990,8 @@ mod test {
 
         assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
-        let from = VirtualAddress::try_new(0x012345678000 as *const u8).unwrap();
-        let to = PhysicalAddress::try_new(0x012345678000 as *const u8).unwrap();
+        let from = VirtualAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Could add region");
@@ -1090,8 +1043,8 @@ mod test {
 
         assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
 
-        let from = VirtualAddress::try_new(0x10000000000 as *const u8).unwrap();
-        let to = PhysicalAddress::try_new(0x10000000000 as *const u8).unwrap();
+        let from = VirtualAddress::try_from_ptr(0x10000000000 as *const u8).unwrap();
+        let to = PhysicalAddress::try_from_ptr(0x10000000000 as *const u8).unwrap();
         let size = 0x800000000;
         mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Could add region");
