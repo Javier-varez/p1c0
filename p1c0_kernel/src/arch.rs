@@ -1,7 +1,6 @@
 use cortex_a::{asm, registers::CurrentEL};
 use tock_registers::interfaces::Readable;
 
-pub mod alloc;
 pub mod exceptions;
 pub mod mmu;
 
