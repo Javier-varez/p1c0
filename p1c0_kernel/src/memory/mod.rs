@@ -7,11 +7,35 @@ extern crate alloc as alloc;
 use crate::arch;
 use spin::{Mutex, MutexGuard};
 
-// Reexport these elements
-pub use arch::mmu::{Attributes, Permissions};
-
 use address::{PhysicalAddress, VirtualAddress};
 use map::ADT_VIRTUAL_BASE;
+
+#[derive(Clone, Copy, Debug)]
+pub enum Attributes {
+    Normal = 0,
+    DevicenGnRnE = 1,
+    DevicenGnRE = 2,
+}
+
+impl TryFrom<u64> for Attributes {
+    type Error = ();
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Attributes::Normal),
+            1 => Ok(Attributes::DevicenGnRE),
+            2 => Ok(Attributes::DevicenGnRnE),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Permissions {
+    RWX,
+    RW,
+    RX,
+    RO,
+}
 
 static MEMORY_MANAGER: Mutex<MemoryManager> = Mutex::new(MemoryManager::new());
 
