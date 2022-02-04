@@ -26,8 +26,6 @@ pub enum Error {
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub struct VirtualAddress(*const u8);
 
-unsafe impl Send for VirtualAddress {}
-
 impl VirtualAddress {
     /// # Safety
     ///   The pointer must be a valid virtual address
@@ -71,8 +69,6 @@ impl Address for VirtualAddress {
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub struct PhysicalAddress(*const u8);
-
-unsafe impl Send for PhysicalAddress {}
 
 impl PhysicalAddress {
     #[must_use]
@@ -196,3 +192,8 @@ impl core::fmt::Display for LogicalAddress {
         write!(f, "LogicalAddress({:?})", self.as_ptr())
     }
 }
+
+// All memory addresses can be shared freely between threads,
+unsafe impl Send for VirtualAddress {}
+unsafe impl Send for PhysicalAddress {}
+unsafe impl Send for LogicalAddress {}

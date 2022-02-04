@@ -1,14 +1,37 @@
 pub mod address;
+pub mod address_space;
 pub mod kalloc;
 pub mod map;
 
-extern crate alloc as alloc;
+extern crate alloc;
 
 use crate::arch;
+
+use address::{LogicalAddress, PhysicalAddress, VirtualAddress};
+use address_space::KernelAddressSpace;
+use map::ADT_VIRTUAL_BASE;
+
 use spin::{Mutex, MutexGuard};
 
-use address::{PhysicalAddress, VirtualAddress};
-use map::ADT_VIRTUAL_BASE;
+use self::address_space::MemoryRange;
+
+#[derive(Clone, Debug)]
+pub enum Error {
+    ArchitectureSpecific(arch::mmu::Error),
+    AddressSpaceError(address_space::Error),
+}
+
+impl From<arch::mmu::Error> for Error {
+    fn from(inner: arch::mmu::Error) -> Self {
+        Error::ArchitectureSpecific(inner)
+    }
+}
+
+impl From<address_space::Error> for Error {
+    fn from(inner: address_space::Error) -> Self {
+        Error::AddressSpaceError(inner)
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum Attributes {
@@ -37,13 +60,21 @@ pub enum Permissions {
     RO,
 }
 
+struct PhysicalPage {
+    _pfn: usize,
+}
+
 static MEMORY_MANAGER: Mutex<MemoryManager> = Mutex::new(MemoryManager::new());
 
-pub struct MemoryManager {}
+pub struct MemoryManager {
+    kernel_address_space: KernelAddressSpace,
+}
 
 impl MemoryManager {
     const fn new() -> Self {
-        Self {}
+        Self {
+            kernel_address_space: KernelAddressSpace::new(),
+        }
     }
 
     /// # Safety
@@ -60,10 +91,13 @@ impl MemoryManager {
     /// # Safety
     ///   Should be called after relocation so that the MemoryManager can remove the identity
     ///   mapping
-    pub unsafe fn late_init(&self) {
+    pub unsafe fn late_init(&mut self) {
+        // Make sure the global allocator is available after this, since we will need it
         kalloc::init();
+        self.initialize_address_space()
+            .expect("Kernel sections can be mapped");
 
-        // Here we relocate the adt
+        // Map ADT
         let boot_args = crate::boot_args::get_boot_args();
         let device_tree =
             boot_args.device_tree as usize - boot_args.virt_base + boot_args.phys_base;
@@ -95,5 +129,58 @@ impl MemoryManager {
         arch::mmu::MMU
             .unmap_region(dram_base, dram_size)
             .expect("Can remove identity mapping");
+    }
+
+    pub fn map_logical(
+        &mut self,
+        name: &str,
+        la: LogicalAddress,
+        size_bytes: usize,
+        attributes: Attributes,
+        permissions: Permissions,
+    ) -> Result<(), Error> {
+        let range = self.kernel_address_space.add_logical_range(
+            name,
+            la,
+            size_bytes,
+            attributes,
+            permissions,
+        )?;
+
+        unsafe {
+            arch::mmu::MMU.map_region(
+                range.la.into_virtual(),
+                range.la.into_physical(),
+                range.size_bytes,
+                range.attributes,
+                range.permissions,
+            )?
+        };
+
+        Ok(())
+    }
+
+    pub fn remove_mapping_by_name(&mut self, name: &str) -> Result<(), Error> {
+        let range = self.kernel_address_space.remove_range_by_name(name)?;
+        unsafe {
+            arch::mmu::MMU.unmap_region(range.virtual_address(), range.size_bytes())?;
+        }
+
+        Ok(())
+    }
+
+    fn initialize_address_space(&mut self) -> Result<(), Error> {
+        // Add kernel sections that are already mapped
+        for section_id in map::ALL_SECTIONS.iter() {
+            let section = map::KernelSection::from_id(*section_id);
+            self.kernel_address_space.add_logical_range(
+                section.name(),
+                section.la(),
+                section.size_bytes(),
+                Attributes::Normal,
+                section.permissions(),
+            )?;
+        }
+        Ok(())
     }
 }

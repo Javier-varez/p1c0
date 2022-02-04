@@ -16,6 +16,7 @@ use early_alloc::{AllocRef, EarlyAllocator};
 
 use crate::memory::{
     address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress},
+    map::{KernelSection, ALL_SECTIONS},
     Attributes, Permissions,
 };
 
@@ -30,7 +31,7 @@ const EARLY_ALLOCATOR_SIZE: usize = 128 * 1024;
 static EARLY_ALLOCATOR: EarlyAllocator<EARLY_ALLOCATOR_SIZE> = EarlyAllocator::new();
 pub static mut MMU: MemoryManagementUnit = MemoryManagementUnit::new();
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Error {
     OverlapsExistingMapping(VirtualAddress, TranslationLevel),
     UnalignedAddress,
@@ -472,17 +473,6 @@ impl LevelTable {
     }
 }
 
-extern "C" {
-    static _text_start: u8;
-    static _text_end: u8;
-    static _rodata_start: u8;
-    static _rodata_end: u8;
-    static _data_start: u8;
-    static _data_end: u8;
-    static _arena_start: u8;
-    static _arena_end: u8;
-}
-
 pub struct MemoryManagementUnit {
     initialized: bool,
     high_table: LevelTable,
@@ -498,59 +488,23 @@ impl MemoryManagementUnit {
         }
     }
 
+    fn add_kernel_mapping(&mut self, section: &KernelSection) -> Result<(), Error> {
+        let pa = section.pa();
+        let va = section.la().into_virtual();
+        self.map_region(
+            va,
+            pa,
+            section.size_bytes(),
+            Attributes::Normal,
+            section.permissions(),
+        )
+    }
+
     fn add_kernel_mappings(&mut self) -> Result<(), Error> {
-        let text_start_addr = unsafe { &_text_start as *const u8 };
-        let text_end_addr = unsafe { &_text_end as *const u8 };
-        let text_size = unsafe { text_end_addr.offset_from(text_start_addr) as usize };
-
-        let pa = PhysicalAddress::try_from_ptr(text_start_addr)
-            .expect("text is not aligned to page size");
-        let va = pa
-            .try_into_logical()
-            .map(|kla| kla.into_virtual())
-            .expect("text can't be mapped as logical");
-
-        self.map_region(va, pa, text_size, Attributes::Normal, Permissions::RX)?;
-
-        let rodata_start_addr = unsafe { &_rodata_start as *const u8 };
-        let rodata_end_addr = unsafe { &_rodata_end as *const u8 };
-        let rodata_size = unsafe { rodata_end_addr.offset_from(rodata_start_addr) as usize };
-
-        let pa = PhysicalAddress::try_from_ptr(rodata_start_addr)
-            .expect("rodata is not aligned to page size");
-        let va = pa
-            .try_into_logical()
-            .map(|kla| kla.into_virtual())
-            .expect("rodata can't be mapped as logical");
-
-        self.map_region(va, pa, rodata_size, Attributes::Normal, Permissions::RO)?;
-
-        let data_start_addr = unsafe { &_data_start as *const u8 };
-        let data_end_addr = unsafe { &_data_end as *const u8 };
-        let data_size = unsafe { data_end_addr.offset_from(data_start_addr) as usize };
-
-        let pa = PhysicalAddress::try_from_ptr(data_start_addr)
-            .expect("data is not aligned to page size");
-        let va = pa
-            .try_into_logical()
-            .map(|kla| kla.into_virtual())
-            .expect("data can't be mapped as logical");
-
-        self.map_region(va, pa, data_size, Attributes::Normal, Permissions::RW)?;
-
-        let arena_start_addr = unsafe { &_arena_start as *const u8 };
-        let arena_end_addr = unsafe { &_arena_end as *const u8 };
-        let arena_size = unsafe { arena_end_addr.offset_from(arena_start_addr) as usize };
-
-        let pa = PhysicalAddress::try_from_ptr(arena_start_addr)
-            .expect("arena is not aligned to page size");
-        let va = pa
-            .try_into_logical()
-            .map(|kla| kla.into_virtual())
-            .expect("arena can't be mapped as logical");
-
-        self.map_region(va, pa, arena_size, Attributes::Normal, Permissions::RW)?;
-
+        for section_id in ALL_SECTIONS.iter() {
+            let section = KernelSection::from_id(*section_id);
+            self.add_kernel_mapping(&section)?;
+        }
         Ok(())
     }
 
@@ -561,11 +515,11 @@ impl MemoryManagementUnit {
             .find_property("dram-base")
             .and_then(|prop| prop.usize_value().ok())
             .map(|addr| addr as *const u8)
-            .expect("There is a dram base");
+            .expect("There is no dram base");
         let dram_size = chosen
             .find_property("dram-size")
             .and_then(|prop| prop.usize_value().ok())
-            .expect("There is a dram base");
+            .expect("There is no dram base");
 
         // Add initial identity mapping. To be removed after relocation.
         self.map_region(
