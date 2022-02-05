@@ -15,6 +15,10 @@ pub trait Address {
     fn as_u64(&self) -> u64 {
         self.as_ptr() as u64
     }
+
+    fn is_page_aligned(&self) -> bool {
+        (self.as_usize() & (PAGE_SIZE - 1)) == 0
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -116,6 +120,12 @@ impl PhysicalAddress {
                 self.as_ptr().add(KERNEL_LOGICAL_BASE.as_usize())
             })
         }
+    }
+
+    pub fn offset_from(&self, other: PhysicalAddress) -> isize {
+        let self_isize = self.as_usize() as isize;
+        let other_isize = other.as_usize() as isize;
+        self_isize.wrapping_sub(other_isize)
     }
 }
 
