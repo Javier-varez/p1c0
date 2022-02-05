@@ -2,14 +2,16 @@ pub mod address;
 pub mod address_space;
 pub mod kalloc;
 pub mod map;
+pub mod physical_page_allocator;
 
 extern crate alloc;
 
-use crate::arch;
+use crate::arch::{self, mmu::PAGE_BITS};
 
 use address::{LogicalAddress, PhysicalAddress, VirtualAddress};
 use address_space::KernelAddressSpace;
 use map::ADT_VIRTUAL_BASE;
+use physical_page_allocator::PhysicalPageAllocator;
 
 use spin::{Mutex, MutexGuard};
 
@@ -19,6 +21,7 @@ use self::address_space::MemoryRange;
 pub enum Error {
     ArchitectureSpecific(arch::mmu::Error),
     AddressSpaceError(address_space::Error),
+    PageAllocationError(physical_page_allocator::Error),
 }
 
 impl From<arch::mmu::Error> for Error {
@@ -30,6 +33,12 @@ impl From<arch::mmu::Error> for Error {
 impl From<address_space::Error> for Error {
     fn from(inner: address_space::Error) -> Self {
         Error::AddressSpaceError(inner)
+    }
+}
+
+impl From<physical_page_allocator::Error> for Error {
+    fn from(inner: physical_page_allocator::Error) -> Self {
+        Error::PageAllocationError(inner)
     }
 }
 
@@ -60,20 +69,18 @@ pub enum Permissions {
     RO,
 }
 
-struct PhysicalPage {
-    _pfn: usize,
-}
-
 static MEMORY_MANAGER: Mutex<MemoryManager> = Mutex::new(MemoryManager::new());
 
 pub struct MemoryManager {
     kernel_address_space: KernelAddressSpace,
+    physical_page_allocator: PhysicalPageAllocator,
 }
 
 impl MemoryManager {
     const fn new() -> Self {
         Self {
             kernel_address_space: KernelAddressSpace::new(),
+            physical_page_allocator: PhysicalPageAllocator::new(),
         }
     }
 
