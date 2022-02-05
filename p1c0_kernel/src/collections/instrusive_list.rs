@@ -162,6 +162,20 @@ impl<T> IntrusiveList<T> {
     }
 }
 
+impl<T> core::ops::Drop for IntrusiveList<T> {
+    fn drop(&mut self) {
+        let mut element = self.head;
+        while !element.is_null() {
+            let element_ref = unsafe { OwnedMutPtr::new_from_raw(element) };
+            let next = element_ref.next;
+
+            drop(element_ref);
+
+            element = next;
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct IntrusiveItem<T> {
     inner: T,
