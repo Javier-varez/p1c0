@@ -136,6 +136,29 @@ impl<T> IntrusiveList<T> {
 
         removed_entries
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.head.is_null()
+    }
+
+    /// Consumes the list and calls the given callable to free/return each element
+    pub fn release<F>(self, free: F)
+    where
+        F: Fn(OwnedMutPtr<IntrusiveItem<T>>),
+    {
+        let mut element = self.head;
+        while !element.is_null() {
+            let mut element_ref = unsafe { OwnedMutPtr::new_from_raw(element) };
+            let next = element_ref.next;
+
+            element_ref.next = core::ptr::null_mut();
+            element_ref.prev = core::ptr::null_mut();
+
+            free(element_ref);
+
+            element = next;
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
