@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use super::OwnedMutPtr;
 
+#[derive(Debug)]
 pub struct IntrusiveList<T> {
     head: *mut IntrusiveItem<T>,
     tail: *mut IntrusiveItem<T>,
@@ -191,6 +192,7 @@ impl<T> core::ops::DerefMut for IntrusiveItem<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct IntrusiveListIter<'a, T> {
     head_item: Option<&'a IntrusiveItem<T>>,
     tail_item: *const IntrusiveItem<T>,

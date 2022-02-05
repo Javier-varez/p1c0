@@ -2,7 +2,8 @@ extern crate alloc;
 
 use super::{
     address::{Address, LogicalAddress, VirtualAddress},
-    Attributes, Permissions, PhysicalPage,
+    physical_page_allocator::PhysicalPage,
+    Attributes, Permissions,
 };
 use crate::println;
 
