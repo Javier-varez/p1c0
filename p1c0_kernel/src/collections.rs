@@ -44,7 +44,7 @@ impl<T> OwnedMutPtr<T> {
     /// allocator
     #[must_use]
     pub unsafe fn into_box(self) -> Box<T> {
-        Box::from_raw(self.inner as *mut _)
+        Box::from_raw(self.leak())
     }
 }
 
@@ -69,7 +69,7 @@ impl<T> OwnedPtr<T> {
     /// allocator
     #[must_use]
     pub unsafe fn into_box(self) -> Box<T> {
-        Box::from_raw(self.inner as *mut _)
+        Box::from_raw(self.leak() as *mut _)
     }
 }
 
