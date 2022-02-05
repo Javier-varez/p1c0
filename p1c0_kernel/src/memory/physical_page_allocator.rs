@@ -200,6 +200,8 @@ impl PhysicalPageAllocator {
 
         if matches_start && matches_end {
             // Region is completely removed, nothing to do
+            let region = unsafe { region.into_box() };
+            drop(region);
         } else if matches_start {
             region.pa = unsafe { pa.offset(num_pages << PAGE_BITS) };
             region.num_pages -= num_pages;
