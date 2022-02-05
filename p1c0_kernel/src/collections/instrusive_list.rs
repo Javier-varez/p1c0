@@ -95,7 +95,9 @@ impl<T> IntrusiveList<T> {
             self.tail = prev;
         }
 
-        let element = unsafe { OwnedMutPtr::new_from_raw(element) };
+        let mut element = unsafe { OwnedMutPtr::new_from_raw(element) };
+        element.next = core::ptr::null_mut();
+        element.prev = core::ptr::null_mut();
         Some(element)
     }
 
