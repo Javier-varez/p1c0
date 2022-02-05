@@ -132,10 +132,15 @@ impl MemoryManager {
             .and_then(|prop| prop.usize_value().ok())
             .expect("There is a dram base");
 
-        let dram_base = VirtualAddress::try_from_ptr(dram_base).unwrap();
         arch::mmu::MMU
-            .unmap_region(dram_base, dram_size)
+            .unmap_region(VirtualAddress::try_from_ptr(dram_base).unwrap(), dram_size)
             .expect("Can remove identity mapping");
+
+        let dram_base =
+            PhysicalAddress::try_from_ptr(dram_base).expect("The DRAM base is not page aligned");
+
+        self.initialize_physical_page_allocator(dram_base, dram_size)
+            .expect("Could not initialize physical_page_allocator");
     }
 
     pub fn map_logical(
@@ -188,6 +193,30 @@ impl MemoryManager {
                 section.permissions(),
             )?;
         }
+        Ok(())
+    }
+
+    fn initialize_physical_page_allocator(
+        &mut self,
+        dram_base: PhysicalAddress,
+        dram_size: usize,
+    ) -> Result<(), Error> {
+        // We initialize the physical page allocator with memory from the DRAM
+        let dram_pages = dram_size >> PAGE_BITS;
+        self.physical_page_allocator
+            .add_region(dram_base, dram_pages)?;
+
+        // Remove kernel pages
+        for section_id in map::ALL_SECTIONS.iter() {
+            let section = map::KernelSection::from_id(*section_id);
+            let physical_addr = section.pa();
+            let num_pages = section.size_bytes() >> PAGE_BITS;
+            self.physical_page_allocator
+                .steal_region(physical_addr, num_pages)?;
+        }
+
+        self.physical_page_allocator.print_regions();
+
         Ok(())
     }
 }
