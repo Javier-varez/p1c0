@@ -1,4 +1,6 @@
+#![allow(dead_code)]
 pub mod aligned_vec;
+pub mod instrusive_list;
 
 extern crate alloc;
 use alloc::boxed::Box;
