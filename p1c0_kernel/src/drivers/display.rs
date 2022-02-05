@@ -10,7 +10,7 @@ use embedded_graphics::{
     text::{Baseline, Text},
 };
 
-use crate::collections::{new_aligned_vector, AlignedVec};
+use crate::collections::aligned_vec::{new_aligned_vector, AlignedVec};
 use crate::font::FIRA_CODE_30;
 
 use crate::arch::mmu;
