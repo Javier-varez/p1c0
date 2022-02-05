@@ -25,7 +25,8 @@ use crate::println;
 
 pub const VA_MASK: u64 = (1 << 48) - (1 << 14);
 pub const PA_MASK: u64 = (1 << 48) - (1 << 14);
-pub const PAGE_SIZE: usize = 1 << 14;
+pub const PAGE_BITS: usize = 14;
+pub const PAGE_SIZE: usize = 1 << PAGE_BITS;
 
 const EARLY_ALLOCATOR_SIZE: usize = 128 * 1024;
 static EARLY_ALLOCATOR: EarlyAllocator<EARLY_ALLOCATOR_SIZE> = EarlyAllocator::new();
