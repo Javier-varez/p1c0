@@ -10,7 +10,6 @@ use embedded_graphics::{
     text::{Baseline, Text},
 };
 
-use crate::collections::aligned_vec::{new_aligned_vector, AlignedVec};
 use crate::font::FIRA_CODE_30;
 
 use crate::arch::mmu;
@@ -30,8 +29,6 @@ const COL_MARGIN: u32 = 10;
 static DISPLAY: LockedDisplay = LockedDisplay::new();
 
 pub struct Display {
-    // Align this to 128 bits to use _memcpy128_aligned, which makes the display update much faster.
-    base: AlignedVec<u32, 16>,
     width: u32,
     height: u32,
     stride: u32,
@@ -99,14 +96,11 @@ impl Display {
         let size = video_args.height * video_args.stride;
         let video_base = Self::map_fb(video_args.base as *mut u32, size).unwrap();
 
-        let mut base = new_aligned_vector();
-        base.resize_with(video_args.width * video_args.height, Default::default);
         let mut disp = Self {
             hwbase: video_base,
             width: video_args.width as u32,
             height: video_args.height as u32,
             stride: video_args.stride as u32 / 4,
-            base,
             font,
             current_row: 0,
             current_col: 0,
@@ -114,7 +108,6 @@ impl Display {
         };
 
         disp.draw_logo(logo);
-        disp.flush();
 
         DISPLAY.lock().replace(disp);
     }
@@ -130,29 +123,17 @@ impl Display {
             .ok();
     }
 
-    fn flush(&mut self) {
-        let display_size = (self.stride * self.height) as usize;
-        let origin = self.base.as_ptr();
-        // Calling _memcpy128_aligned makes display update way faster.
-        // Safety:
-        //   * self.hwbase is aligned to 128 bits
-        //   * self.base is also aligned to 128 bits
-        //   * size is a multiple of 128 bits
-        //   * destination does not overlap with source
-        unsafe {
-            _memcpy128_aligned(
+    fn scroll_up(&mut self) {
+        let hw = unsafe {
+            &mut *core::ptr::slice_from_raw_parts_mut(
                 self.hwbase,
-                origin,
-                display_size * core::mem::size_of::<u32>(),
+                (self.width * self.height) as usize,
             )
         };
-    }
-
-    fn scroll_up(&mut self) {
         let offset = (self.width * self.font.character_size.height) as usize;
         let count = (self.height * self.width) as usize - offset;
-        let source = &self.base[offset] as *const u32;
-        let destination = self.base.as_mut_ptr();
+        let source = &hw[offset] as *const u32;
+        let destination = hw.as_mut_ptr();
 
         // Use memcpy128 for speed. This over
         // Safety:
@@ -163,7 +144,7 @@ impl Display {
         unsafe { _memcpy128_aligned(destination, source, count * core::mem::size_of::<u32>()) };
 
         // Clear last lines
-        self.base.iter_mut().skip(count).for_each(|val| *val = 0);
+        hw.iter_mut().skip(count).for_each(|val| *val = 0);
     }
 }
 
@@ -187,7 +168,13 @@ impl DrawTarget for Display {
             let pix_offset = (x + y * self.stride as i32) as usize;
             let color =
                 (color.r() as u32) << 22 | (color.g() as u32) << 12 | (color.b() as u32) << 2;
-            self.base[pix_offset] = color;
+            let hw = unsafe {
+                &mut *core::ptr::slice_from_raw_parts_mut(
+                    self.hwbase,
+                    (self.width * self.height) as usize,
+                )
+            };
+            hw[pix_offset] = color;
         }
 
         Ok(())
@@ -218,7 +205,6 @@ impl fmt::Write for Display {
             .expect("draw is infallible");
 
             if sub.ends_with('\n') {
-                self.flush();
                 self.current_row += 1;
                 self.current_col = 0;
                 if self.current_row >= self.max_rows {
