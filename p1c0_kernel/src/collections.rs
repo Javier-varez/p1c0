@@ -35,7 +35,8 @@ impl<T> OwnedMutPtr<T> {
     }
 
     pub fn leak(self) -> *mut T {
-        self.inner
+        let item = core::mem::ManuallyDrop::new(self);
+        item.inner
     }
 
     /// # Safety
@@ -59,7 +60,8 @@ impl<T> OwnedPtr<T> {
     }
 
     pub fn leak(self) -> *const T {
-        self.inner
+        let item = core::mem::ManuallyDrop::new(self);
+        item.inner
     }
 
     /// # Safety
