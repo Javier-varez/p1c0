@@ -2,7 +2,7 @@ extern crate alloc;
 
 use super::{
     address::{Address, LogicalAddress, VirtualAddress},
-    physical_page_allocator::PhysicalPage,
+    physical_page_allocator::{PhysicalMemoryRegion, PhysicalPage},
     Attributes, Permissions,
 };
 use crate::println;
@@ -39,7 +39,7 @@ pub(super) struct LogicalMemoryRange {
     pub name: heapless::String<32>,
     pub attributes: Attributes,
     pub permissions: Permissions,
-    // Pages are implied in this case
+    pub physical_region: Option<PhysicalMemoryRegion>,
 }
 
 pub(super) enum GenericMemoryRange {
@@ -170,6 +170,7 @@ impl KernelAddressSpace {
         size_bytes: usize,
         attributes: Attributes,
         permissions: Permissions,
+        physical_region: Option<PhysicalMemoryRegion>,
     ) -> Result<&'a LogicalMemoryRange, Error> {
         println!(
             "Adding logical range `{}` at {}, size 0x{:x}, permissions {:?}",
@@ -188,6 +189,7 @@ impl KernelAddressSpace {
             size_bytes,
             attributes,
             permissions,
+            physical_region,
         };
         self.logical_ranges.push(memory_range);
 

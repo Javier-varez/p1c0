@@ -2,7 +2,10 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 
-use super::address::{Address, PhysicalAddress};
+use super::{
+    address::{Address, PhysicalAddress},
+    num_pages_from_bytes,
+};
 use crate::{
     arch::mmu::PAGE_BITS,
     collections::{
@@ -242,6 +245,20 @@ impl PhysicalPageAllocator {
             let end_addr = unsafe { region.pa.offset(region.num_pages << PAGE_BITS) };
             println!("\t{} -> {}", start_addr, end_addr);
         }
+    }
+
+    pub fn request_pages(
+        &mut self,
+        pa: PhysicalAddress,
+        num_pages: usize,
+    ) -> Result<PhysicalMemoryRegion, Error> {
+        self.steal_region(pa, num_pages)?;
+        Ok(PhysicalMemoryRegion::new(pa, num_pages))
+    }
+
+    pub fn release_pages(&mut self, region: PhysicalMemoryRegion) -> Result<(), Error> {
+        self.add_region(region.pa, region.num_pages)?;
+        Ok(())
     }
 }
 

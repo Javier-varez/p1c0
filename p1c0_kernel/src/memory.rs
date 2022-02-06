@@ -168,22 +168,28 @@ impl MemoryManager {
         attributes: Attributes,
         permissions: Permissions,
     ) -> Result<(), Error> {
-        let range = self.kernel_address_space.add_logical_range(
-            name,
-            la,
-            size_bytes,
-            attributes,
-            permissions,
-        )?;
+        // Request pages from the PhysicalPageAllocator
+        let region = self
+            .physical_page_allocator
+            .request_pages(la.into_physical(), num_pages_from_bytes(size_bytes))?;
+
+        // Getting the logical range must succeed because we got ownership of the pages and this is
+        // a logical mapping (one-to-one address)
+        let logical_range = self
+            .kernel_address_space
+            .add_logical_range(name, la, size_bytes, attributes, permissions, Some(region))
+            .expect("Error mapping logical range");
 
         unsafe {
-            arch::mmu::MMU.map_region(
-                range.la.into_virtual(),
-                range.la.into_physical(),
-                range.size_bytes,
-                range.attributes,
-                range.permissions,
-            )?
+            arch::mmu::MMU
+                .map_region(
+                    logical_range.la.into_virtual(),
+                    logical_range.la.into_physical(),
+                    logical_range.size_bytes,
+                    logical_range.attributes,
+                    logical_range.permissions,
+                )
+                .expect("MMU cannot map requested region")
         };
 
         Ok(())
@@ -208,6 +214,7 @@ impl MemoryManager {
                 section.size_bytes(),
                 Attributes::Normal,
                 section.permissions(),
+                None,
             )?;
         }
         Ok(())
