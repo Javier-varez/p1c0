@@ -12,7 +12,7 @@ use embedded_graphics::{
 
 use crate::font::FIRA_CODE_30;
 
-use crate::arch::mmu;
+use crate::memory;
 
 use spin::Mutex;
 
@@ -72,18 +72,21 @@ extern "C" {
 }
 
 impl Display {
-    pub fn map_fb(base: *mut u32, size: usize) -> Result<*mut u32, mmu::Error> {
-        let mm_unit = unsafe { &mut mmu::MMU };
-
+    pub fn map_fb(base: *mut u32, size: usize) -> Result<*mut u32, memory::Error> {
         let pa = PhysicalAddress::try_from_ptr(base as *const u8).expect("Framebuffer is aligned");
-        let va = pa
+        let la = pa
             .try_into_logical()
-            .map(|kla| kla.into_virtual())
             .expect("Framebuffer does not have a logical address");
 
-        mm_unit.map_region(va, pa, size, Attributes::Normal, Permissions::RW)?;
+        memory::MemoryManager::instance().map_logical(
+            "framebuffer",
+            la,
+            size,
+            Attributes::Normal,
+            Permissions::RW,
+        )?;
 
-        Ok(va.as_ptr() as *mut u32)
+        Ok(la.as_ptr() as *mut u32)
     }
 
     /// Initializes the display HW with the given logo to work as a console.
