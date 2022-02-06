@@ -6,7 +6,10 @@ pub mod physical_page_allocator;
 
 extern crate alloc;
 
-use crate::arch::{self, mmu::PAGE_BITS};
+use crate::arch::{
+    self,
+    mmu::{PAGE_BITS, PAGE_SIZE},
+};
 
 use address::{LogicalAddress, PhysicalAddress, VirtualAddress};
 use address_space::KernelAddressSpace;
@@ -16,6 +19,14 @@ use physical_page_allocator::PhysicalPageAllocator;
 use spin::{Mutex, MutexGuard};
 
 use self::address_space::MemoryRange;
+
+pub fn num_pages_from_bytes(bytes: usize) -> usize {
+    if bytes & (PAGE_SIZE - 1) == 0 {
+        bytes >> PAGE_BITS
+    } else {
+        (bytes >> PAGE_BITS) + 1
+    }
+}
 
 #[derive(Clone, Debug)]
 pub enum Error {
@@ -109,10 +120,12 @@ impl MemoryManager {
         let device_tree =
             boot_args.device_tree as usize - boot_args.virt_base + boot_args.phys_base;
         let device_tree_size = boot_args.device_tree_size as usize;
+        let device_tree =
+            PhysicalAddress::from_unaligned_ptr(device_tree as *const _).align_to_page();
         arch::mmu::MMU
             .map_region(
                 ADT_VIRTUAL_BASE,
-                PhysicalAddress::from_unaligned_ptr(device_tree as *const _).align_to_page(),
+                device_tree,
                 device_tree_size,
                 Attributes::Normal,
                 Permissions::RO,
@@ -138,9 +151,13 @@ impl MemoryManager {
 
         let dram_base =
             PhysicalAddress::try_from_ptr(dram_base).expect("The DRAM base is not page aligned");
-
-        self.initialize_physical_page_allocator(dram_base, dram_size)
-            .expect("Could not initialize physical_page_allocator");
+        self.initialize_physical_page_allocator(
+            dram_base,
+            dram_size,
+            device_tree,
+            device_tree_size,
+        )
+        .expect("Could not initialize physical_page_allocator");
     }
 
     pub fn map_logical(
@@ -200,9 +217,11 @@ impl MemoryManager {
         &mut self,
         dram_base: PhysicalAddress,
         dram_size: usize,
+        device_tree_base: PhysicalAddress,
+        device_tree_size: usize,
     ) -> Result<(), Error> {
         // We initialize the physical page allocator with memory from the DRAM
-        let dram_pages = dram_size >> PAGE_BITS;
+        let dram_pages = num_pages_from_bytes(dram_size);
         self.physical_page_allocator
             .add_region(dram_base, dram_pages)?;
 
@@ -210,10 +229,16 @@ impl MemoryManager {
         for section_id in map::ALL_SECTIONS.iter() {
             let section = map::KernelSection::from_id(*section_id);
             let physical_addr = section.pa();
-            let num_pages = section.size_bytes() >> PAGE_BITS;
+            let num_pages = num_pages_from_bytes(section.size_bytes());
             self.physical_page_allocator
                 .steal_region(physical_addr, num_pages)?;
         }
+
+        // Remove ADT regions
+        let device_tree_pages = num_pages_from_bytes(device_tree_size);
+        self.physical_page_allocator
+            .steal_region(device_tree_base, device_tree_pages)
+            .expect("Cannot steal ADT region");
 
         self.physical_page_allocator.print_regions();
 
