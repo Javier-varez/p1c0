@@ -1,9 +1,7 @@
-use crate::arch::mmu::PAGE_SIZE;
-
-/// This is the base address for logical addresses.
-const KERNEL_LOGICAL_BASE: LogicalAddress =
-    unsafe { LogicalAddress::new_unchecked(0xFFFF020000000000 as *const u8) };
-const KERNEL_LOGICAL_SIZE: usize = 128 * 1024 * 1024 * 1024 * 1024; // 128 TB
+use crate::{
+    arch::mmu::PAGE_SIZE,
+    memory::map::{KERNEL_LOGICAL_BASE, KERNEL_LOGICAL_SIZE},
+};
 
 pub trait Address {
     fn as_ptr(&self) -> *const u8;

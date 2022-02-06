@@ -6,10 +6,15 @@ use super::{
 /// This is the base address for logical addresses.
 pub const KERNEL_LOGICAL_BASE: LogicalAddress =
     unsafe { LogicalAddress::new_unchecked(0xFFFF020000000000 as *const u8) };
-pub const KERNEL_LOGICAL_SIZE: usize = 1024 * 1024 * 1024 * 1024; // 1 TB
+pub const KERNEL_LOGICAL_SIZE: usize = 128 * 1024 * 1024 * 1024 * 1024; // 128 TB
 
 pub const ADT_VIRTUAL_BASE: VirtualAddress =
     unsafe { VirtualAddress::new_unchecked(0xFFFF000000000000 as *const u8) };
+
+/// Last 4GB are reserved for MMIO
+pub const MMIO_BASE: VirtualAddress =
+    unsafe { VirtualAddress::new_unchecked(0xFFFFFFFF00000000 as *const u8) };
+pub const MMIO_SIZE: usize = 4 * 1024 * 1024 * 1024;
 
 extern "C" {
     static _text_start: u8;
