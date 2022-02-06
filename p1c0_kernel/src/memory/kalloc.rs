@@ -207,6 +207,8 @@ impl HeapAllocator {
             // If it is before the current entry, then we add it right away
             let old_entry = self.head;
             self.head = new_entry;
+            (*new_entry).next = (*old_entry).next;
+            (*old_entry).next = core::ptr::null_mut();
             Self::append_and_consolidate_entries(&mut self.head, old_entry);
             return;
         }
