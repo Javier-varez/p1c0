@@ -2,10 +2,12 @@ extern crate alloc;
 
 use super::{
     address::{Address, LogicalAddress, VirtualAddress},
+    map::{MMIO_BASE, MMIO_SIZE},
+    num_pages_from_bytes,
     physical_page_allocator::{PhysicalMemoryRegion, PhysicalPage},
     Attributes, Permissions,
 };
-use crate::println;
+use crate::{arch::mmu::PAGE_SIZE, println};
 
 use heapless::String;
 
@@ -39,12 +41,19 @@ pub(super) struct LogicalMemoryRange {
     pub name: heapless::String<32>,
     pub attributes: Attributes,
     pub permissions: Permissions,
-    pub physical_region: Option<PhysicalMemoryRegion>,
+    pub _physical_region: Option<PhysicalMemoryRegion>,
+}
+
+pub(super) struct MMIORange {
+    pub va: VirtualAddress,
+    pub size_bytes: usize,
+    pub name: heapless::String<32>,
 }
 
 pub(super) enum GenericMemoryRange {
     Logical(LogicalMemoryRange),
     Virtual(VirtualMemoryRange),
+    MMIO(MMIORange),
 }
 
 impl From<LogicalMemoryRange> for GenericMemoryRange {
@@ -56,6 +65,12 @@ impl From<LogicalMemoryRange> for GenericMemoryRange {
 impl From<VirtualMemoryRange> for GenericMemoryRange {
     fn from(virtual_range: VirtualMemoryRange) -> Self {
         Self::Virtual(virtual_range)
+    }
+}
+
+impl From<MMIORange> for GenericMemoryRange {
+    fn from(mmio_range: MMIORange) -> Self {
+        Self::MMIO(mmio_range)
     }
 }
 
@@ -98,11 +113,22 @@ impl MemoryRange for VirtualMemoryRange {
     }
 }
 
+impl MemoryRange for MMIORange {
+    fn virtual_address(&self) -> VirtualAddress {
+        self.va
+    }
+
+    fn size_bytes(&self) -> usize {
+        self.size_bytes
+    }
+}
+
 impl MemoryRange for GenericMemoryRange {
     fn virtual_address(&self) -> VirtualAddress {
         match self {
             GenericMemoryRange::Logical(range) => range.virtual_address(),
             GenericMemoryRange::Virtual(range) => range.virtual_address(),
+            GenericMemoryRange::MMIO(range) => range.virtual_address(),
         }
     }
 
@@ -110,6 +136,7 @@ impl MemoryRange for GenericMemoryRange {
         match self {
             GenericMemoryRange::Logical(range) => range.size_bytes(),
             GenericMemoryRange::Virtual(range) => range.size_bytes(),
+            GenericMemoryRange::MMIO(range) => range.size_bytes(),
         }
     }
 }
@@ -119,6 +146,8 @@ pub(super) struct KernelAddressSpace {
     // Find a better alternative with better insersion/removal/lookup performance
     virtual_ranges: Vec<VirtualMemoryRange>,
     logical_ranges: Vec<LogicalMemoryRange>,
+    mmio_ranges: Vec<MMIORange>,
+    mmio_offset: usize,
 }
 
 impl KernelAddressSpace {
@@ -126,6 +155,8 @@ impl KernelAddressSpace {
         Self {
             virtual_ranges: vec![],
             logical_ranges: vec![],
+            mmio_ranges: vec![],
+            mmio_offset: 0,
         }
     }
 
@@ -189,7 +220,7 @@ impl KernelAddressSpace {
             size_bytes,
             attributes,
             permissions,
-            physical_region,
+            _physical_region: physical_region,
         };
         self.logical_ranges.push(memory_range);
 
@@ -224,6 +255,32 @@ impl KernelAddressSpace {
         Ok(())
     }
 
+    pub fn allocate_io_range(
+        &mut self,
+        name: &str,
+        size_bytes: usize,
+    ) -> Result<VirtualAddress, Error> {
+        let num_pages = num_pages_from_bytes(size_bytes);
+
+        if self.mmio_offset + num_pages * PAGE_SIZE > MMIO_SIZE {
+            panic!("MMIO Range is exhausted!");
+        }
+
+        let offset = self.mmio_offset;
+        let va = unsafe { MMIO_BASE.offset(offset) };
+
+        self.mmio_offset += num_pages * PAGE_SIZE;
+
+        let range = MMIORange {
+            va,
+            name: String::from_str(name).map_err(|_| Error::NameTooLong)?,
+            size_bytes,
+        };
+        self.mmio_ranges.push(range);
+
+        Ok(va)
+    }
+
     pub fn remove_range_by_name(&mut self, name: &str) -> Result<GenericMemoryRange, Error> {
         if let Some((index, _range)) = self
             .logical_ranges
@@ -242,6 +299,16 @@ impl KernelAddressSpace {
             .find(|(_idx, range)| range.name == name)
         {
             let range = self.virtual_ranges.remove(index);
+            return Ok(range.into());
+        }
+
+        if let Some((index, _range)) = self
+            .mmio_ranges
+            .iter_mut()
+            .enumerate()
+            .find(|(_idx, range)| range.name == name)
+        {
+            let range = self.mmio_ranges.remove(index);
             return Ok(range.into());
         }
 

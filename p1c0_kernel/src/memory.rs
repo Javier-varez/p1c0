@@ -195,6 +195,33 @@ impl MemoryManager {
         Ok(())
     }
 
+    // Maps memory in the virtual memory region (out of the logical region) as device memory with
+    // RW permissions
+    pub fn map_io(
+        &mut self,
+        name: &str,
+        pa: PhysicalAddress,
+        size_bytes: usize,
+    ) -> Result<VirtualAddress, Error> {
+        let va = self
+            .kernel_address_space
+            .allocate_io_range(name, size_bytes)?;
+
+        unsafe {
+            arch::mmu::MMU
+                .map_region(
+                    va,
+                    pa,
+                    size_bytes,
+                    Attributes::DevicenGnRnE,
+                    Permissions::RW,
+                )
+                .expect("MMU cannot map requested region")
+        };
+
+        Ok(va)
+    }
+
     pub fn remove_mapping_by_name(&mut self, name: &str) -> Result<(), Error> {
         let range = self.kernel_address_space.remove_range_by_name(name)?;
         unsafe {

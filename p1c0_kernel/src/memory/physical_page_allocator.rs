@@ -2,10 +2,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 
-use super::{
-    address::{Address, PhysicalAddress},
-    num_pages_from_bytes,
-};
+use super::address::{Address, PhysicalAddress};
 use crate::{
     arch::mmu::PAGE_BITS,
     collections::{
