@@ -14,7 +14,7 @@ use core::{mem, slice, str};
 
 use heapless::Vec;
 
-use crate::memory::address::Address;
+use crate::memory::address::{Address, PhysicalAddress};
 
 /// ADT Memory layout
 ///
@@ -313,7 +313,11 @@ impl Adt {
         }
     }
 
-    pub fn get_device_addr(&self, path: &str, reg_index: usize) -> Option<(usize, usize)> {
+    pub fn get_device_addr(
+        &self,
+        path: &str,
+        reg_index: usize,
+    ) -> Option<(PhysicalAddress, usize)> {
         let nodes: Vec<AdtNode, 8> = self.path_iter(path).collect();
 
         let mut iter = nodes.iter().rev();
@@ -343,6 +347,7 @@ impl Adt {
             });
         }
 
+        let addr = PhysicalAddress::from_unaligned_ptr(addr as *const _);
         Some((addr, size))
     }
 }

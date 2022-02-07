@@ -5,6 +5,8 @@ use tock_registers::{
     registers::{ReadOnly, ReadWrite},
 };
 
+use crate::memory::address::Address;
+
 // Defines bitfields for the UART registers
 register_bitfields![u32,
     /// Defines the status register bitfield for the UART
@@ -32,7 +34,7 @@ impl Uart {
     fn new() -> Self {
         let adt = crate::adt::get_adt().unwrap();
         let (device_addr, _) = adt.get_device_addr("/arm-io/uart0", 0).unwrap();
-        let regs = device_addr as *mut _;
+        let regs = device_addr.as_mut_ptr() as *mut _;
         Self { regs }
     }
 

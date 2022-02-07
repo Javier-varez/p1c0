@@ -17,6 +17,10 @@ pub trait Address {
     fn is_page_aligned(&self) -> bool {
         (self.as_usize() & (PAGE_SIZE - 1)) == 0
     }
+
+    fn as_mut_ptr(&self) -> *mut u8 {
+        self.as_ptr() as *mut _
+    }
 }
 
 #[derive(Debug, Clone)]

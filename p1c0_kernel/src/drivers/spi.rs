@@ -4,7 +4,10 @@ use tock_registers::{
     registers::{ReadOnly, ReadWrite, WriteOnly},
 };
 
-use crate::adt::get_adt;
+use crate::{
+    adt::get_adt,
+    memory::{address::Address, MemoryManager},
+};
 
 use core::iter::Iterator;
 
@@ -235,9 +238,13 @@ impl Spi {
             return Err(Error::AdtNodeNotCompatible);
         }
 
-        let (addr, _) = adt.get_device_addr(spi_node, 0).unwrap();
+        let (pa, _) = adt.get_device_addr(spi_node, 0).unwrap();
 
-        let regs: &'static mut SpiRegisters = &mut *(addr as *mut _);
+        let va = MemoryManager::instance()
+            .map_io(spi_node, pa, core::mem::size_of::<SpiRegisters>())
+            .expect("The spi device io cannot be mapped");
+
+        let regs: &'static mut SpiRegisters = &mut *(va.as_ptr() as *mut SpiRegisters);
 
         let mut instance = Self { regs };
         instance.init();

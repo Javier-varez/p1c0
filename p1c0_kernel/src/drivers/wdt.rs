@@ -1,5 +1,7 @@
 use tock_registers::{interfaces::Writeable, register_bitfields, registers::ReadWrite};
 
+use crate::memory::address::Address;
+
 // Defines bitfields for the WDT registers
 register_bitfields![u32,
     /// Controls the state of the watchdog
@@ -36,8 +38,8 @@ impl Wdt {
 
     fn new() -> Self {
         let adt = crate::adt::get_adt().unwrap();
-        let (addr, _) = adt.get_device_addr("/arm-io/wdt", 0).unwrap();
-        let regs = addr as *mut WdtRegs;
+        let (pa, _) = adt.get_device_addr("/arm-io/wdt", 0).unwrap();
+        let regs = pa.as_mut_ptr() as *mut WdtRegs;
 
         const TIMEOUT_MS: u32 = 5_000;
         unsafe {
