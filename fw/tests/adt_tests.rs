@@ -9,7 +9,7 @@ extern crate alloc;
 
 use alloc::vec;
 use alloc::vec::Vec;
-use p1c0_kernel::adt::get_adt;
+use p1c0_kernel::{adt::get_adt, memory::address::PhysicalAddress};
 
 #[allow(unused_imports)]
 use p1c0::*;
@@ -62,14 +62,23 @@ fn test_adt_get_valid_property() {
 fn test_adt_get_device_addr() {
     let adt = get_adt().unwrap();
     let (addr, size) = adt.get_device_addr("/arm-io/uart0", 0).unwrap();
-    assert_eq!(addr, 0x39b200000);
+    assert_eq!(
+        addr,
+        PhysicalAddress::from_unaligned_ptr(0x39b200000 as *const _)
+    );
     assert_eq!(size, 0x4000);
 
     let (addr, size) = adt.get_device_addr("/arm-io/spi1", 0).unwrap();
-    assert_eq!(addr, 0x39B104000);
+    assert_eq!(
+        addr,
+        PhysicalAddress::from_unaligned_ptr(0x39B104000 as *const _)
+    );
     assert_eq!(size, 0x4000);
 
     let (addr, size) = adt.get_device_addr("/arm-io/i2c0", 0).unwrap();
-    assert_eq!(addr, 0x39B040000);
+    assert_eq!(
+        addr,
+        PhysicalAddress::from_unaligned_ptr(0x39B040000 as *const _)
+    );
     assert_eq!(size, 0x4000);
 }
