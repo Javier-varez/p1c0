@@ -53,7 +53,7 @@ pub(super) struct MMIORange {
 pub(super) enum GenericMemoryRange {
     Logical(LogicalMemoryRange),
     Virtual(VirtualMemoryRange),
-    MMIO(MMIORange),
+    Mmio(MMIORange),
 }
 
 impl From<LogicalMemoryRange> for GenericMemoryRange {
@@ -70,7 +70,7 @@ impl From<VirtualMemoryRange> for GenericMemoryRange {
 
 impl From<MMIORange> for GenericMemoryRange {
     fn from(mmio_range: MMIORange) -> Self {
-        Self::MMIO(mmio_range)
+        Self::Mmio(mmio_range)
     }
 }
 
@@ -128,7 +128,7 @@ impl MemoryRange for GenericMemoryRange {
         match self {
             GenericMemoryRange::Logical(range) => range.virtual_address(),
             GenericMemoryRange::Virtual(range) => range.virtual_address(),
-            GenericMemoryRange::MMIO(range) => range.virtual_address(),
+            GenericMemoryRange::Mmio(range) => range.virtual_address(),
         }
     }
 
@@ -136,13 +136,13 @@ impl MemoryRange for GenericMemoryRange {
         match self {
             GenericMemoryRange::Logical(range) => range.size_bytes(),
             GenericMemoryRange::Virtual(range) => range.size_bytes(),
-            GenericMemoryRange::MMIO(range) => range.size_bytes(),
+            GenericMemoryRange::Mmio(range) => range.size_bytes(),
         }
     }
 }
 
 pub(super) struct KernelAddressSpace {
-    // FIXME(jalv): Using vec here is most likely not a good idea for performance reasons.
+    // FIXME(javier-varez): Using vec here is most likely not a good idea for performance reasons.
     // Find a better alternative with better insersion/removal/lookup performance
     virtual_ranges: Vec<VirtualMemoryRange>,
     logical_ranges: Vec<LogicalMemoryRange>,
@@ -277,6 +277,11 @@ impl KernelAddressSpace {
             size_bytes,
         };
         self.mmio_ranges.push(range);
+
+        println!(
+            "Adding io range `{}` at {}, size 0x{:x}",
+            name, va, size_bytes
+        );
 
         Ok(va)
     }
