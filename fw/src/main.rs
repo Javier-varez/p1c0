@@ -86,6 +86,18 @@ fn kernel_entry() {
     let buffer = [1u8, 2, 3, 4, 5, 6, 7, 8];
     let mut recv = [];
     spi3.transact(&buffer, &mut recv).unwrap();
+
+    // Trigger a random interrupt
+    let mut aic = p1c0_kernel::drivers::aic::Aic::probe("/arm-io/aic").unwrap();
+
+    unsafe {
+        p1c0_kernel::drivers::aic::AIC.replace(aic);
+
+        if let Some(aic) = &mut p1c0_kernel::drivers::aic::AIC {
+            aic.unmask_interrupt(15).unwrap();
+            aic.set_interrupt(15).unwrap();
+        }
+    }
 }
 
 #[no_mangle]

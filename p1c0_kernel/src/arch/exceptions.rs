@@ -12,6 +12,8 @@ use core::arch::global_asm;
 #[cfg(all(target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
+use crate::println;
+
 /// Wrapper structs for memory copies of registers.
 #[repr(transparent)]
 struct SpsrEL1(InMemoryRegister<u64, SPSR_EL1::Register>);
@@ -61,16 +63,27 @@ unsafe extern "C" fn current_el0_serror(_e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
+    println!("Synchronous exception");
     default_exception_handler(e);
 }
 
 #[no_mangle]
 unsafe extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
+    println!("IRQ");
+
+    unsafe {
+        if let Some(aic) = &mut crate::drivers::aic::AIC {
+            println!("Irq number {}", aic.get_current_irq_number());
+            println!("Irq type {:?}", aic.get_current_irq_type());
+        }
+    }
+
     default_exception_handler(e);
 }
 
 #[no_mangle]
 unsafe extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
+    println!("Serror exception");
     default_exception_handler(e);
 }
 

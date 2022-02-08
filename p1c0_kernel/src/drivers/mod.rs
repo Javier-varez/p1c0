@@ -1,3 +1,4 @@
+pub mod aic;
 pub mod display;
 pub mod generic_timer;
 pub mod spi;
