@@ -88,7 +88,7 @@ fn kernel_entry() {
     spi3.transact(&buffer, &mut recv).unwrap();
 
     // Trigger a random interrupt
-    let mut aic = p1c0_kernel::drivers::aic::Aic::probe("/arm-io/aic").unwrap();
+    let aic = p1c0_kernel::drivers::aic::Aic::probe("/arm-io/aic").unwrap();
 
     unsafe {
         p1c0_kernel::drivers::aic::AIC.replace(aic);

@@ -71,11 +71,9 @@ unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
 unsafe extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     println!("IRQ");
 
-    unsafe {
-        if let Some(aic) = &mut crate::drivers::aic::AIC {
-            println!("Irq number {}", aic.get_current_irq_number());
-            println!("Irq type {:?}", aic.get_current_irq_type());
-        }
+    if let Some(aic) = &mut crate::drivers::aic::AIC {
+        println!("Irq number {}", aic.get_current_irq_number());
+        println!("Irq type {:?}", aic.get_current_irq_type());
     }
 
     default_exception_handler(e);
