@@ -14,7 +14,7 @@ use crate::font::FIRA_CODE_30;
 
 use crate::memory;
 
-use spin::Mutex;
+use crate::sync::spinlock::SpinLock;
 
 use crate::memory::{
     address::{Address, PhysicalAddress},
@@ -41,11 +41,11 @@ pub struct Display {
     max_rows: u32,
 }
 
-struct LockedDisplay(Mutex<Option<Display>>);
+struct LockedDisplay(SpinLock<Option<Display>>);
 
 impl LockedDisplay {
     const fn new() -> Self {
-        LockedDisplay(Mutex::new(None))
+        LockedDisplay(SpinLock::new(None))
     }
 }
 
@@ -55,7 +55,7 @@ impl LockedDisplay {
 unsafe impl Send for Display {}
 
 impl core::ops::Deref for LockedDisplay {
-    type Target = Mutex<Option<Display>>;
+    type Target = SpinLock<Option<Display>>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }

@@ -4,7 +4,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use spin::Mutex;
+use crate::sync::spinlock::SpinLock;
 
 #[cfg(not(test))]
 #[global_allocator]
@@ -233,16 +233,16 @@ impl HeapAllocator {
 }
 
 #[repr(transparent)]
-struct LockedHeapAllocator(Mutex<HeapAllocator>);
+struct LockedHeapAllocator(SpinLock<HeapAllocator>);
 
 impl LockedHeapAllocator {
     const fn new() -> Self {
-        Self(Mutex::new(HeapAllocator::new()))
+        Self(SpinLock::new(HeapAllocator::new()))
     }
 }
 
 impl Deref for LockedHeapAllocator {
-    type Target = Mutex<HeapAllocator>;
+    type Target = SpinLock<HeapAllocator>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
