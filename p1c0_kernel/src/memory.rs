@@ -16,7 +16,7 @@ use address_space::KernelAddressSpace;
 use map::ADT_VIRTUAL_BASE;
 use physical_page_allocator::PhysicalPageAllocator;
 
-use spin::{Mutex, MutexGuard};
+use crate::sync::spinlock::{SpinLock, SpinLockGuard};
 
 use self::address_space::MemoryRange;
 
@@ -80,7 +80,7 @@ pub enum Permissions {
     RO,
 }
 
-static MEMORY_MANAGER: Mutex<MemoryManager> = Mutex::new(MemoryManager::new());
+static MEMORY_MANAGER: SpinLock<MemoryManager> = SpinLock::new(MemoryManager::new());
 
 pub struct MemoryManager {
     kernel_address_space: KernelAddressSpace,
@@ -102,7 +102,7 @@ impl MemoryManager {
         arch::mmu::initialize();
     }
 
-    pub fn instance() -> MutexGuard<'static, Self> {
+    pub fn instance() -> SpinLockGuard<'static, Self> {
         MEMORY_MANAGER.lock()
     }
 

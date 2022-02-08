@@ -10,7 +10,6 @@ semihosting = []
 default = []
 
 [dependencies]
-spin = "0.9.2"
 embedded-graphics = "0.7.1"
 cortex-a = { git = "https://github.com/Javier-varez/cortex-a.git", branch = "master" }
 tock-registers = "0.7.0"

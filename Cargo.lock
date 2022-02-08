@@ -336,7 +336,6 @@ dependencies = [
  "cortex-a",
  "embedded-graphics",
  "heapless",
- "spin",
  "tock-registers",
 ]
 
