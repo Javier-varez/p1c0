@@ -37,12 +37,6 @@
 	b	__exception_restore_context
 .endm
 
-// Suspend enters a while true loop in a low power state (using wait for event)
-.macro fiq_suspend
-1:	wfe
-	b	1b
-.endm
-
 // We need to align to 2048 bytes the exception table
 .align 11
 
@@ -56,7 +50,7 @@ __exception_vector_start:
 .p2align 7
 	save_context_and_call_handler current_el0_irq
 .p2align 7
-	fiq_suspend
+	save_context_and_call_handler current_el0_fiq
 .p2align 7
 	save_context_and_call_handler current_el0_serror
 
@@ -66,7 +60,7 @@ __exception_vector_start:
 .p2align 7
 	save_context_and_call_handler current_elx_irq
 .p2align 7
-	fiq_suspend
+	save_context_and_call_handler current_elx_fiq
 .p2align 7
 	save_context_and_call_handler current_elx_serror
 
@@ -76,7 +70,7 @@ __exception_vector_start:
 .p2align 7
 	save_context_and_call_handler lower_el_aarch64_irq
 .p2align 7
-	fiq_suspend
+	save_context_and_call_handler lower_el_aarch64_fiq
 .p2align 7
 	save_context_and_call_handler lower_el_aarch64_serror
 
@@ -86,7 +80,7 @@ __exception_vector_start:
 .p2align 7
 	save_context_and_call_handler lower_el_aarch32_irq
 .p2align 7
-	fiq_suspend
+	save_context_and_call_handler lower_el_aarch32_fiq
 .p2align 7
 	save_context_and_call_handler lower_el_aarch32_serror
 
@@ -131,7 +125,7 @@ __el2_exception_vector_start:
 .p2align 7
 	save_context_and_call_handler current_el0_irq
 .p2align 7
-	fiq_suspend
+	save_context_and_call_handler current_el0_fiq
 .p2align 7
 	save_context_and_call_handler current_el0_serror
 
@@ -141,7 +135,7 @@ __el2_exception_vector_start:
 .p2align 7
 	save_context_and_call_handler current_elx_irq
 .p2align 7
-	fiq_suspend
+	save_context_and_call_handler current_elx_fiq
 .p2align 7
 	save_context_and_call_handler current_elx_serror
 
@@ -151,7 +145,7 @@ __el2_exception_vector_start:
 .p2align 7
 	save_context_and_call_handler lower_el_aarch64_irq
 .p2align 7
-	fiq_suspend
+	save_context_and_call_handler lower_el_aarch64_fiq
 .p2align 7
 	save_context_and_call_handler lower_el_aarch64_serror
 
@@ -161,9 +155,6 @@ __el2_exception_vector_start:
 .p2align 7
 	save_context_and_call_handler lower_el_aarch32_irq
 .p2align 7
-	fiq_suspend
+	save_context_and_call_handler lower_el_aarch32_fiq
 .p2align 7
 	save_context_and_call_handler lower_el_aarch32_serror
-
-// __rel_exception_vector_start:
-// .reloc __rel_exception_vector_start, R_AARCH64_RELATIVE, __exception_vector_start
