@@ -23,6 +23,16 @@ impl GenericTimer {
         unsafe { barrier::isb(barrier::SY) };
         CNTPCT_EL0.get()
     }
+
+    /// Delays execution for the given duration. Currently this is a blocking routine that does not
+    /// sleep, just simply spins
+    pub fn delay(&self, time: core::time::Duration) {
+        const S_TO_NS: u128 = 1_000_000_000;
+        let ticks = ((self.resolution() as u128 * time.as_nanos()) / S_TO_NS) as u64;
+        let start = self.ticks();
+
+        while self.ticks() < (start + ticks) {}
+    }
 }
 
 static GENERIC_TIMER: GenericTimer = GenericTimer::new();
