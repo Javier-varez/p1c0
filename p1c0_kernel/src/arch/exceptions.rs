@@ -57,6 +57,11 @@ unsafe extern "C" fn current_el0_irq(_e: &mut ExceptionContext) {
 }
 
 #[no_mangle]
+unsafe extern "C" fn current_el0_fiq(_e: &mut ExceptionContext) {
+    panic!("Should not be here. Use of SP_EL0 in EL1 is not supported.")
+}
+
+#[no_mangle]
 unsafe extern "C" fn current_el0_serror(_e: &mut ExceptionContext) {
     panic!("Should not be here. Use of SP_EL0 in EL1 is not supported.")
 }
@@ -64,6 +69,18 @@ unsafe extern "C" fn current_el0_serror(_e: &mut ExceptionContext) {
 #[no_mangle]
 unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
     println!("Synchronous exception");
+    default_exception_handler(e);
+}
+
+#[no_mangle]
+unsafe extern "C" fn current_elx_fiq(e: &mut ExceptionContext) {
+    println!("FIQ");
+
+    if let Some(aic) = &mut crate::drivers::aic::AIC {
+        println!("Irq number {}", aic.get_current_irq_number());
+        println!("Irq type {:?}", aic.get_current_irq_type());
+    }
+
     default_exception_handler(e);
 }
 
@@ -104,6 +121,15 @@ unsafe extern "C" fn lower_el_aarch64_irq(e: &mut ExceptionContext) {
 }
 
 #[no_mangle]
+unsafe extern "C" fn lower_el_aarch64_fiq(e: &mut ExceptionContext) {
+    crate::println!(
+        "lower_el_aarch64_fiq: {:?}",
+        crate::arch::get_exception_level()
+    );
+    default_exception_handler(e);
+}
+
+#[no_mangle]
 unsafe extern "C" fn lower_el_aarch64_serror(e: &mut ExceptionContext) {
     crate::println!(
         "lower_el_aarch64_serror: {:?}",
@@ -124,6 +150,14 @@ unsafe extern "C" fn lower_el_aarch32_synchronous(_e: &mut ExceptionContext) {
 unsafe extern "C" fn lower_el_aarch32_irq(_e: &mut ExceptionContext) {
     panic!(
         "lower_el_aarch32_irq: {:?}. This should not happen!",
+        crate::arch::get_exception_level()
+    );
+}
+
+#[no_mangle]
+unsafe extern "C" fn lower_el_aarch32_fiq(_e: &mut ExceptionContext) {
+    panic!(
+        "lower_el_aarch32_fiq: {:?}. This should not happen!",
         crate::arch::get_exception_level()
     );
 }
