@@ -51,9 +51,7 @@ impl<T> SpinLock<T> {
 
     fn unlock(&self) {
         let prev_nesting = CRITICAL_NESTING.fetch_sub(1, atomic::Ordering::Release);
-        if prev_nesting == core::u32::MAX {
-            panic!("We have reached the maximum value for CRITICAL_NESTING. This is MOST LIKELY a bug in user code");
-        } else if prev_nesting == 1 {
+        if prev_nesting == 1 {
             // Add a barrier here to ensure that memory accesses finish before enabling exceptions
             unsafe { barrier::dsb(barrier::ISHST) };
 
