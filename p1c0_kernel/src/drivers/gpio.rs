@@ -80,7 +80,11 @@ pub struct GpioBank {
 }
 
 impl GpioBank {
-    pub fn new(gpio_bank: &str) -> Result<Self, Error> {
+    /// Constucts a new GpioBank peripheral from the given adt node reference.
+    ///
+    /// # Safety
+    /// The gpio_bank must not already be in use by any other piece of code.
+    pub unsafe fn new(gpio_bank: &str) -> Result<Self, Error> {
         let adt = adt::get_adt().map_err(Error::AdtNotAvailable)?;
 
         let node = adt.find_node(gpio_bank);
@@ -108,10 +112,8 @@ impl GpioBank {
             .find_property("#gpio-pins")
             .and_then(|prop| prop.u32_value().ok())
         {
-            let regs = unsafe {
-                core::slice::from_raw_parts_mut(va.as_mut_ptr() as *mut _, num_pins as usize)
-            };
-
+            let regs =
+                core::slice::from_raw_parts_mut(va.as_mut_ptr() as *mut _, num_pins as usize);
             Ok(Self { regs })
         } else {
             crate::println!(
