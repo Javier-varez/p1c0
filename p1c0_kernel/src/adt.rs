@@ -268,6 +268,44 @@ impl AdtProperty {
         }
     }
 
+    pub fn function_value(&self) -> Result<Function<'static>, Error> {
+        const U32_SIZE: usize = core::mem::size_of::<u32>();
+
+        let data = self.get_data();
+        if (data.len() % core::mem::size_of::<u32>() != 0) || (data.len() < 2 * U32_SIZE) {
+            return Err(Error::InvalidPropertyType);
+        }
+
+        let phandle_data = &data[..U32_SIZE];
+        let bytes: [u8; U32_SIZE] = phandle_data.try_into().unwrap();
+        let phandle = <u32>::from_le_bytes(bytes);
+
+        // The name is in big endian, therefore we have to swap byte order. This is known as FourCC
+        // in m1n1 code.
+        let name_data = [
+            data[U32_SIZE + 3],
+            data[U32_SIZE + 2],
+            data[U32_SIZE + 1],
+            data[U32_SIZE + 0],
+        ];
+        let name = str::from_utf8(&name_data).or(Err(Error::InvalidPropertyType))?;
+        let name: heapless::String<4> = name.into();
+
+        // We know the data is aligned to 32 bit, so this should be safe
+        let args = unsafe {
+            core::slice::from_raw_parts(
+                &data[2 * U32_SIZE] as *const _ as *const u32,
+                data.len() / U32_SIZE - 2,
+            )
+        };
+
+        Ok(Function {
+            phandle,
+            name,
+            args,
+        })
+    }
+
     define_value_method!(u8_value, u8);
     define_value_method!(u16_value, u16);
     define_value_method!(u32_value, u32);
@@ -772,4 +810,11 @@ impl<'a> Iterator for PathIter<'a> {
 
         Some(node)
     }
+}
+
+#[derive(Debug)]
+pub struct Function<'a> {
+    pub phandle: u32,
+    pub name: heapless::String<4>,
+    pub args: &'a [u32],
 }
