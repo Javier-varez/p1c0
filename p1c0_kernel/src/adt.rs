@@ -175,6 +175,15 @@ impl AdtNode {
                 self.first_child_ptr()
             })
     }
+
+    pub fn is_compatible(&self, expected_compatible: &str) -> bool {
+        self.find_property("compatible")
+            .and_then(|prop| {
+                prop.str_list_value()
+                    .find(|compatible| *compatible == expected_compatible)
+            })
+            .is_some()
+    }
 }
 
 macro_rules! define_value_method {
