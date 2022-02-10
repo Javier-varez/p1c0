@@ -122,7 +122,7 @@ impl GpioBank {
         }
     }
 
-    fn get_pin_mut(
+    fn get_mut_pin(
         &mut self,
         pin_index: usize,
     ) -> Result<&mut ReadWrite<u32, Pin::Register>, Error> {
@@ -170,7 +170,7 @@ impl GpioBank {
         pin_index: usize,
         direction: PinDirection,
     ) -> Result<(), Error> {
-        let pin = self.get_pin_mut(pin_index)?;
+        let pin = self.get_mut_pin(pin_index)?;
 
         match direction {
             PinDirection::Input => pin.modify(Pin::MODE::IN_IRQ_OFF),
@@ -189,7 +189,7 @@ impl GpioBank {
             _ => return Err(Error::InvalidDirection),
         };
 
-        let pin = self.get_pin_mut(pin_index)?;
+        let pin = self.get_mut_pin(pin_index)?;
         pin.modify(Pin::DATA.val(state.into()));
         Ok(())
     }
