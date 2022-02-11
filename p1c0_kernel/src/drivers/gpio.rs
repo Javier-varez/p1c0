@@ -7,10 +7,11 @@ use tock_registers::{
 use crate::{
     adt,
     memory::{self, address::Address, MemoryManager},
+    sync::spinlock::SpinLock,
 };
 
 register_bitfields! {u32,
-    Pin [
+    PinReg [
         DATA OFFSET(0) NUMBITS(1) [ON=1, OFF=0],
         MODE OFFSET(1) NUMBITS(3) [
             OUT = 1,
@@ -47,7 +48,7 @@ pub enum Error {
     MissingAdtProperty(&'static str),
     MmioError(memory::Error),
     InvalidPin,
-    InvalidDirection,
+    PinNotAvailable,
 }
 
 impl From<memory::Error> for Error {
@@ -70,13 +71,86 @@ impl From<PinState> for u32 {
     }
 }
 
-pub enum PinDirection {
-    Input,
-    Output(PinState),
+pub mod mode {
+    pub struct Input {}
+    pub struct Output {}
 }
 
+const MAX_PINS: usize = 256;
+
 pub struct GpioBank {
-    regs: &'static mut [ReadWrite<u32, Pin::Register>],
+    regs: *mut ReadWrite<u32, PinReg::Register>,
+    num_pins: usize,
+    taken: SpinLock<[bool; MAX_PINS]>,
+}
+
+pub struct Pin<'a, MODE> {
+    bank: &'a GpioBank,
+    reg: *mut ReadWrite<u32, PinReg::Register>,
+    index: usize,
+    _pd: core::marker::PhantomData<MODE>,
+}
+
+impl<'a, MODE> Pin<'a, MODE> {
+    fn reg(&self) -> &'static ReadWrite<u32, PinReg::Register> {
+        unsafe { &mut *self.reg }
+    }
+
+    pub fn get_pin_state(&self) -> PinState {
+        if self.reg().read(PinReg::DATA) == 0 {
+            PinState::Low
+        } else {
+            PinState::High
+        }
+    }
+}
+
+impl<'a> Pin<'a, mode::Output> {
+    pub fn into_input(mut self) -> Pin<'a, mode::Input> {
+        self.reg().modify(PinReg::MODE::IN_IRQ_OFF);
+
+        let new_pin = Pin {
+            bank: self.bank,
+            reg: self.reg,
+            index: self.index,
+            _pd: core::marker::PhantomData {},
+        };
+
+        // Invalidate the pin so that drop does not free it
+        self.index = usize::MAX;
+        new_pin
+    }
+
+    pub fn set_pin_state(&mut self, state: PinState) {
+        self.reg().modify(PinReg::DATA.val(state.into()));
+    }
+}
+
+impl<'a> Pin<'a, mode::Input> {
+    pub fn into_output(mut self, initial_state: PinState) -> Pin<'a, mode::Output> {
+        self.reg()
+            .modify(PinReg::MODE::OUT + PinReg::DATA.val(initial_state.into()));
+
+        let new_pin = Pin {
+            bank: self.bank,
+            reg: self.reg,
+            index: self.index,
+            _pd: core::marker::PhantomData {},
+        };
+
+        // Invalidate the pin so that drop does not free it
+        self.index = usize::MAX;
+
+        new_pin
+    }
+}
+
+impl<'a, MODE> Drop for Pin<'a, MODE> {
+    fn drop(&mut self) {
+        if self.index != usize::MAX {
+            self.bank.release_pin(self.index);
+        }
+    }
 }
 
 impl GpioBank {
@@ -102,9 +176,11 @@ impl GpioBank {
             .find_property("#gpio-pins")
             .and_then(|prop| prop.u32_value().ok())
         {
-            let regs =
-                core::slice::from_raw_parts_mut(va.as_mut_ptr() as *mut _, num_pins as usize);
-            Ok(Self { regs })
+            Ok(Self {
+                regs: va.as_mut_ptr() as *mut _,
+                num_pins: num_pins as usize,
+                taken: SpinLock::new([false; MAX_PINS]),
+            })
         } else {
             crate::println!(
                 "Cannot instantiate gpio {}. Missing property #gpio-pins.",
@@ -114,75 +190,55 @@ impl GpioBank {
         }
     }
 
-    fn get_mut_pin(
-        &mut self,
-        pin_index: usize,
-    ) -> Result<&mut ReadWrite<u32, Pin::Register>, Error> {
-        if pin_index >= self.regs.len() {
+    fn try_take_pin(&self, index: usize) -> Result<(), Error> {
+        if index >= self.num_pins {
             return Err(Error::InvalidPin);
         }
-        Ok(&mut self.regs[pin_index])
-    }
 
-    fn get_pin(&self, pin_index: usize) -> Result<&ReadWrite<u32, Pin::Register>, Error> {
-        if pin_index >= self.regs.len() {
-            return Err(Error::InvalidPin);
+        let mut taken = self.taken.lock();
+        if taken[index] {
+            return Err(Error::PinNotAvailable);
         }
-        Ok(&self.regs[pin_index])
-    }
-
-    // TODO(javier-varez): Implement some pin ownership mechanism and avoid these bare methods
-
-    pub fn get_pin_value(&self, pin_index: usize) -> Result<PinState, Error> {
-        let pin = self.get_pin(pin_index)?;
-
-        if pin.read(Pin::DATA) == 0 {
-            Ok(PinState::Low)
-        } else {
-            Ok(PinState::High)
-        }
-    }
-
-    pub fn get_pin_direction(&self, pin_index: usize) -> Result<PinDirection, Error> {
-        let pin = self.get_pin(pin_index)?;
-
-        let direction = match pin.read_as_enum(Pin::MODE).unwrap() {
-            Pin::MODE::Value::OUT => {
-                let state = self.get_pin_value(pin_index)?;
-                PinDirection::Output(state)
-            }
-            _ => PinDirection::Input,
-        };
-
-        Ok(direction)
-    }
-
-    pub fn set_pin_direction(
-        &mut self,
-        pin_index: usize,
-        direction: PinDirection,
-    ) -> Result<(), Error> {
-        let pin = self.get_mut_pin(pin_index)?;
-
-        match direction {
-            PinDirection::Input => pin.modify(Pin::MODE::IN_IRQ_OFF),
-            PinDirection::Output(initial_state) => {
-                pin.modify(Pin::MODE::OUT + Pin::DATA.val(initial_state.into()))
-            }
-        }
+        taken[index] = true;
 
         Ok(())
     }
 
-    pub fn set_pin_state(&mut self, pin_index: usize, state: PinState) -> Result<(), Error> {
-        // Check that the pin is an output
-        match self.get_pin_direction(pin_index)? {
-            PinDirection::Output(_) => {}
-            _ => return Err(Error::InvalidDirection),
-        };
+    fn release_pin(&self, index: usize) {
+        let mut taken = self.taken.lock();
+        assert!(taken[index]);
+        taken[index] = false;
+    }
 
-        let pin = self.get_mut_pin(pin_index)?;
-        pin.modify(Pin::DATA.val(state.into()));
-        Ok(())
+    pub fn request_as_input(&self, index: usize) -> Result<Pin<'_, mode::Input>, Error> {
+        self.try_take_pin(index)?;
+
+        let reg = unsafe { &mut *self.regs.add(index) };
+        reg.modify(PinReg::MODE::IN_IRQ_OFF);
+
+        Ok(Pin {
+            bank: self,
+            reg,
+            index,
+            _pd: core::marker::PhantomData {},
+        })
+    }
+
+    pub fn request_as_output(
+        &self,
+        index: usize,
+        initial_state: PinState,
+    ) -> Result<Pin<'_, mode::Output>, Error> {
+        self.try_take_pin(index)?;
+
+        let reg = unsafe { &mut *self.regs.add(index) };
+        reg.modify(PinReg::MODE::OUT + PinReg::DATA.val(initial_state.into()));
+
+        Ok(Pin {
+            bank: self,
+            reg,
+            index,
+            _pd: core::marker::PhantomData {},
+        })
     }
 }
