@@ -228,13 +228,7 @@ impl Spi {
         let adt = get_adt().unwrap();
         let node = adt.find_node(spi_node).ok_or(Error::AdtNodeNotFound)?;
 
-        // Make sure that the node is compatible with this driver
-        let mut compat_prop = node
-            .find_property("compatible")
-            .map(|prop| prop.str_list_value())
-            .ok_or(Error::AdtNodeNotFound)?;
-
-        if !compat_prop.any(|compat_string| compat_string == "spi-1,spimc") {
+        if !node.is_compatible("spi-1,spimc") {
             return Err(Error::AdtNodeNotCompatible);
         }
 

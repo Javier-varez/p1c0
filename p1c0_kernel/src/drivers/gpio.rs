@@ -87,20 +87,10 @@ impl GpioBank {
     pub unsafe fn new(gpio_bank: &str) -> Result<Self, Error> {
         let adt = adt::get_adt().map_err(Error::AdtNotAvailable)?;
 
-        let node = adt.find_node(gpio_bank);
-
-        match node
-            .as_ref()
-            .and_then(|node| node.find_property("compatible"))
-            .and_then(|property| property.str_value().ok())
-        {
-            Some(compatible) if compatible == "gpio,t6000" => {}
-            _ => {
-                return Err(Error::NodeNotCompatible);
-            }
+        let node = adt.find_node(gpio_bank).ok_or(Error::NodeNotCompatible)?;
+        if !node.is_compatible("gpio,t6000") {
+            return Err(Error::NodeNotCompatible);
         }
-
-        let node = node.unwrap();
 
         let (pa, size) = adt
             .get_device_addr(gpio_bank, 0)

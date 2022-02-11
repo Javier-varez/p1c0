@@ -102,14 +102,9 @@ impl Aic {
     pub fn probe(device_path: &str) -> Result<Self, Error> {
         let adt = get_adt().expect("Could not get adt");
 
-        // Only aic2 is supported
-        match adt
-            .find_node(device_path)
-            .and_then(|node| node.find_property("compatible"))
-            .and_then(|prop| prop.str_value().ok())
-        {
-            Some(compatible) if compatible == "aic,2" => {}
-            _ => return Err(Error::NotCompatible),
+        let node = adt.find_node(device_path).ok_or(Error::NotCompatible)?;
+        if !node.is_compatible("aic,2") {
+            return Err(Error::NotCompatible);
         }
 
         let (aic_pa, size) = adt.get_device_addr(device_path, 0).unwrap();
