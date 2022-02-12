@@ -1,5 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(allocator_api)]
+#![feature(maybe_uninit_as_bytes)]
+#![feature(maybe_uninit_slice)]
 
 pub mod adt;
 pub mod arch;

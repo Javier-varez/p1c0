@@ -9,7 +9,7 @@ use crate::{
     memory::{address::Address, MemoryManager},
 };
 
-use core::iter::Iterator;
+use core::{iter::Iterator, mem::MaybeUninit};
 
 register_bitfields! {u32,
     Control [
@@ -178,7 +178,7 @@ fn pointer_alignment<T>(ptr: *const T) -> usize {
 
 /// This function checks the alignment and size of the slices to obtain the best fit
 /// transaction size that does not result in UB
-fn deduct_transaction_size(tx_data: &[u8], rx_data: &mut [u8]) -> TransactionSize {
+fn deduct_transaction_size(tx_data: &[u8], rx_data: &mut [MaybeUninit<u8>]) -> TransactionSize {
     let tx_alignment = pointer_alignment(tx_data.as_ptr());
     let rx_alignment = pointer_alignment(tx_data.as_ptr());
     if tx_alignment >= 4
@@ -349,7 +349,7 @@ impl Spi {
     /// transaction is 4 bytes then the iter must have a number of valid elements multiple of 4.
     unsafe fn pop_rx<'a, T>(&mut self, rx_data_iter: &'_ mut T, ts_size: TransactionSize)
     where
-        T: Iterator<Item = &'a mut u8>,
+        T: Iterator<Item = &'a mut MaybeUninit<u8>>,
     {
         while self.regs.fifo_status.read(FifoStatus::LEVEL_RX) > 0 {
             let rx_data = self.regs.rx_data.get();
@@ -357,20 +357,20 @@ impl Spi {
             match ts_size {
                 TransactionSize::Ts1b => {
                     let slot = rx_data_iter.next().unwrap_unchecked();
-                    *slot = rx_data as u8;
+                    slot.write(rx_data as u8);
                 }
                 TransactionSize::Ts2b => {
                     let bytes = u16::to_be_bytes(rx_data as u16);
                     for byte in bytes {
                         let slot = rx_data_iter.next().unwrap_unchecked();
-                        *slot = byte as u8;
+                        slot.write(byte as u8);
                     }
                 }
                 TransactionSize::Ts4b => {
                     let bytes = u32::to_be_bytes(rx_data);
                     for byte in bytes {
                         let slot = rx_data_iter.next().unwrap_unchecked();
-                        *slot = byte as u8;
+                        slot.write(byte as u8);
                     }
                 }
             }
@@ -411,6 +411,18 @@ impl Spi {
     }
 
     pub fn transact(&mut self, tx_data: &[u8], rx_data: &mut [u8]) -> Result<(), Error> {
+        // We know that the data is initialized. Faking as if it wasn't allows us to freely write
+        // to it. Since u8 does not implement drop, no problems should arise from the objects not
+        // being dropped with write
+        let rx_data = unsafe { core::mem::transmute(rx_data) };
+        self.transact_into_uninit_buffer(tx_data, rx_data)
+    }
+
+    pub fn transact_into_uninit_buffer(
+        &mut self,
+        tx_data: &[u8],
+        rx_data: &mut [MaybeUninit<u8>],
+    ) -> Result<(), Error> {
         if tx_data.is_empty() && rx_data.is_empty() {
             // This is effectively a noop
             return Ok(());
