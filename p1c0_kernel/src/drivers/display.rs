@@ -7,6 +7,7 @@ use embedded_graphics::{
     mono_font::{ascii::FONT_7X14, MonoFont, MonoTextStyle},
     pixelcolor::Rgb888,
     prelude::*,
+    primitives::Rectangle,
     text::{Baseline, Text},
 };
 
@@ -110,6 +111,8 @@ impl Display {
             max_rows,
         };
 
+        let rect = Rectangle::new(Point::new(0, 0), Size::new(disp.width, disp.height));
+        disp.fill_solid(&rect, Rgb888::BLACK).unwrap();
         disp.draw_logo(logo);
 
         DISPLAY.lock().replace(disp);
