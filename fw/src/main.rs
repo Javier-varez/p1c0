@@ -14,7 +14,7 @@ use p1c0_kernel::{
     adt::{get_adt, Adt},
     arch::get_exception_level,
     boot_args::get_boot_args,
-    drivers::{display::Display, spi::Spi},
+    drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi},
     println,
 };
 
@@ -22,25 +22,6 @@ use p1c0_kernel::{
 use p1c0::print_semihosting_caps;
 
 const ATE_LOGO_DATA: &[u8] = include_bytes!("../ate_logo.bmp");
-
-fn print_compatible(adt: &Adt) {
-    let node = adt.find_node("/").expect("There is a root node");
-    let compat = node
-        .find_property("compatible")
-        .expect("There is a compatible prop");
-    let compatibles: Vec<_> = compat.str_list_value().collect();
-    println!("ADT Compatible: {:?}", compatibles);
-    println!()
-}
-
-fn print_uart_reg(adt: &Adt) {
-    let reg = adt
-        .find_node("/arm-io/uart0")
-        .and_then(|uart_node| uart_node.find_property("reg"))
-        .expect("The UART0 has a \"reg\" property");
-    println!("Uart reg: 0x{:x}", reg.usize_value().unwrap());
-    println!()
-}
 
 fn kernel_entry() {
     let logo = Bmp::<Rgb888>::from_slice(ATE_LOGO_DATA).unwrap();
@@ -56,48 +37,14 @@ fn kernel_entry() {
     #[cfg(feature = "emulator")]
     print_semihosting_caps();
 
-    let adt = get_adt().expect("Valid ADT");
-    print_compatible(&adt);
-    print_uart_reg(&adt);
+    let spi3 = unsafe { Spi::new("/arm-io/spi3").unwrap() };
+    let gpio0_bank = unsafe { GpioBank::new("/arm-io/gpio0").unwrap() };
+    let nub_gpio0_bank = unsafe { GpioBank::new("/arm-io/nub-gpio0").unwrap() };
 
-    let mut spi3 = unsafe { Spi::new("/arm-io/spi3").unwrap() };
-
-    // 1 byte packing
-    let buffer = [1u8, 2, 3, 4, 5];
-    let mut recv = [31u8; 4];
-    spi3.transact(&buffer, &mut recv).unwrap();
-
-    // 2 byte packing
-    let buffer = [1u8, 2, 3, 4, 5, 6];
-    let mut recv = [31u8; 12];
-    spi3.transact(&buffer, &mut recv).unwrap();
-
-    // 4 byte packing
-    let buffer = [1u8, 2, 3, 4, 5, 6, 7, 8];
-    let mut recv = [31u8; 16];
-    spi3.transact(&buffer, &mut recv).unwrap();
-
-    // only rx
-    let buffer = [];
-    let mut recv = [31u8; 16];
-    spi3.transact(&buffer, &mut recv).unwrap();
-
-    // only tx
-    let buffer = [1u8, 2, 3, 4, 5, 6, 7, 8];
-    let mut recv = [];
-    spi3.transact(&buffer, &mut recv).unwrap();
-
-    // Trigger a random interrupt
-    let aic = p1c0_kernel::drivers::aic::Aic::probe("/arm-io/aic").unwrap();
-
-    unsafe {
-        p1c0_kernel::drivers::aic::AIC.replace(aic);
-
-        if let Some(aic) = &mut p1c0_kernel::drivers::aic::AIC {
-            aic.unmask_interrupt(15).unwrap();
-            aic.set_interrupt(15).unwrap();
-        }
-    }
+    let mut hid_dev =
+        unsafe { HidDev::new("/arm-io/spi3/ipd", spi3, &gpio0_bank, &nub_gpio0_bank).unwrap() };
+    hid_dev.power_on();
+    hid_dev.run();
 }
 
 #[no_mangle]
