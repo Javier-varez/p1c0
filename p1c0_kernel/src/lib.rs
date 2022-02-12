@@ -6,6 +6,7 @@ pub mod arch;
 pub mod boot_args;
 pub mod chickens;
 mod collections;
+pub mod crc;
 pub mod drivers;
 mod font;
 pub mod init;
