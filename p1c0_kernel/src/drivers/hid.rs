@@ -1,3 +1,5 @@
+pub mod keyboard;
+
 use super::generic_timer;
 use super::gpio::{self, GpioBank, PinState};
 use super::spi::{self, Spi};
@@ -5,6 +7,8 @@ use super::spi::{self, Spi};
 use crate::adt;
 
 use core::{mem::MaybeUninit, time::Duration};
+
+use keyboard::KeyboardReport;
 
 #[derive(Debug)]
 pub enum IoError {
@@ -113,9 +117,6 @@ impl<'a> HidDev<'a> {
             if let PinState::Low = self.irq_pin.get_pin_state() {
                 break;
             }
-
-            let timer = generic_timer::get_timer();
-            timer.delay(core::time::Duration::from_millis(1));
         }
     }
 
@@ -154,6 +155,30 @@ impl<'a> HidDev<'a> {
         return Ok(unsafe { hid_packet.assume_init() });
     }
 
+    fn parse_keyboard_packet(&mut self, packet: HidTransferPacket) {
+        if packet.length as usize >= core::mem::size_of::<HidMsgHeader>() {
+            let header: HidMsgHeader = unsafe { core::mem::transmute_copy(&packet.data) };
+            if header.len >= 9
+                && header.byte0 == 0x10
+                && header.byte1 == 0x01
+                && header.byte2 == 0x00
+            {
+                let off = core::mem::size_of::<HidMsgHeader>();
+                let data = &packet.data[off..off + header.len as usize];
+
+                let report = KeyboardReport::new(data);
+                for keycode in report.keycodes() {
+                    if let Some(val) = keycode.to_char() {
+                        // Print characters to the screen
+                        crate::print!("{}", val);
+                    }
+                }
+            }
+        } else {
+            crate::println!("Short keyboard packet");
+        }
+    }
+
     pub fn run(&mut self) -> ! {
         loop {
             self.wait_for_irq();
@@ -161,10 +186,11 @@ impl<'a> HidDev<'a> {
             let packet = self.receive_packet().unwrap();
             match packet.device {
                 KBD_DEVICE_ID => {
-                    crate::println!("Kbd packet, {:?}", packet);
+                    self.parse_keyboard_packet(packet);
                 }
                 TRACKPAD_DEVICE_ID => {
-                    crate::println!("Trackpad packet, {:?}", packet);
+                    // Ignore trackpad packets for now
+                    // crate::println!("Trackpad packet, {:?}", packet);
                 }
                 _ => {
                     crate::println!("Unknown packet, {:?}", packet);
