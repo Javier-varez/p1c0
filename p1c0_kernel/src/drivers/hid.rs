@@ -8,7 +8,7 @@ use crate::adt;
 
 use core::{mem::MaybeUninit, time::Duration};
 
-use keyboard::KeyboardReport;
+use keyboard::{Keyboard, KeyboardReport};
 
 #[derive(Debug)]
 pub enum IoError {
@@ -62,6 +62,7 @@ pub struct HidDev<'a> {
     spidev: Spi,
     enable_pin: gpio::Pin<'a, gpio::mode::Output>,
     irq_pin: gpio::Pin<'a, gpio::mode::Input>,
+    keyboard_dev: Keyboard,
 }
 
 impl<'a> HidDev<'a> {
@@ -109,6 +110,7 @@ impl<'a> HidDev<'a> {
             spidev,
             enable_pin,
             irq_pin,
+            keyboard_dev: Keyboard::new(),
         })
     }
 
@@ -167,12 +169,7 @@ impl<'a> HidDev<'a> {
                 let data = &packet.data[off..off + header.len as usize];
 
                 let report = KeyboardReport::new(data);
-                for keycode in report.keycodes() {
-                    if let Some(val) = keycode.to_char() {
-                        // Print characters to the screen
-                        crate::print!("{}", val);
-                    }
-                }
+                self.keyboard_dev.handle_report(report);
             }
         } else {
             crate::println!("Short keyboard packet");
