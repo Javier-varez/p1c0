@@ -40,11 +40,11 @@ static SCAN_TABLE: [Option<char>; 256] = [
     Some('8'),
     Some('9'),
     Some('0'),
+    Some('\n'),
     None,
     None,
-    None,
-    None,
-    None,
+    Some('\t'),
+    Some(' '),
     None,
     None,
     None,
@@ -258,16 +258,24 @@ static SCAN_TABLE: [Option<char>; 256] = [
     None,
 ];
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Scancode(u8);
 
 impl Scancode {
-    pub fn new(value: u8) -> Self {
+    pub const fn new(value: u8) -> Self {
         Scancode(value)
     }
 
     pub fn to_char(&self) -> Option<char> {
         SCAN_TABLE[self.0 as usize]
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.0 == 1
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.0 != 0
     }
 }
 
@@ -293,5 +301,80 @@ impl KeyboardReport {
     }
     pub fn keycodes(&self) -> &[Scancode] {
         &self.keycodes
+    }
+
+    pub fn has_error(&self) -> bool {
+        self.keycodes.iter().find(|code| code.is_error()).is_some()
+    }
+}
+
+pub struct Keyboard {
+    current_keycodes: [Scancode; 6],
+}
+
+impl Keyboard {
+    pub const fn new() -> Self {
+        Self {
+            current_keycodes: [Scancode::new(0); 6],
+        }
+    }
+
+    fn key_pressed(&mut self, code: Scancode) {
+        // Insert in current_keycodes
+        for keycode in &mut self.current_keycodes {
+            if !keycode.is_valid() {
+                *keycode = code;
+                break;
+            }
+        }
+
+        // TODO(javier-varez): Send key-down event
+        if let Some(c) = code.to_char() {
+            crate::print!("{}", c);
+        }
+    }
+
+    pub fn handle_report(&mut self, report: KeyboardReport) {
+        // Ignore error reports
+        if report.has_error() {
+            crate::println!("Too many keys pressed");
+            return;
+        }
+
+        // TODO(javier-varez): Handle modifiers
+
+        // Remove keys that are not pressed anymore
+        for keycode in self
+            .current_keycodes
+            .iter_mut()
+            .filter(|keycode| keycode.is_valid())
+        {
+            if report
+                .keycodes()
+                .iter()
+                .find(|code| **code == *keycode)
+                .is_none()
+            {
+                *keycode = Scancode::new(0);
+                // TODO(javier-varez): Send key-up event
+            }
+        }
+
+        // Check for key-down events
+        for keycode in report
+            .keycodes()
+            .iter()
+            .filter(|keycode| keycode.is_valid())
+        {
+            if self
+                .current_keycodes
+                .iter()
+                .find(|code| **code == *keycode)
+                .is_none()
+            {
+                // Insert keycode
+                self.key_pressed(*keycode);
+            }
+        }
     }
 }
