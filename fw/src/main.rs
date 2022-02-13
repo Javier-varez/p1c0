@@ -2,16 +2,12 @@
 #![no_main]
 #![feature(default_alloc_error_handler)]
 
-extern crate alloc;
-use alloc::vec::Vec;
-
 use embedded_graphics::pixelcolor::Rgb888;
 use tinybmp::Bmp;
 
 use p1c0::print_boot_args;
 
 use p1c0_kernel::{
-    adt::{get_adt, Adt},
     arch::get_exception_level,
     boot_args::get_boot_args,
     drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi},
