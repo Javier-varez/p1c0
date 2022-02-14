@@ -130,11 +130,14 @@ register_bitfields! {u32,
     ]
 }
 
-const _CLOCK_DIV_MAX: u32 = 0x7FF;
-const CLOCK_DIV_DEFAULT: u32 = 0x02; // Hardcoded to 8 Mhz (assuming 24 Mhz clk)
-const CS_TO_CLK_DELAY: Duration = Duration::from_micros(45);
-const CLK_TO_CS_DELAY: Duration = Duration::from_micros(45);
-const CS_IDLE_DELAY: Duration = Duration::from_micros(250);
+const CLOCK_DIV_MAX: u32 = 0x7FF;
+const PARENT_CLK_HZ: u128 = 24_000_000; // TODO(javier-varez): deduct this from the clock source in adt
+
+const CLK_RATE_DEFAULT: Duration = Duration::from_micros(1); // 1 Mhz
+const CS_TO_CLK_DELAY_DEFAULT: Duration = Duration::from_micros(0);
+const CLK_TO_CS_DELAY_DEFAULT: Duration = Duration::from_micros(0);
+const CS_IDLE_DELAY_DEFAULT: Duration = Duration::from_micros(0);
+
 const FIFO_DEPTH: u32 = 16;
 
 #[repr(C)]
@@ -220,6 +223,10 @@ pub enum Error {
 
 pub struct Spi {
     regs: &'static mut SpiRegisters,
+    cs_to_clock_delay: Duration,
+    clock_to_cs_delay: Duration,
+    cs_inactive_delay: Duration,
+    clock_rate: Duration,
 }
 
 impl Spi {
@@ -245,8 +252,21 @@ impl Spi {
 
         let regs: &'static mut SpiRegisters = &mut *(va.as_ptr() as *mut SpiRegisters);
 
-        let mut instance = Self { regs };
+        let cs_to_clock_delay = CS_TO_CLK_DELAY_DEFAULT;
+        let clock_to_cs_delay = CLK_TO_CS_DELAY_DEFAULT;
+        let cs_inactive_delay = CS_IDLE_DELAY_DEFAULT;
+        let clock_rate = CLK_RATE_DEFAULT;
+
+        let mut instance = Self {
+            regs,
+            cs_to_clock_delay,
+            clock_to_cs_delay,
+            cs_inactive_delay,
+            clock_rate,
+        };
+
         instance.init();
+
         Ok(instance)
     }
 
@@ -297,9 +317,6 @@ impl Spi {
                 + Config::IE_RXCOMPLETE::CLEAR
                 + Config::IE_TXCOMPLETE::CLEAR,
         );
-
-        // TODO(javier-varez): add control for the peripheral frequency instead of hardcode it here
-        self.regs.clk_div.set(CLOCK_DIV_DEFAULT);
     }
 
     fn set_cs(&mut self, enable: bool) {
@@ -423,6 +440,22 @@ impl Spi {
         self.transact_into_uninit_buffer(tx_data, rx_data)
     }
 
+    pub fn set_cs_to_clock_delay(&mut self, duration: Duration) {
+        self.cs_to_clock_delay = duration;
+    }
+
+    pub fn set_clock_to_cs_delay(&mut self, duration: Duration) {
+        self.clock_to_cs_delay = duration;
+    }
+
+    pub fn set_cs_inactive_delay(&mut self, duration: Duration) {
+        self.cs_inactive_delay = duration;
+    }
+
+    pub fn set_clock_rate(&mut self, duration: Duration) {
+        self.clock_rate = duration;
+    }
+
     pub fn transact_into_uninit_buffer(
         &mut self,
         tx_data: &[u8],
@@ -466,6 +499,11 @@ impl Spi {
         self.regs.rx_count.set(rx_len as u32);
         self.regs.tx_count.set(tx_len as u32);
 
+        let clk_div = (PARENT_CLK_HZ * self.clock_rate.as_nanos() / 1_000_000_000) as u32 - 1;
+        self.regs
+            .clk_div
+            .set(core::cmp::min(clk_div, CLOCK_DIV_MAX));
+
         let mut tx_data_iter = tx_data.iter().peekable();
         let mut rx_data_iter = rx_data.iter_mut().peekable();
         unsafe {
@@ -474,22 +512,26 @@ impl Spi {
 
         let timer = generic_timer::get_timer();
 
+        let clock_to_cs_delay = self.clock_to_cs_delay;
+        let cs_to_clock_delay = self.cs_to_clock_delay;
+        let cs_inactive_delay = self.cs_inactive_delay;
+
         // Start the transfer
         self.set_cs(true);
         // TODO(javier-varez): maybe we should allow sleeping here?
-        timer.delay(CS_TO_CLK_DELAY);
+        timer.delay(cs_to_clock_delay);
         self.regs.control.write(Control::RUN::SET);
 
         let cleanup = |instance: &mut Self| {
             // TODO(javier-varez): maybe we should allow sleeping here?
-            timer.delay(CLK_TO_CS_DELAY);
+            timer.delay(clock_to_cs_delay);
             instance.set_cs(false);
             instance
                 .regs
                 .control
                 .write(Control::RUN::CLEAR + Control::RX_RESET::SET + Control::TX_RESET::SET);
             // TODO(javier-varez): maybe we should allow sleeping here?
-            timer.delay(CS_IDLE_DELAY);
+            timer.delay(cs_inactive_delay);
         };
 
         while tx_data_iter.peek().is_some() || rx_data_iter.peek().is_some() {
