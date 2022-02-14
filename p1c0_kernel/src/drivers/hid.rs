@@ -76,7 +76,7 @@ impl<'a> HidDev<'a> {
     ///
     pub unsafe fn new(
         hid_name: &str,
-        spidev: Spi,
+        mut spidev: Spi,
         gpio0_bank: &'a GpioBank,
         nub_gpio0_bank: &'a GpioBank,
     ) -> Result<Self, Error> {
@@ -105,6 +105,11 @@ impl<'a> HidDev<'a> {
         let irq_pin = nub_gpio0_bank
             .request_as_input(irq_pin_num as usize)
             .or(Err(Error::IOError(IoError::CannotRequestGpio)))?;
+
+        spidev.set_cs_inactive_delay(Duration::from_micros(250));
+        spidev.set_cs_to_clock_delay(Duration::from_micros(45));
+        spidev.set_clock_to_cs_delay(Duration::from_micros(45));
+        spidev.set_clock_rate(Duration::from_nanos(125)); // 1 / 8 MHz
 
         Ok(Self {
             spidev,
