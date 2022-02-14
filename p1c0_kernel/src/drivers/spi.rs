@@ -6,10 +6,11 @@ use tock_registers::{
 
 use crate::{
     adt::get_adt,
+    drivers::generic_timer,
     memory::{address::Address, MemoryManager},
 };
 
-use core::{iter::Iterator, mem::MaybeUninit};
+use core::{iter::Iterator, mem::MaybeUninit, time::Duration};
 
 register_bitfields! {u32,
     Control [
@@ -129,7 +130,11 @@ register_bitfields! {u32,
     ]
 }
 
-const CLOCK_DIV_MAX: u32 = 0x7FF;
+const _CLOCK_DIV_MAX: u32 = 0x7FF;
+const CLOCK_DIV_DEFAULT: u32 = 0x02; // Hardcoded to 8 Mhz (assuming 24 Mhz clk)
+const CS_TO_CLK_DELAY: Duration = Duration::from_micros(45);
+const CLK_TO_CS_DELAY: Duration = Duration::from_micros(45);
+const CS_IDLE_DELAY: Duration = Duration::from_micros(250);
 const FIFO_DEPTH: u32 = 16;
 
 #[repr(C)]
@@ -294,7 +299,7 @@ impl Spi {
         );
 
         // TODO(javier-varez): add control for the peripheral frequency instead of hardcode it here
-        self.regs.clk_div.set(CLOCK_DIV_MAX);
+        self.regs.clk_div.set(CLOCK_DIV_DEFAULT);
     }
 
     fn set_cs(&mut self, enable: bool) {
@@ -467,16 +472,24 @@ impl Spi {
             self.push_tx(&mut tx_data_iter, ts_size);
         }
 
+        let timer = generic_timer::get_timer();
+
         // Start the transfer
-        self.regs.control.write(Control::RUN::SET);
         self.set_cs(true);
+        // TODO(javier-varez): maybe we should allow sleeping here?
+        timer.delay(CS_TO_CLK_DELAY);
+        self.regs.control.write(Control::RUN::SET);
 
         let cleanup = |instance: &mut Self| {
+            // TODO(javier-varez): maybe we should allow sleeping here?
+            timer.delay(CLK_TO_CS_DELAY);
             instance.set_cs(false);
             instance
                 .regs
                 .control
                 .write(Control::RUN::CLEAR + Control::RX_RESET::SET + Control::TX_RESET::SET);
+            // TODO(javier-varez): maybe we should allow sleeping here?
+            timer.delay(CS_IDLE_DELAY);
         };
 
         while tx_data_iter.peek().is_some() || rx_data_iter.peek().is_some() {
