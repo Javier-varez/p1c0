@@ -119,12 +119,8 @@ impl<'a> HidDev<'a> {
         })
     }
 
-    pub fn wait_for_irq(&mut self) {
-        loop {
-            if let PinState::Low = self.irq_pin.get_pin_state() {
-                break;
-            }
-        }
+    pub fn has_events(&mut self) -> bool {
+        matches!(self.irq_pin.get_pin_state(), PinState::Low)
     }
 
     pub fn power_on(&mut self) {
@@ -181,10 +177,8 @@ impl<'a> HidDev<'a> {
         }
     }
 
-    pub fn run(&mut self) -> ! {
-        loop {
-            self.wait_for_irq();
-
+    pub fn process(&mut self) {
+        if self.has_events() {
             let packet = self.receive_packet().unwrap();
             match packet.device {
                 KBD_DEVICE_ID => {
