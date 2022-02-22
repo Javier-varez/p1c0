@@ -10,7 +10,7 @@ use p1c0::print_boot_args;
 use p1c0_kernel::{
     arch::get_exception_level,
     boot_args::get_boot_args,
-    drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi},
+    drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi, wdt},
     println,
 };
 
@@ -40,7 +40,13 @@ fn kernel_entry() {
     let mut hid_dev =
         unsafe { HidDev::new("/arm-io/spi3/ipd", spi3, &gpio0_bank, &nub_gpio0_bank).unwrap() };
     hid_dev.power_on();
-    hid_dev.run();
+    loop {
+        // To avoid a bite we pet the watchdog
+        wdt::service();
+
+        // Handle HID events
+        hid_dev.process();
+    }
 }
 
 #[no_mangle]
