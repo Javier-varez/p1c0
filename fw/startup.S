@@ -1,3 +1,8 @@
+#define UART_BASE 0x39b200000
+
+#define UTRSTAT 0x010
+#define UTXH 0x020
+
 .extern start_rust
 .extern _stack_bot
 .extern _bss_start
@@ -56,4 +61,34 @@ memcpy128_body:
     subs    x2, x2, #16
     bne     memcpy128_body
 memcpy128_done:
+    ret
+
+.globl _uart_putc
+.type _uart_putc, @function
+_uart_putc:
+#ifdef UART_BASE
+    ldr x1, =UART_BASE
+
+1:
+    ldr w2, [x1, UTRSTAT]
+    tst w2, #2
+    beq 1b
+    str w0, [x1, UTXH]
+#endif
+    ret
+
+.globl _uart_puts
+.type _uart_puts, @function
+_uart_puts:
+    cbz x0, _uart_puts_exit
+    str x30, [sp, #-8]!
+    mov x19, x0
+1:
+    ldrb w0, [x19]
+    cbz w0, _uart_puts_exit
+    bl _uart_putc
+    add x19, x19, #1
+    b 1b
+_uart_puts_exit:
+	ldr x30, [sp], #8
     ret
