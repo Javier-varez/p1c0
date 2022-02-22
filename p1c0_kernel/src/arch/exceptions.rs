@@ -319,7 +319,7 @@ pub fn handling_init() {
         unsafe { barrier::isb(barrier::SY) };
 
         let vectors = unsafe { &__el2_exception_vector_start as *const _ };
-        VBAR_EL12.set(vectors as u64);
+        VBAR_EL2.set(vectors as u64);
 
         // Force VBAR update to complete before next instruction.
         unsafe { barrier::isb(barrier::SY) };
