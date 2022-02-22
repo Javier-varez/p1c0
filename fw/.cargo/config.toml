@@ -3,7 +3,7 @@ target = "aarch64-unknown-none-softfloat"
 
 [target.aarch64-unknown-none-softfloat]
 rustflags = [
-    "-C", "link-arg=-Tp1c0.ld",
+    "-C", "link-arg=-Tcustom_p1c0.ld",
     "-C", "link-arg=-Map=p1c0.map",
     "-C", "relocation-model=pic",
     "-C", "link-arg=--no-apply-dynamic-relocs",
