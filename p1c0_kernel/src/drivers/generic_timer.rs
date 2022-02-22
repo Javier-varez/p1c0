@@ -1,6 +1,6 @@
 use cortex_a::{
     asm::barrier,
-    registers::{CNTFRQ_EL0, CNTPCT_EL0},
+    registers::{CNTFRQ_EL0, CNTVCT_EL0},
 };
 use tock_registers::interfaces::Readable;
 
@@ -21,7 +21,7 @@ impl GenericTimer {
         // Ensures that we don't get an out of order value by adding an instruction barrier
         // (flushing the instruction pipeline)
         unsafe { barrier::isb(barrier::SY) };
-        CNTPCT_EL0.get()
+        CNTVCT_EL0.get()
     }
 
     /// Delays execution for the given duration. Currently this is a blocking routine that does not
