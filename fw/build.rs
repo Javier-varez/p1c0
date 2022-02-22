@@ -6,7 +6,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("cargo:rustc-link-search={}", out_dir.display());
 
-    File::create(out_dir.join("p1c0.ld"))?.write_all(include_bytes!("p1c0.ld"))?;
+    #[cfg(feature = "binary")]
+    File::create(out_dir.join("custom_p1c0.ld"))?.write_all(include_bytes!("p1c0_bin.ld"))?;
+
+    #[cfg(not(feature = "binary"))]
+    File::create(out_dir.join("custom_p1c0.ld"))?.write_all(include_bytes!("p1c0.ld"))?;
 
     let host = env::var("HOST").unwrap();
 

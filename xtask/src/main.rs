@@ -22,6 +22,10 @@ enum Options {
         /// Targets the emulator and adds semihosting support
         #[structopt(long)]
         emulator: bool,
+
+        /// Builds a binary file instead of a macho file. Can be used from macOS 12.2 onwards
+        #[structopt(long)]
+        binary: bool,
     },
     /// Runs all tests.
     Test,
@@ -32,22 +36,45 @@ enum Options {
     InstallRequirements,
 }
 
-fn build(release: bool, emulator: bool) -> Result<(), anyhow::Error> {
+fn build(release: bool, emulator: bool, binary: bool) -> Result<(), anyhow::Error> {
     let _dir = xshell::pushd("fw")?;
     let release = if release { Some("--release") } else { None };
-    let emulator = if emulator {
-        Some("--features=emulator")
-    } else {
+
+    let mut build_features = vec![];
+    if emulator {
+        build_features.push("emulator");
+    }
+    if binary {
+        build_features.push("binary");
+    }
+
+    let features = if build_features.is_empty() {
         None
+    } else {
+        let mut feature_string = "--features=".to_string();
+        let num_features = build_features.len();
+        for (index, feature) in build_features.iter().enumerate() {
+            feature_string.push_str(feature);
+            if index != (num_features - 1) {
+                feature_string.push(',');
+            }
+        }
+        Some(feature_string)
     };
-    cmd!("cargo build").args(release).args(emulator).run()?;
+
+    let output_name = if binary { "p1c0.bin" } else { "p1c0.macho" };
+
+    cmd!("cargo build")
+        .args(release)
+        .args(features.clone())
+        .run()?;
     cmd!("cargo objcopy")
         .args(release)
-        .args(emulator)
+        .args(features)
         .arg("--")
         .arg("-O")
         .arg("binary")
-        .arg("p1c0.macho")
+        .arg(output_name)
         .run()?;
     Ok(())
 }
@@ -78,7 +105,7 @@ fn run_clippy() -> Result<(), anyhow::Error> {
 }
 
 fn run_qemu(release: bool) -> Result<(), anyhow::Error> {
-    build(release, true)?;
+    build(release, true, false)?;
     cmd!("qemu-system-aarch64 -machine apple-m1 -bios fw/p1c0.macho -serial stdio --display none -semihosting")
         .run()?;
     Ok(())
@@ -96,7 +123,11 @@ fn main() -> Result<(), anyhow::Error> {
 
     match opts {
         Options::Run { release } => run_qemu(release)?,
-        Options::Build { release, emulator } => build(release, emulator)?,
+        Options::Build {
+            release,
+            emulator,
+            binary,
+        } => build(release, emulator, binary)?,
         Options::Test => run_tests()?,
         Options::Clippy => run_clippy()?,
         Options::InstallRequirements => install_requirements()?,

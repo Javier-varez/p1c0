@@ -1,5 +1,7 @@
 **/target
 **/*.macho
+**/*.bin
 **/*.map
 **/.DS_Store
+**/.idea
 .tools

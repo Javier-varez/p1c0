@@ -16,6 +16,8 @@ path = "tests/adt_tests.rs"
 
 [features]
 emulator = ["arm-semihosting"]
+# The binary feature builds a bin file instead of a macho file and uses a different ld script
+binary = []
 default = []
 
 [dependencies]
