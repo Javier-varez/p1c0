@@ -6,7 +6,7 @@ use super::address::{Address, PhysicalAddress};
 use crate::{
     arch::mmu::PAGE_BITS,
     collections::{
-        instrusive_list::{IntrusiveItem, IntrusiveList},
+        intrusive_list::{IntrusiveItem, IntrusiveList},
         OwnedMutPtr,
     },
 };
