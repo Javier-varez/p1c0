@@ -1,8 +1,9 @@
 use core::sync::atomic;
 use cortex_a::{asm::barrier, registers::DAIF};
-use tock_registers::interfaces::Writeable;
+use tock_registers::interfaces::{Readable, Writeable};
 
 static CRITICAL_NESTING: atomic::AtomicU32 = atomic::AtomicU32::new(0);
+static mut SAVED_DAIF: u64 = 0;
 
 use core::cell::UnsafeCell;
 
@@ -20,27 +21,38 @@ impl<T> SpinLock<T> {
     }
 
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
-        while self
-            .lock
-            .compare_exchange_weak(
+        let mut saved_daif;
+
+        loop {
+            saved_daif = DAIF.get();
+            DAIF.write(DAIF::D::Masked + DAIF::I::Masked + DAIF::A::Masked + DAIF::F::Masked);
+            unsafe { barrier::dsb(barrier::ISHST) };
+
+            match self.lock.compare_exchange_weak(
                 false,
                 true,
                 atomic::Ordering::Acquire,
                 atomic::Ordering::Relaxed,
-            )
-            .is_err()
-        {}
+            ) {
+                Ok(_) => break,
+                Err(_) => {
+                    // Restore daif. This gives the processor a chance to run some
+                    // interrupt/exceptions while looping
+                    DAIF.set(saved_daif);
+
+                    // Add a barrier here to ensure that subsequent memory accesses really execute
+                    // out of the critical section
+                    unsafe { barrier::dsb(barrier::ISHST) };
+                }
+            }
+        }
 
         let prev_nesting = CRITICAL_NESTING.fetch_add(1, atomic::Ordering::Acquire);
         if prev_nesting == core::u32::MAX {
             panic!("We have reached the maximum value for CRITICAL_NESTING. This is MOST LIKELY a bug in user code");
         } else if prev_nesting == 0 {
-            // Disable exceptions here because they were enabled (CRITICAL_NESTING was 0)
-            DAIF.write(DAIF::D::Masked + DAIF::I::Masked + DAIF::A::Masked + DAIF::F::Masked);
-
-            // Add a barrier here to ensure that subsequent memory accesses really execute within
-            // the critical section
-            unsafe { barrier::dsb(barrier::ISHST) };
+            // Save the daif value for later when it is unlocked
+            unsafe { SAVED_DAIF = saved_daif };
         }
 
         SpinLockGuard {
@@ -50,18 +62,16 @@ impl<T> SpinLock<T> {
     }
 
     fn unlock(&self) {
+        assert!(self.lock.swap(false, atomic::Ordering::Release));
+
         let prev_nesting = CRITICAL_NESTING.fetch_sub(1, atomic::Ordering::Release);
         if prev_nesting == 1 {
             // Add a barrier here to ensure that memory accesses finish before enabling exceptions
             unsafe { barrier::dsb(barrier::ISHST) };
 
-            // Enable exceptions here because they were disabled (CRITICAL_NESTING was 1)
-            DAIF.write(
-                DAIF::D::Unmasked + DAIF::I::Unmasked + DAIF::A::Unmasked + DAIF::F::Unmasked,
-            );
+            // Restore daif settings
+            unsafe { DAIF.set(SAVED_DAIF) };
         }
-
-        self.lock.swap(false, atomic::Ordering::Release);
     }
 }
 
