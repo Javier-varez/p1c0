@@ -92,3 +92,40 @@ _uart_puts:
 2:
     ldr x30, [sp], #8
     ret
+
+.globl _uart_puthex
+.type _uart_puthex, @function
+_uart_puthex:
+    str x30, [sp, #-8]!
+    mov x19, x0
+    mov x20, #60
+
+    mov x0, '0'
+    bl _uart_putc
+    mov x0, 'x'
+    bl _uart_putc
+
+1:
+    mov x0, x19
+    lsr x0, x0, x20
+    and x0, x0, #0xF
+    cmp x0, #10
+    b.ge 2f
+    add x0, x0, '0'
+    b 3f
+2:
+    add x0, x0, 'A' - 10
+3:
+    bl _uart_putc
+    cbz x20, 4f
+    sub x20, x20, #4
+    b 1b
+4:
+    ldr x30, [sp], #8
+    ret
+
+.globl _uart_putendl
+.type _uart_putendl, @function
+_uart_putendl:
+    mov x0, '\n'
+    b _uart_putc
