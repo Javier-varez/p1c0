@@ -80,15 +80,15 @@ _uart_putc:
 .globl _uart_puts
 .type _uart_puts, @function
 _uart_puts:
-    cbz x0, _uart_puts_exit
     str x30, [sp, #-8]!
+    cbz x0, 2f
     mov x19, x0
 1:
     ldrb w0, [x19]
-    cbz w0, _uart_puts_exit
+    cbz w0, 2f
     bl _uart_putc
     add x19, x19, #1
     b 1b
-_uart_puts_exit:
-	ldr x30, [sp], #8
+2:
+    ldr x30, [sp], #8
     ret
