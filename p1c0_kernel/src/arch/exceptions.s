@@ -4,7 +4,7 @@
 //   * ESR_EL1
 //   * registers[0:30]
 
-.macro save_context_and_call_handler handler stringlabel
+.macro el1_save_context_and_call_handler handler stringlabel
     // push all general purpose registers on the stack.
     str x30, [sp, #-8]!
     stp x28, x29, [sp, #-16]!
@@ -30,11 +30,6 @@
     stp x2, x3, [sp, #-16]!
     str x1, [sp, #-8]!
 
-    // This prints the exception through the debug UART port if enabled
-    // Get the address of the string and print it
-    adr x0, \stringlabel
-    bl  _uart_puts
-
     mov x0,  sp
     bl \handler
 
@@ -50,43 +45,43 @@ __exception_vector_start:
 // Current EL with SP_EL0
 .org 0x000
 .p2align 7
-    save_context_and_call_handler current_el0_synchronous el1_exception_general_str
+    el1_save_context_and_call_handler current_el0_synchronous current_el0_synchronous_str
 .p2align 7
-    save_context_and_call_handler current_el0_irq el1_exception_general_str
+    el1_save_context_and_call_handler current_el0_irq current_el0_irq_str
 .p2align 7
-    save_context_and_call_handler current_el0_fiq el1_exception_general_str
+    el1_save_context_and_call_handler current_el0_fiq current_el0_fiq_str
 .p2align 7
-    save_context_and_call_handler current_el0_serror el1_exception_general_str
+    el1_save_context_and_call_handler current_el0_serror current_el0_serror_str
 
 // Current EL with SP_ELx, x > 0
 .p2align 7
-    save_context_and_call_handler current_elx_synchronous el1_exception_general_str
+    el1_save_context_and_call_handler current_elx_synchronous current_elx_synchronous_str
 .p2align 7
-    save_context_and_call_handler current_elx_irq el1_exception_general_str
+    el1_save_context_and_call_handler current_elx_irq current_elx_irq_str
 .p2align 7
-    save_context_and_call_handler current_elx_fiq el1_exception_general_str
+    el1_save_context_and_call_handler current_elx_fiq current_elx_fiq_str
 .p2align 7
-    save_context_and_call_handler current_elx_serror el1_exception_general_str
+    el1_save_context_and_call_handler current_elx_serror current_elx_serror_str
 
 // Lower EL in AARCH64
 .p2align 7
-    save_context_and_call_handler lower_el_aarch64_synchronous el1_exception_general_str
+    el1_save_context_and_call_handler lower_el_aarch64_synchronous lower_el_aarch64_synchronous_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch64_irq el1_exception_general_str
+    el1_save_context_and_call_handler lower_el_aarch64_irq lower_el_aarch64_irq_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch64_fiq el1_exception_general_str
+    el1_save_context_and_call_handler lower_el_aarch64_fiq lower_el_aarch64_fiq_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch64_serror el1_exception_general_str
+    el1_save_context_and_call_handler lower_el_aarch64_serror lower_el_aarch64_serror_str
 
 // Lower EL in AARCH32
 .p2align 7
-    save_context_and_call_handler lower_el_aarch32_synchronous el1_exception_general_str
+    el1_save_context_and_call_handler lower_el_aarch32_synchronous lower_el_aarch32_synchronous_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch32_irq el1_exception_general_str
+    el1_save_context_and_call_handler lower_el_aarch32_irq lower_el_aarch32_irq_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch32_fiq el1_exception_general_str
+    el1_save_context_and_call_handler lower_el_aarch32_fiq lower_el_aarch32_fiq_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch32_serror el1_exception_general_str
+    el1_save_context_and_call_handler lower_el_aarch32_serror lower_el_aarch32_serror_str
 
 __exception_restore_context:
     ldp x18, x19, [sp], #16
@@ -117,6 +112,33 @@ __exception_restore_context:
 .size    __exception_restore_context, . - __exception_restore_context
 .type    __exception_restore_context, function
 
+.macro el2_save_context_and_call_handler stringlabel
+    // push all general purpose registers on the stack.
+    str x30, [sp, #-8]!
+    stp x28, x29, [sp, #-16]!
+    stp x26, x27, [sp, #-16]!
+    stp x24, x25, [sp, #-16]!
+    stp x22, x23, [sp, #-16]!
+    stp x20, x21, [sp, #-16]!
+    stp x18, x19, [sp, #-16]!
+    stp x16, x17, [sp, #-16]!
+    stp x14, x15, [sp, #-16]!
+    stp x12, x13, [sp, #-16]!
+    stp x10, x11, [sp, #-16]!
+    stp x8,  x9,  [sp, #-16]!
+    stp x6,  x7,  [sp, #-16]!
+    stp x4,  x5,  [sp, #-16]!
+    stp x2,  x3,  [sp, #-16]!
+    stp x0,  x1,  [sp, #-16]!
+
+    mov x0,  sp
+    adr x1, \stringlabel
+    bl debug_handler
+
+    // Halt execution
+    b .
+.endm
+
 // We need to align to 2048 bytes the exception table
 .align 11
 
@@ -125,79 +147,298 @@ __el2_exception_vector_start:
 
 // Current EL with SP_EL0
 .p2align 7
-    save_context_and_call_handler current_el0_synchronous el2_current_el0_synchronous_str
+    el2_save_context_and_call_handler current_el0_synchronous_str
 .p2align 7
-    save_context_and_call_handler current_el0_irq el2_current_el0_irq_str
+    el2_save_context_and_call_handler current_el0_irq_str
 .p2align 7
-    save_context_and_call_handler current_el0_fiq el2_current_el0_fiq_str
+    el2_save_context_and_call_handler current_el0_fiq_str
 .p2align 7
-    save_context_and_call_handler current_el0_serror el2_current_el0_serror_str
+    el2_save_context_and_call_handler current_el0_serror_str
 
 // Current EL with SP_ELx, x > 0
 .p2align 7
-    save_context_and_call_handler current_elx_synchronous el2_current_elx_synchronous_str
+    el2_save_context_and_call_handler current_elx_synchronous_str
 .p2align 7
-    save_context_and_call_handler current_elx_irq el2_current_elx_irq_str
+    el2_save_context_and_call_handler current_elx_irq_str
 .p2align 7
-    save_context_and_call_handler current_elx_fiq el2_current_elx_fiq_str
+    el2_save_context_and_call_handler current_elx_fiq_str
 .p2align 7
-    save_context_and_call_handler current_elx_serror el2_current_elx_serror_str
+    el2_save_context_and_call_handler current_elx_serror_str
 
 // Lower EL in AARCH64
 .p2align 7
-    save_context_and_call_handler lower_el_aarch64_synchronous el2_lower_el_aarch64_synchronous_str
+    el2_save_context_and_call_handler lower_el_aarch64_synchronous_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch64_irq el2_lower_el_aarch64_irq_str
+    el2_save_context_and_call_handler lower_el_aarch64_irq_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch64_fiq el2_lower_el_aarch64_fiq_str
+    el2_save_context_and_call_handler lower_el_aarch64_fiq_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch64_serror el2_lower_el_aarch64_serror_str
+    el2_save_context_and_call_handler lower_el_aarch64_serror_str
 
 // Lower EL in AARCH32
 .p2align 7
-    save_context_and_call_handler lower_el_aarch32_synchronous el2_lower_el_aarch32_synchronous_str
+    el2_save_context_and_call_handler lower_el_aarch32_synchronous_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch32_irq el2_lower_el_aarch32_irq_str
+    el2_save_context_and_call_handler lower_el_aarch32_irq_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch32_fiq el2_lower_el_aarch32_fiq_str
+    el2_save_context_and_call_handler lower_el_aarch32_fiq_str
 .p2align 7
-    save_context_and_call_handler lower_el_aarch32_serror el2_lower_el_aarch32_serror_str
+    el2_save_context_and_call_handler lower_el_aarch32_serror_str
 
-el1_exception_general_str:
-    .asciz "EL1 exception\n"
+// Utility functions for exception debugging
+get_current_el_str:
+    mrs x0, CurrentEL
+    cmp x0, #0b0000
+    beq 1f
+    cmp x0, #0b0100
+    beq 2f
+    cmp x0, #0b1000
+    beq 3f
+    adr x0, el_3_str
+    ret
+1:  adr x0, el_0_str
+    ret
+2:  adr x0, el_1_str
+    ret
+3:  adr x0, el_2_str
+    ret
 
-el2_current_el0_synchronous_str:
-    .asciz "el2_current_el0_synchronous\n"
-el2_current_el0_irq_str:
-    .asciz "el2_current_el0_irq\n"
-el2_current_el0_fiq_str:
-    .asciz "el2_current_el0_fiq\n"
-el2_current_el0_serror_str:
-    .asciz "el2_current_el0_serror\n"
+el_0_str:
+    .asciz "EL0"
+el_1_str:
+    .asciz "EL1"
+el_2_str:
+    .asciz "EL2"
+el_3_str:
+    .asciz "EL2"
 
-el2_current_elx_synchronous_str:
-    .asciz "el2_current_elx_synchronous\n"
-el2_current_elx_irq_str:
-    .asciz "el2_current_elx_irq\n"
-el2_current_elx_fiq_str:
-    .asciz "el2_current_elx_fiq\n"
-el2_current_elx_serror_str:
-    .asciz "el2_current_elx_serror\n"
+load_elr:
+    mrs x0, CurrentEL
+    cmp x0, #0b0000
+    beq 1f
+    cmp x0, #0b0100
+    beq 2f
+    cmp x0, #0b1000
+    beq 3f
+    mrs x0, ELR_EL3
+    ret
+1:  mrs x0, ELR_EL1
+    ret
+2:  mrs x0, ELR_EL1
+    ret
+3:  mrs x0, ELR_EL2
+    ret
 
-el2_lower_el_aarch64_synchronous_str:
-    .asciz "el2_lower_el_aarch64_synchronous\n"
-el2_lower_el_aarch64_irq_str:
-    .asciz "el2_lower_el_aarch64_irq\n"
-el2_lower_el_aarch64_fiq_str:
-    .asciz "el2_lower_el_aarch64_fiq\n"
-el2_lower_el_aarch64_serror_str:
-    .asciz "el2_lower_el_aarch64_serror\n"
+load_spsr:
+    mrs x0, CurrentEL
+    cmp x0, #0b0000
+    beq 1f
+    cmp x0, #0b0100
+    beq 2f
+    cmp x0, #0b1000
+    beq 3f
+    mrs x0, SPSR_EL3
+    ret
+1:  mrs x0, SPSR_EL1
+    ret
+2:  mrs x0, SPSR_EL1
+    ret
+3:  mrs x0, SPSR_EL2
+    ret
 
-el2_lower_el_aarch32_synchronous_str:
-    .asciz "el2_lower_el_aarch32_synchronous\n"
-el2_lower_el_aarch32_irq_str:
-    .asciz "el2_lower_el_aarch32_irq\n"
-el2_lower_el_aarch32_fiq_str:
-    .asciz "el2_lower_el_aarch32_fiq\n"
-el2_lower_el_aarch32_serror_str:
-    .asciz "el2_lower_el_aarch32_serror\n"
+load_esr:
+    mrs x0, CurrentEL
+    cmp x0, #0b0000
+    beq 1f
+    cmp x0, #0b0100
+    beq 2f
+    cmp x0, #0b1000
+    beq 3f
+    mrs x0, ESR_EL3
+    ret
+1:  mrs x0, ESR_EL1
+    ret
+2:  mrs x0, ESR_EL1
+    ret
+3:  mrs x0, ESR_EL2
+    ret
+
+load_far:
+    mrs x0, CurrentEL
+    cmp x0, #0b0000
+    beq 1f
+    cmp x0, #0b0100
+    beq 2f
+    cmp x0, #0b1000
+    beq 3f
+    mrs x0, FAR_EL3
+    ret
+1:  mrs x0, FAR_EL1
+    ret
+2:  mrs x0, FAR_EL1
+    ret
+3:  mrs x0, FAR_EL2
+    ret
+
+print_registers:
+    str x30, [sp, #-8]!
+    str x19, [sp, #-8]!
+    str x20, [sp, #-8]!
+
+    mov x19, x0
+    mov x20, #0
+
+1:
+    mov x0, 'R'
+    bl _uart_putc
+    mov x0, '['
+    bl _uart_putc
+    mov x0, x20
+    bl _uart_puthex
+    mov x0, ']'
+    bl _uart_putc
+    mov x0, ':'
+    bl _uart_putc
+    mov x0, ' '
+    bl _uart_putc
+    ldr x0, [x19]
+    bl _uart_puthex
+    bl _uart_putendl
+
+    add x19, x19, #8
+    add x20, x20, #1
+    cmp x20, #31
+    bne 1b
+
+    ldr x20, [sp], #8
+    ldr x19, [sp], #8
+    ldr x30, [sp], #8
+    ret
+
+// x0: Regs array pointer
+// x1: Exception string
+debug_handler:
+    str x30, [sp, #-8]!
+    str x19, [sp, #-8]!
+    str x20, [sp, #-8]!
+
+    mov x19, x0
+    mov x20, x1
+
+    adr x0, exception_start_str
+    bl _uart_puts
+
+    adr x0, exception_level_str
+    bl _uart_puts
+
+    bl get_current_el_str
+    bl _uart_puts
+    bl _uart_putendl
+
+    // Print exception string
+    adr x0, exception_type_str
+    bl _uart_puts
+    mov x0, x20
+    bl _uart_puts
+    bl _uart_putendl
+
+    // Print registers
+    mov x0, x19
+    bl print_registers
+
+    // Print ELR_ELX
+    adr x0, elr_elx_str
+    bl  _uart_puts
+
+    bl load_elr
+    bl _uart_puthex
+    bl _uart_putendl
+
+    // Print SPSR_ELX
+    adr x0, spsr_elx_str
+    bl  _uart_puts
+
+    bl load_spsr
+    bl _uart_puthex
+    bl _uart_putendl
+
+    // Print ESR_ELX
+    adr x0, esr_elx_str
+    bl  _uart_puts
+
+    bl load_esr
+    bl _uart_puthex
+    bl _uart_putendl
+
+    // Print FAR_ELX
+    adr x0, far_elx_str
+    bl  _uart_puts
+
+    bl load_far
+    bl _uart_puthex
+    bl _uart_putendl
+
+    adr x0, exception_end_str
+    bl _uart_puts
+
+    ldr x20, [sp], #8
+    ldr x19, [sp], #8
+    ldr x30, [sp], #8
+    ret
+
+exception_start_str:
+    .asciz "======================== Exception Frame ========================\n"
+
+exception_end_str:
+    .asciz "=================================================================\n"
+
+exception_level_str:
+    .asciz "Exception level: "
+
+exception_type_str:
+    .asciz "Exception type: "
+
+current_el0_synchronous_str:
+    .asciz "current_el0_synchronous\n"
+current_el0_irq_str:
+    .asciz "current_el0_irq\n"
+current_el0_fiq_str:
+    .asciz "current_el0_fiq\n"
+current_el0_serror_str:
+    .asciz "current_el0_serror\n"
+
+current_elx_synchronous_str:
+    .asciz "current_elx_synchronous\n"
+current_elx_irq_str:
+    .asciz "current_elx_irq\n"
+current_elx_fiq_str:
+    .asciz "current_elx_fiq\n"
+current_elx_serror_str:
+    .asciz "current_elx_serror\n"
+
+lower_el_aarch64_synchronous_str:
+    .asciz "lower_el_aarch64_synchronous\n"
+lower_el_aarch64_irq_str:
+    .asciz "lower_el_aarch64_irq\n"
+lower_el_aarch64_fiq_str:
+    .asciz "lower_el_aarch64_fiq\n"
+lower_el_aarch64_serror_str:
+    .asciz "lower_el_aarch64_serror\n"
+
+lower_el_aarch32_synchronous_str:
+    .asciz "lower_el_aarch32_synchronous\n"
+lower_el_aarch32_irq_str:
+    .asciz "lower_el_aarch32_irq\n"
+lower_el_aarch32_fiq_str:
+    .asciz "lower_el_aarch32_fiq\n"
+lower_el_aarch32_serror_str:
+    .asciz "lower_el_aarch32_serror\n"
+
+elr_elx_str:
+    .asciz "ELR_ELx: "
+spsr_elx_str:
+    .asciz "SPSR_ELx: "
+esr_elx_str:
+    .asciz "ESR_ELx: "
+far_elx_str:
+    .asciz "FAR_ELx: "
