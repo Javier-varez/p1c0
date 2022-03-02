@@ -81,6 +81,7 @@ _uart_putc:
 .type _uart_puts, @function
 _uart_puts:
     str x30, [sp, #-8]!
+    str x19, [sp, #-8]!
     cbz x0, 2f
     mov x19, x0
 1:
@@ -90,6 +91,7 @@ _uart_puts:
     add x19, x19, #1
     b 1b
 2:
+    ldr x19, [sp], #8
     ldr x30, [sp], #8
     ret
 
@@ -97,6 +99,8 @@ _uart_puts:
 .type _uart_puthex, @function
 _uart_puthex:
     str x30, [sp, #-8]!
+    str x19, [sp, #-8]!
+    str x20, [sp, #-8]!
     mov x19, x0
     mov x20, #60
 
@@ -121,6 +125,8 @@ _uart_puthex:
     sub x20, x20, #4
     b 1b
 4:
+    ldr x20, [sp], #8
+    ldr x19, [sp], #8
     ldr x30, [sp], #8
     ret
 
