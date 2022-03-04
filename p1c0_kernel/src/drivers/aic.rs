@@ -1,7 +1,7 @@
 use tock_registers::{
     interfaces::{Readable, Writeable},
     register_bitfields,
-    registers::{ReadOnly, ReadWrite},
+    registers::{InMemoryRegister, ReadOnly, ReadWrite},
 };
 
 use crate::{
@@ -78,6 +78,7 @@ struct AicRegs {
     sw_clr: [ReadWrite<u32>; MAX_IRQS / 32],
     mask_set: [ReadWrite<u32>; MAX_IRQS / 32],
     mask_clr: [ReadWrite<u32>; MAX_IRQS / 32],
+    hw_state: [ReadWrite<u32>; MAX_IRQS / 32],
 }
 
 #[repr(C)]
@@ -173,12 +174,10 @@ impl Aic {
         Ok(())
     }
 
-    pub fn get_current_irq_number(&mut self) -> u32 {
-        self.event_regs.event.read(Event::IrqNr)
-    }
-
-    pub fn get_current_irq_type(&mut self) -> IrqType {
-        match self.event_regs.event.read_as_enum(Event::Type) {
+    pub fn get_current_irq(&mut self) -> (u32, u32, IrqType) {
+        let reg: InMemoryRegister<u32, Event::Register> =
+            InMemoryRegister::new(self.event_regs.event.get());
+        let r#type = match reg.read_as_enum(Event::Type) {
             Some(Event::Type::Value::FIQ) => IrqType::FIQ,
             Some(Event::Type::Value::IPI) => IrqType::IPI,
             Some(Event::Type::Value::HW) => IrqType::HW,
@@ -188,7 +187,10 @@ impl Aic {
                     self.event_regs.event.read(Event::Type)
                 );
             }
-        }
+        };
+        let number = reg.read(Event::IrqNr);
+        let die = reg.read(Event::Die);
+        (die, number, r#type)
     }
 }
 

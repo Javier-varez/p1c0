@@ -52,13 +52,29 @@ unsafe extern "C" fn current_el0_synchronous(_e: &mut ExceptionContext) {
 }
 
 #[no_mangle]
-unsafe extern "C" fn current_el0_irq(_e: &mut ExceptionContext) {
-    panic!("Should not be here. Use of SP_EL0 in EL1 is not supported.")
+unsafe extern "C" fn current_el0_irq(e: &mut ExceptionContext) {
+    println!("IRQ from EL0 stack");
+
+    if let Some(aic) = &mut crate::drivers::aic::AIC {
+        let (die, number, r#type) = aic.get_current_irq();
+        println!("Irq die {}", die);
+        println!("Irq number {}", number);
+        println!("Irq type {:?}", r#type);
+    }
+    default_exception_handler(e);
 }
 
 #[no_mangle]
-unsafe extern "C" fn current_el0_fiq(_e: &mut ExceptionContext) {
-    panic!("Should not be here. Use of SP_EL0 in EL1 is not supported.")
+unsafe extern "C" fn current_el0_fiq(e: &mut ExceptionContext) {
+    println!("FIQ from EL0 stack");
+
+    if let Some(aic) = &mut crate::drivers::aic::AIC {
+        let (die, number, r#type) = aic.get_current_irq();
+        println!("Irq die {}", die);
+        println!("Irq number {}", number);
+        println!("Irq type {:?}", r#type);
+    }
+    default_exception_handler(e);
 }
 
 #[no_mangle]
@@ -77,8 +93,10 @@ unsafe extern "C" fn current_elx_fiq(e: &mut ExceptionContext) {
     println!("FIQ");
 
     if let Some(aic) = &mut crate::drivers::aic::AIC {
-        println!("Irq number {}", aic.get_current_irq_number());
-        println!("Irq type {:?}", aic.get_current_irq_type());
+        let (die, number, r#type) = aic.get_current_irq();
+        println!("Irq die {}", die);
+        println!("Irq number {}", number);
+        println!("Irq type {:?}", r#type);
     }
 
     default_exception_handler(e);
@@ -89,8 +107,10 @@ unsafe extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     println!("IRQ");
 
     if let Some(aic) = &mut crate::drivers::aic::AIC {
-        println!("Irq number {}", aic.get_current_irq_number());
-        println!("Irq type {:?}", aic.get_current_irq_type());
+        let (die, number, r#type) = aic.get_current_irq();
+        println!("Irq die {}", die);
+        println!("Irq number {}", number);
+        println!("Irq type {:?}", r#type);
     }
 
     default_exception_handler(e);
