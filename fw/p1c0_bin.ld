@@ -2,8 +2,8 @@ ENTRY(_start)
 
 _stack_size = 0x80000;
 
-/* 128 KB arena size */
-_arena_size = 0x20000;
+/* 2MB arena size */
+_arena_size = 0x200000;
 
 /* We are actually relocatable */
 . = 0;

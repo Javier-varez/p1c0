@@ -5,8 +5,8 @@ _va_base = 0xFFFFFE0007004000;
 
 _stack_size = 0x80000;
 
-/* 128 KB arena size */
-_arena_size = 0x20000;
+/* 2MB arena size */
+_arena_size = 0x200000;
 
 _max_payload_size = 64*1024*1024;
 
