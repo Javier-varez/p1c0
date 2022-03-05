@@ -82,6 +82,14 @@ unsafe extern "C" fn current_el0_irq(e: &mut ExceptionContext) {
 }
 
 fn handle_fiq(e: &mut ExceptionContext) {
+    let timer = generic_timer::get_timer();
+
+    if timer.is_irq_active() {
+        timer.handle_irq();
+
+        return;
+    }
+
     println!("FIQ");
     if let Some(aic) = unsafe { crate::drivers::aic::AIC.as_mut() } {
         if let Some((die, number, r#type)) = aic.get_current_irq() {

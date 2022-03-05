@@ -1,3 +1,5 @@
+use core::time::Duration;
+
 use cortex_a::{
     asm,
     registers::{CurrentEL, CNTHCTL_EL2, CNTVOFF_EL2, ELR_EL2, HCR_EL2, SPSR_EL2, SP_EL1},
@@ -8,7 +10,7 @@ use crate::{
     arch::{apply_rela_from_existing, exceptions, jump_to_addr, read_pc, RelaEntry},
     boot_args::BootArgs,
     chickens,
-    drivers::{uart, wdt},
+    drivers::{aic, generic_timer, uart, wdt},
     memory::{
         self,
         address::{Address, PhysicalAddress},
@@ -99,6 +101,13 @@ unsafe fn kernel_prelude() {
     // periodically call this function
     wdt::service();
 
+    let aic = aic::Aic::probe("/arm-io/aic").unwrap();
+    aic::AIC.replace(aic);
+
+    // Initialize periodic timer
+    const TIMESTEP: Duration = Duration::from_millis(1);
+    generic_timer::get_timer().initialize(TIMESTEP);
+
     kernel_main();
 }
 
@@ -106,6 +115,7 @@ unsafe fn kernel_prelude() {
 ///   This function must be called with the MMU off while running in EL1. It will relocate itself
 unsafe extern "C" fn el1_entry() -> ! {
     memory::MemoryManager::early_init();
+
     // Right after initializing the MMU we need to relocate ourselves into the high_kernel_addr
     // region.
     jump_to_high_kernel();
