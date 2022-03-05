@@ -16,23 +16,38 @@ use crate::println;
 
 /// Wrapper structs for memory copies of registers.
 #[repr(transparent)]
-struct SpsrEL1(InMemoryRegister<u64, SPSR_EL1::Register>);
-struct EsrEL1(InMemoryRegister<u64, ESR_EL1::Register>);
+pub struct SpsrEL1(InMemoryRegister<u64, SPSR_EL1::Register>);
+
+#[repr(transparent)]
+pub struct EsrEL1(InMemoryRegister<u64, ESR_EL1::Register>);
+
+impl SpsrEL1 {
+    pub fn as_raw(&self) -> u64 {
+        self.0.get()
+    }
+
+    pub fn from_raw(&mut self, value: u64) {
+        self.0.set(value);
+    }
+}
 
 /// The exception context as it is stored on the stack on exception entry.
 #[repr(C)]
-struct ExceptionContext {
+pub struct ExceptionContext {
     /// Exception link register. The program counter at the time the exception happened.
-    elr_el1: u64,
+    pub elr_el1: u64,
 
     /// Saved program status.
-    spsr_el1: SpsrEL1,
+    pub spsr_el1: SpsrEL1,
 
     // Exception syndrome register.
-    esr_el1: EsrEL1,
+    pub esr_el1: EsrEL1,
+
+    // Stack pointer for EL0
+    pub sp_el0: u64,
 
     /// General Purpose Registers.
-    gpr: [u64; 31],
+    pub gpr: [u64; 31],
 }
 
 /// Prints verbose information about the exception and then panics.
