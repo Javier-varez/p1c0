@@ -12,7 +12,7 @@ use core::arch::global_asm;
 #[cfg(all(target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
-use crate::println;
+use crate::{drivers::generic_timer, println, thread};
 
 /// Wrapper structs for memory copies of registers.
 #[repr(transparent)]
@@ -62,8 +62,9 @@ fn default_exception_handler(exc: &ExceptionContext) {
 }
 
 #[no_mangle]
-unsafe extern "C" fn current_el0_synchronous(_e: &mut ExceptionContext) {
-    panic!("Should not be here. Use of SP_EL0 in EL1 is not supported.")
+unsafe extern "C" fn current_el0_synchronous(e: &mut ExceptionContext) {
+    println!("Synchronous exception from EL0 stack");
+    default_exception_handler(e);
 }
 
 #[no_mangle]
@@ -71,30 +72,36 @@ unsafe extern "C" fn current_el0_irq(e: &mut ExceptionContext) {
     println!("IRQ from EL0 stack");
 
     if let Some(aic) = &mut crate::drivers::aic::AIC {
-        let (die, number, r#type) = aic.get_current_irq();
-        println!("Irq die {}", die);
-        println!("Irq number {}", number);
-        println!("Irq type {:?}", r#type);
+        if let Some((die, number, r#type)) = aic.get_current_irq() {
+            println!("Irq die {}", die);
+            println!("Irq number {}", number);
+            println!("Irq type {:?}", r#type);
+        }
+    }
+    default_exception_handler(e);
+}
+
+fn handle_fiq(e: &mut ExceptionContext) {
+    println!("FIQ");
+    if let Some(aic) = unsafe { crate::drivers::aic::AIC.as_mut() } {
+        if let Some((die, number, r#type)) = aic.get_current_irq() {
+            println!("Irq die {}", die);
+            println!("Irq number {}", number);
+            println!("Irq type {:?}", r#type);
+        }
     }
     default_exception_handler(e);
 }
 
 #[no_mangle]
 unsafe extern "C" fn current_el0_fiq(e: &mut ExceptionContext) {
-    println!("FIQ from EL0 stack");
-
-    if let Some(aic) = &mut crate::drivers::aic::AIC {
-        let (die, number, r#type) = aic.get_current_irq();
-        println!("Irq die {}", die);
-        println!("Irq number {}", number);
-        println!("Irq type {:?}", r#type);
-    }
-    default_exception_handler(e);
+    handle_fiq(e);
 }
 
 #[no_mangle]
-unsafe extern "C" fn current_el0_serror(_e: &mut ExceptionContext) {
-    panic!("Should not be here. Use of SP_EL0 in EL1 is not supported.")
+unsafe extern "C" fn current_el0_serror(e: &mut ExceptionContext) {
+    println!("Serror exception from EL0 stack");
+    default_exception_handler(e);
 }
 
 #[no_mangle]
@@ -105,16 +112,7 @@ unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn current_elx_fiq(e: &mut ExceptionContext) {
-    println!("FIQ");
-
-    if let Some(aic) = &mut crate::drivers::aic::AIC {
-        let (die, number, r#type) = aic.get_current_irq();
-        println!("Irq die {}", die);
-        println!("Irq number {}", number);
-        println!("Irq type {:?}", r#type);
-    }
-
-    default_exception_handler(e);
+    handle_fiq(e);
 }
 
 #[no_mangle]
@@ -122,10 +120,11 @@ unsafe extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     println!("IRQ");
 
     if let Some(aic) = &mut crate::drivers::aic::AIC {
-        let (die, number, r#type) = aic.get_current_irq();
-        println!("Irq die {}", die);
-        println!("Irq number {}", number);
-        println!("Irq type {:?}", r#type);
+        if let Some((die, number, r#type)) = aic.get_current_irq() {
+            println!("Irq die {}", die);
+            println!("Irq number {}", number);
+            println!("Irq type {:?}", r#type);
+        }
     }
 
     default_exception_handler(e);
@@ -257,6 +256,7 @@ impl fmt::Display for EsrEL1 {
         // Exception class.
         let ec_translation = match self.exception_class() {
             Some(ESR_EL1::EC::Value::DataAbortCurrentEL) => "Data Abort, current EL",
+            Some(ESR_EL1::EC::Value::InstrAbortCurrentEL) => "Instruction Abort, current EL",
             _ => "N/A",
         };
         writeln!(f, " - {}", ec_translation)?;

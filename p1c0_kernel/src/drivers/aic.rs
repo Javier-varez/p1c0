@@ -1,7 +1,7 @@
 use tock_registers::{
     interfaces::{Readable, Writeable},
     register_bitfields,
-    registers::{InMemoryRegister, ReadOnly, ReadWrite},
+    registers::{ReadOnly, ReadWrite},
 };
 
 use crate::{
@@ -174,9 +174,13 @@ impl Aic {
         Ok(())
     }
 
-    pub fn get_current_irq(&mut self) -> (u32, u32, IrqType) {
-        let reg: InMemoryRegister<u32, Event::Register> =
-            InMemoryRegister::new(self.event_regs.event.get());
+    pub fn get_current_irq(&mut self) -> Option<(u32, u32, IrqType)> {
+        let reg = self.event_regs.event.extract();
+
+        if reg.get() == 0 {
+            return None;
+        }
+
         let r#type = match reg.read_as_enum(Event::Type) {
             Some(Event::Type::Value::FIQ) => IrqType::FIQ,
             Some(Event::Type::Value::IPI) => IrqType::IPI,
@@ -190,7 +194,7 @@ impl Aic {
         };
         let number = reg.read(Event::IrqNr);
         let die = reg.read(Event::Die);
-        (die, number, r#type)
+        Some((die, number, r#type))
     }
 }
 
