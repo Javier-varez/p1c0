@@ -304,7 +304,7 @@ impl KeyboardReport {
     }
 
     pub fn has_error(&self) -> bool {
-        self.keycodes.iter().find(|code| code.is_error()).is_some()
+        self.keycodes.iter().any(|code| code.is_error())
     }
 }
 
@@ -349,12 +349,7 @@ impl Keyboard {
             .iter_mut()
             .filter(|keycode| keycode.is_valid())
         {
-            if report
-                .keycodes()
-                .iter()
-                .find(|code| **code == *keycode)
-                .is_none()
-            {
+            if !report.keycodes().iter().any(|code| *code == *keycode) {
                 *keycode = Scancode::new(0);
                 // TODO(javier-varez): Send key-up event
             }
@@ -366,12 +361,7 @@ impl Keyboard {
             .iter()
             .filter(|keycode| keycode.is_valid())
         {
-            if self
-                .current_keycodes
-                .iter()
-                .find(|code| **code == *keycode)
-                .is_none()
-            {
+            if !self.current_keycodes.iter().any(|code| *code == *keycode) {
                 // Insert keycode
                 self.key_pressed(*keycode);
             }

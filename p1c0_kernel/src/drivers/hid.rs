@@ -149,13 +149,13 @@ impl<'a> HidDev<'a> {
         // At this point, the bytes are initialized after the transaction
         let packet_bytes = unsafe { MaybeUninit::slice_assume_init_ref(packet_bytes) };
 
-        let crc = crate::crc::crc16(0, &packet_bytes);
+        let crc = crate::crc::crc16(0, packet_bytes);
         if crc != 0 {
             crate::println!("Invalid CRC from hid device {}", crc);
             return Err(Error::IOError(IoError::InvalidCRC));
         }
 
-        return Ok(unsafe { hid_packet.assume_init() });
+        Ok(unsafe { hid_packet.assume_init() })
     }
 
     fn parse_keyboard_packet(&mut self, packet: HidTransferPacket) {
