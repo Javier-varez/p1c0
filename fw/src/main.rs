@@ -15,6 +15,9 @@ use p1c0_kernel::{
     thread::{self, print_thread_info},
 };
 
+use cortex_a::registers::DAIF;
+use tock_registers::interfaces::Writeable;
+
 #[cfg(feature = "emulator")]
 use p1c0::print_semihosting_caps;
 
@@ -90,6 +93,8 @@ pub extern "C" fn kernel_main() -> ! {
 
 #[panic_handler]
 fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
+    // Mask interrupts.
+    DAIF.write(DAIF::D::Masked + DAIF::A::Masked + DAIF::I::Masked + DAIF::F::Masked);
     println!("Panicked with message: {:?}", panic_info);
 
     #[cfg(feature = "emulator")]
