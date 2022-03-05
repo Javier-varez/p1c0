@@ -12,6 +12,7 @@ use p1c0_kernel::{
     boot_args::get_boot_args,
     drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi, wdt},
     println,
+    thread::{self, print_thread_info},
 };
 
 #[cfg(feature = "emulator")]
@@ -33,20 +34,47 @@ fn kernel_entry() {
     #[cfg(feature = "emulator")]
     print_semihosting_caps();
 
-    let spi3 = unsafe { Spi::new("/arm-io/spi3").unwrap() };
-    let gpio0_bank = unsafe { GpioBank::new("/arm-io/gpio0").unwrap() };
-    let nub_gpio0_bank = unsafe { GpioBank::new("/arm-io/nub-gpio0").unwrap() };
+    // TODO(javier-varez): Replace all delays by actual sleeps once that is implemented.
+    thread::spawn(move || {
+        print_thread_info();
 
-    let mut hid_dev =
-        unsafe { HidDev::new("/arm-io/spi3/ipd", spi3, &gpio0_bank, &nub_gpio0_bank).unwrap() };
-    hid_dev.power_on();
-    loop {
-        // To avoid a bite we pet the watchdog
+        let mut count = 0;
+        loop {
+            println!("Count {}", count);
+            count += 1;
+            p1c0_kernel::drivers::generic_timer::get_timer()
+                .delay(core::time::Duration::from_secs(1));
+        }
+    });
+
+    thread::spawn(move || loop {
+        println!("Second thread");
+        p1c0_kernel::drivers::generic_timer::get_timer()
+            .delay(core::time::Duration::from_millis(750));
+    });
+
+    #[cfg(not(feature = "emulator"))]
+    thread::Builder::new().name("HID").spawn(move || {
+        let spi3 = unsafe { Spi::new("/arm-io/spi3").unwrap() };
+        let gpio0_bank = unsafe { GpioBank::new("/arm-io/gpio0").unwrap() };
+        let nub_gpio0_bank = unsafe { GpioBank::new("/arm-io/nub-gpio0").unwrap() };
+
+        let mut hid_dev =
+            unsafe { HidDev::new("/arm-io/spi3/ipd", spi3, &gpio0_bank, &nub_gpio0_bank).unwrap() };
+        hid_dev.power_on();
+        loop {
+            // Handle HID events
+            hid_dev.process();
+        }
+    });
+
+    thread::Builder::new().name("WDT").spawn(move || loop {
         wdt::service();
 
-        // Handle HID events
-        hid_dev.process();
-    }
+        p1c0_kernel::drivers::generic_timer::get_timer().delay(core::time::Duration::from_secs(1));
+    });
+
+    thread::initialize();
 }
 
 #[no_mangle]
