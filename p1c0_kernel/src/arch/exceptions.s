@@ -2,6 +2,7 @@
 //   * ELR_EL1
 //   * SPSR_EL1
 //   * ESR_EL1
+//   * SP_EL0
 //   * registers[0:30]
 
 .macro el1_save_context_and_call_handler handler stringlabel
@@ -26,9 +27,10 @@
     mrs x1,  ELR_EL1
     mrs x2,  SPSR_EL1
     mrs x3,  ESR_EL1
+    mrs x4,  SP_EL0
 
-    stp x2, x3, [sp, #-16]!
-    str x1, [sp, #-8]!
+    stp x3, x4, [sp, #-16]!
+    stp x1, x2, [sp, #-16]!
 
     mov x0,  sp
     bl \handler
@@ -84,11 +86,12 @@ __exception_vector_start:
     el1_save_context_and_call_handler lower_el_aarch32_serror lower_el_aarch32_serror_str
 
 __exception_restore_context:
-    ldp x18, x19, [sp], #16
-    ldr x20, [sp], #8
+    ldp x0, x1, [sp], #16
+    ldp x2, x3, [sp], #16
 
-    msr SPSR_EL1, x19
-    msr ELR_EL1,  x18
+    msr ELR_EL1,  x0
+    msr SPSR_EL1, x1
+    msr SP_EL0, x3
 
     ldp x0,  x1,  [sp], #16
     ldp x2,  x3,  [sp], #16
