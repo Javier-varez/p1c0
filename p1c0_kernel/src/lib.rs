@@ -16,6 +16,7 @@ pub mod macros;
 pub mod memory;
 pub mod registers;
 pub mod sync;
+pub mod thread;
 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {

@@ -87,6 +87,8 @@ fn handle_fiq(e: &mut ExceptionContext) {
     if timer.is_irq_active() {
         timer.handle_irq();
 
+        // Run scheduler and maybe do context switch
+        thread::run_scheduler(e);
         return;
     }
 
