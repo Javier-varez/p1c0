@@ -286,7 +286,7 @@ impl AdtProperty {
             data[U32_SIZE + 3],
             data[U32_SIZE + 2],
             data[U32_SIZE + 1],
-            data[U32_SIZE + 0],
+            data[U32_SIZE],
         ];
         let name = str::from_utf8(&name_data).or(Err(Error::InvalidPropertyType))?;
         let name: heapless::String<4> = name.into();
