@@ -5,6 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "p1c0"
+path = "src/lib.rs"
+
 [[bin]]
 name = "p1c0-fw"
 path = "src/main.rs"
@@ -13,6 +17,10 @@ test = false
 [[test]]
 name = "adt_tests"
 path = "tests/adt_tests.rs"
+
+[[test]]
+name = "thread_tests"
+path = "tests/thread_tests.rs"
 
 [features]
 emulator = ["arm-semihosting"]
