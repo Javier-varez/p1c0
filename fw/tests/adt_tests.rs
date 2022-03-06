@@ -11,8 +11,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use p1c0_kernel::{adt::get_adt, memory::address::PhysicalAddress};
 
-#[allow(unused_imports)]
-use p1c0::*;
+use p1c0 as _; // needed to link libentry (and _start)
 
 #[panic_handler]
 fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
