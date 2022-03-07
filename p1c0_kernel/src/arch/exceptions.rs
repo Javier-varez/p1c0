@@ -12,7 +12,7 @@ use core::arch::global_asm;
 #[cfg(all(target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
-use crate::{drivers::generic_timer, println, thread};
+use crate::{drivers::generic_timer, println, syscall::syscall_handler, thread};
 
 /// Wrapper structs for memory copies of registers.
 #[repr(transparent)]
@@ -63,8 +63,15 @@ fn default_exception_handler(exc: &ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn current_el0_synchronous(e: &mut ExceptionContext) {
-    println!("Synchronous exception from EL0 stack");
-    default_exception_handler(e);
+    match e.esr_el1.exception_class() {
+        Some(ESR_EL1::EC::Value::SVC64) => {
+            syscall_handler(e.esr_el1.instruction_specific_syndrome(), e);
+        }
+        _ => {
+            println!("Synchronous exception from EL0 stack");
+            default_exception_handler(e);
+        }
+    }
 }
 
 #[no_mangle]
@@ -116,8 +123,15 @@ unsafe extern "C" fn current_el0_serror(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
-    println!("Synchronous exception");
-    default_exception_handler(e);
+    match e.esr_el1.exception_class() {
+        Some(ESR_EL1::EC::Value::SVC64) => {
+            syscall_handler(e.esr_el1.instruction_specific_syndrome(), e);
+        }
+        _ => {
+            println!("Synchronous exception");
+            default_exception_handler(e);
+        }
+    }
 }
 
 #[no_mangle]
@@ -252,6 +266,11 @@ impl EsrEL1 {
     fn exception_class(&self) -> Option<ESR_EL1::EC::Value> {
         self.0.read_as_enum(ESR_EL1::EC)
     }
+
+    #[inline(always)]
+    fn instruction_specific_syndrome(&self) -> u32 {
+        self.0.read(ESR_EL1::ISS) as u32
+    }
 }
 
 #[rustfmt::skip]
@@ -267,6 +286,8 @@ impl fmt::Display for EsrEL1 {
         let ec_translation = match self.exception_class() {
             Some(ESR_EL1::EC::Value::DataAbortCurrentEL) => "Data Abort, current EL",
             Some(ESR_EL1::EC::Value::InstrAbortCurrentEL) => "Instruction Abort, current EL",
+            Some(ESR_EL1::EC::Value::SVC64) => "SVC Call",
+            Some(ESR_EL1::EC::Value::SVC32) => "SVC Call (32-bit)",
             _ => "N/A",
         };
         writeln!(f, " - {}", ec_translation)?;

@@ -12,6 +12,7 @@ use p1c0_kernel::{
     boot_args::get_boot_args,
     drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi, wdt},
     println,
+    syscall::Syscall,
     thread::{self, print_thread_info},
 };
 
@@ -43,8 +44,13 @@ fn kernel_entry() {
 
         let mut count = 0;
         loop {
+            if count > 10 {
+                Syscall::reboot();
+            }
+
             println!("Count {}", count);
             count += 1;
+
             p1c0_kernel::drivers::generic_timer::get_timer()
                 .delay(core::time::Duration::from_secs(1));
         }
