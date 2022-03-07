@@ -5,11 +5,11 @@ use tock_registers::{
     registers::InMemoryRegister,
 };
 
-#[cfg(all(target_arch = "aarch64", not(test)))]
+#[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
 use core::arch::global_asm;
 
 // Assembly code for the exception table ane entry points
-#[cfg(all(target_arch = "aarch64", not(test)))]
+#[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
 use crate::{drivers::generic_timer, println, syscall::syscall_handler, thread};
@@ -357,7 +357,12 @@ extern "C" {
 
 /// Init exception handling by setting the exception vector base address register.
 pub fn handling_init() {
+    #[cfg(target_os = "none")]
     let vectors = unsafe { &__exception_vector_start as *const _ };
+
+    #[cfg(not(target_os = "none"))]
+    let vectors = 0;
+
     VBAR_EL1.set(vectors as u64);
     // Force VBAR update to complete before next instruction.
     unsafe { barrier::isb(barrier::SY) };
@@ -384,7 +389,12 @@ pub fn handling_init() {
         // Force HCR update to complete before next instruction.
         unsafe { barrier::isb(barrier::SY) };
 
+        #[cfg(target_os = "none")]
         let vectors = unsafe { &__el2_exception_vector_start as *const _ };
+
+        #[cfg(not(target_os = "none"))]
+        let vectors = 0;
+
         VBAR_EL2.set(vectors as u64);
 
         // Force VBAR update to complete before next instruction.
