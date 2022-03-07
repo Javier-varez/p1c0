@@ -26,6 +26,10 @@ path = "tests/thread_tests.rs"
 name = "aic_tests"
 path = "tests/aic_tests.rs"
 
+[[test]]
+name = "syscall_tests"
+path = "tests/syscall_tests.rs"
+
 [features]
 emulator = ["arm-semihosting"]
 # The binary feature builds a bin file instead of a macho file and uses a different ld script
