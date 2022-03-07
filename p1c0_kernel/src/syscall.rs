@@ -1,4 +1,4 @@
-use crate::{arch::exceptions::ExceptionContext, println};
+use crate::{arch::exceptions::ExceptionContext, drivers::wdt, println};
 
 macro_rules! gen_syscall_caller {
     (
@@ -34,9 +34,11 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty)
     ) => {
+        #[cfg_attr(test, allow(unused_variables))]
         pub fn $syscall_fn_name(arg0: $arg0_ty, arg1: $arg1_ty) {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
+                #[cfg(not(test))]
                 core::arch::asm!(concat!("svc ", $syscall_idx),
                                  in("x0") arg0 as u64,
                                  in("x1") arg1 as u64,
@@ -49,6 +51,7 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty)
     ) => {
+        #[cfg_attr(test, allow(unused_variables))]
         pub fn $syscall_fn_name(arg0: $arg0_ty, arg1: $arg1_ty, arg2: $arg2_ty) {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
@@ -65,6 +68,7 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty, $arg3_ty: ty)
     ) => {
+        #[cfg_attr(test, allow(unused_variables))]
         pub fn $syscall_fn_name(arg0: $arg0_ty,
                                 arg1: $arg1_ty,
                                 arg2: $arg2_ty,
@@ -104,6 +108,7 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty) -> $ret_ty: ty
     ) => {
+        #[cfg_attr(test, allow(unused_variables))]
         pub fn $syscall_fn_name(arg0: $arg0_ty) -> $ret_ty {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
@@ -124,6 +129,7 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty) -> $ret_ty: ty
     ) => {
+        #[cfg_attr(test, allow(unused_variables))]
         pub fn $syscall_fn_name(arg0: $arg0_ty, arg1: $arg1_ty) -> $ret_ty {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
@@ -145,6 +151,7 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty) -> $ret_ty: ty
     ) => {
+        #[cfg_attr(test, allow(unused_variables))]
         pub fn $syscall_fn_name(arg0: $arg0_ty, arg1: $arg1_ty, arg2: $arg2_ty) -> $ret_ty {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
@@ -167,6 +174,7 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty, $arg3_ty: ty) -> $ret_ty: ty
     ) => {
+        #[cfg_attr(test, allow(unused_variables))]
         pub fn $syscall_fn_name(arg0: $arg0_ty,
                                 arg1: $arg1_ty,
                                 arg2: $arg2_ty,
@@ -343,6 +351,7 @@ macro_rules! define_syscalls {
 define_syscalls!(
     [0, Noop, noop, handle_noop, ()],
     [1, Reboot, reboot, handle_reboot, ()],
+    [0x8000, Multiply, multiply, handle_multiply, (u32, u32) -> u32],
 );
 
 pub enum Error {
@@ -355,10 +364,15 @@ fn handle_noop() {
 
 fn handle_reboot() {
     println!("Syscall Reboot - Rebooting computer");
-    crate::drivers::wdt::service();
+    wdt::service();
 
     // We hang here never servicing the WDT again, causing a reboot
     loop {
         cortex_a::asm::wfi();
     }
+}
+
+fn handle_multiply(a: u32, b: u32) -> u32 {
+    println!("Syscall Multiplication");
+    a * b
 }
