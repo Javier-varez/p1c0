@@ -2,7 +2,7 @@
 
 TOOLS_DIR=.tools
 
-QEMU_VERSION=0.1.2
+QEMU_VERSION=0.1.3
 QEMU_DIR=${PWD}/${TOOLS_DIR}/qemu
 
 OS=$(uname | tr '[:upper:]' '[:lower:]')
