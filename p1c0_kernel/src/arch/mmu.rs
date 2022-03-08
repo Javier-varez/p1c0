@@ -536,7 +536,6 @@ impl MemoryManagementUnit {
             .expect("Kernel can not be mapped");
 
         // Map mmio ranges as defined in the ADT
-
         let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
         let node = adt.find_node("/arm-io").expect("There is not an arm-io");
         let range_iter = node.range_iter(root_address_cells);
@@ -553,6 +552,41 @@ impl MemoryManagementUnit {
                 Permissions::RWX,
             )
             .expect("Mappings overlap");
+        }
+    }
+
+    pub fn remove_identity_mappings(&mut self) {
+        let adt = crate::adt::get_adt().unwrap();
+        let chosen = adt.find_node("/chosen").expect("There is a chosen node");
+        let dram_base = chosen
+            .find_property("dram-base")
+            .and_then(|prop| prop.usize_value().ok())
+            .map(|addr| addr as *const u8)
+            .expect("There is no dram base");
+        let dram_size = chosen
+            .find_property("dram-size")
+            .and_then(|prop| prop.usize_value().ok())
+            .expect("There is no dram base");
+
+        self.unmap_region(
+            VirtualAddress::try_from_ptr(dram_base).expect("Address is not aligned to page size"),
+            dram_size,
+        )
+        .expect("Cannot unmap DRAM identity-map");
+
+        // Map mmio ranges as defined in the ADT
+        let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
+        let node = adt.find_node("/arm-io").expect("There is not an arm-io");
+        let range_iter = node.range_iter(root_address_cells);
+        for range in range_iter {
+            let mmio_region_base = range.get_parent_addr() as *const u8;
+            let mmio_region_size = range.get_size();
+            self.unmap_region(
+                VirtualAddress::try_from_ptr(mmio_region_base)
+                    .expect("Address is not aligned to page size"),
+                mmio_region_size,
+            )
+            .expect("Cannot unmap MMIO identity-map");
         }
     }
 
