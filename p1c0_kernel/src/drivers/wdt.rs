@@ -38,8 +38,13 @@ impl Wdt {
 
     fn new() -> Self {
         let adt = crate::adt::get_adt().unwrap();
-        let (pa, _) = adt.get_device_addr("/arm-io/wdt", 0).unwrap();
-        let regs = pa.as_mut_ptr() as *mut WdtRegs;
+        let (pa, size) = adt.get_device_addr("/arm-io/wdt", 0).unwrap();
+
+        let va = crate::memory::MemoryManager::instance()
+            .map_io("Wdt regs", pa, size)
+            .unwrap();
+
+        let regs = va.as_mut_ptr() as *mut WdtRegs;
 
         const TIMEOUT_MS: u32 = 5_000;
         unsafe {
