@@ -1,13 +1,13 @@
+use crate::collections::ring_buffer::{self, RingBuffer};
 use crate::init::is_kernel_relocated;
 use crate::sync::spinlock::SpinLock;
 use core::fmt::Write;
 
 #[derive(Debug)]
 pub enum Error {
-    PrintFailed,
     EarlyPrintFailed,
-    // TODO(javier-varez): Enable the following variant when Buffering is implemented.
-    // BufferFull
+    PrintFailed,
+    BufferFull,
 }
 
 /// Marker trait to indicate this logger can be used early during the boot chain
@@ -15,7 +15,18 @@ pub enum Error {
 pub trait EarlyPrint: core::fmt::Write {}
 
 pub trait Print {
-    fn write_str(&self, s: &str) -> Result<(), Error>;
+    fn write_str(&self, s: &str) -> Result<(), Error> {
+        for character in s.bytes() {
+            if character == b'\n' {
+                // Implicit \r with every \n
+                self.write_u8(b'\r')?;
+            }
+            self.write_u8(character)?;
+        }
+        Ok(())
+    }
+
+    fn write_u8(&self, c: u8) -> Result<(), Error>;
 }
 
 // This variable is used during early boot and therefore this cannot be wrapped in a mutex/spinlock,
@@ -24,34 +35,41 @@ pub trait Print {
 // However, given it runs in a single-threaded context it should be mostly ok.
 static mut EARLY_PRINT: Option<*mut dyn EarlyPrint> = None;
 
-/*
- * TODO(javier-varez): This is a bit messy with the statics...
- * What we really need here is a RWSpinlock that can differentiate when we mutate the option and
- * when we just want to have a reference to the printer
- */
-static PRINT: SpinLock<Option<&dyn Print>> = SpinLock::new(None);
+const BUFFER_SIZE: usize = 8192;
+static BUFFER: RingBuffer<BUFFER_SIZE> = RingBuffer::new();
+static LOG_WRITER: SpinLock<Option<LogWriter>> = SpinLock::new(None);
 
 struct LogWriter<'a> {
-    printer: &'a dyn Print,
+    writer: ring_buffer::Writer<'a, BUFFER_SIZE>,
 }
 
 impl<'a> core::fmt::Write for LogWriter<'a> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        self.printer.write_str(s).map_err(|_| core::fmt::Error)
+        for c in s.bytes() {
+            self.writer.push(c).map_err(|_| core::fmt::Error)?;
+        }
+        Ok(())
     }
 }
 
 #[doc(hidden)]
 pub fn _print(args: core::fmt::Arguments) -> Result<(), Error> {
     if is_kernel_relocated() {
-        // TODO(javier-varez): Do buffered logging
-        match PRINT.lock().clone() {
-            Some(printer) => {
-                let mut writer = LogWriter { printer };
-                writer.write_fmt(args).map_err(|_| Error::PrintFailed)?;
-            }
-            None => {}
+        let mut writer = LOG_WRITER.lock();
+        if writer.is_none() {
+            let buffer_writer = BUFFER
+                .split_writer()
+                .expect("The buffer should not be split");
+            writer.replace(LogWriter {
+                writer: buffer_writer,
+            });
         }
+
+        writer
+            .as_mut()
+            .unwrap()
+            .write_fmt(args)
+            .map_err(|_| Error::BufferFull)?;
     } else {
         // We check if there is an EarlyPrint implementation and use that.
 
@@ -77,6 +95,24 @@ pub unsafe fn register_early_printer<T: EarlyPrint>(printer: &'static mut T) {
 }
 
 #[inline]
-pub fn register_printer<T: Print>(printer: &'static T) {
-    PRINT.lock().replace(printer);
+pub fn init_printer<T: Print + Sync>(printer: &'static T) {
+    let mut reader = BUFFER.split_reader().expect("The buffer is already split!");
+
+    crate::thread::Builder::new()
+        .name("Printer")
+        .spawn(move || loop {
+            match reader.pop() {
+                Ok(val) => {
+                    printer.write_u8(val).unwrap();
+                }
+                Err(ring_buffer::Error::WouldBlock) => {
+                    // TODO(javier-varez): Sleep here waiting for condition to happen instead of looping
+                    // At the time of this writing there is no mechanism to do this.
+                    continue;
+                }
+                Err(e) => {
+                    panic!("Error reading from the print buffer, {:?}", e);
+                }
+            }
+        });
 }

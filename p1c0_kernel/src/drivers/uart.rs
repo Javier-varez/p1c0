@@ -111,17 +111,10 @@ mod late_uart {
 
     // We really should do better than this next time tbh
     impl Print for SpinLock<Option<Uart>> {
-        fn write_str(&self, s: &str) -> Result<(), print::Error> {
+        fn write_u8(&self, c: u8) -> Result<(), print::Error> {
             let mut lock = self.lock();
             let uart = lock.as_mut().ok_or(print::Error::PrintFailed)?;
-            for character in s.bytes() {
-                if character == b'\n' {
-                    // Implicit \r with every \n
-                    uart.putchar(b'\r');
-                }
-                uart.putchar(character);
-            }
-            drop(lock);
+            uart.putchar(c);
             Ok(())
         }
     }
@@ -137,7 +130,6 @@ pub unsafe fn probe_early() {
 }
 
 pub fn probe_late() {
-    println!("Late uart probe");
     late_uart::LATE_UART.lock().replace(late_uart::Uart::new());
-    print::register_printer(&late_uart::LATE_UART);
+    print::init_printer(&late_uart::LATE_UART);
 }
