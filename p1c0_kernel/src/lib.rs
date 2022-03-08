@@ -24,7 +24,15 @@ pub mod thread;
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     drivers::display::_print(args);
-    print::_print(args).unwrap();
+    match print::_print(args) {
+        Ok(_) => {}
+        Err(print::Error::WriterLocked) => {
+            // TODO(javier-varez): How do we push this to the user?
+        }
+        Err(e) => {
+            panic!("Print failed with error: {:?}", e);
+        }
+    }
 }
 
 /// Prints to the host through the display console interface
