@@ -16,7 +16,7 @@ register_bitfields![u32,
     ],
 ];
 
-static mut UART: Option<Uart> = None;
+static mut EARLY_UART: Option<EarlyUart> = None;
 
 #[repr(C)]
 struct UartRegs {
@@ -26,11 +26,11 @@ struct UartRegs {
     tx: ReadWrite<u32>,
 }
 
-struct Uart {
+struct EarlyUart {
     regs: *mut UartRegs,
 }
 
-impl Uart {
+impl EarlyUart {
     fn new() -> Self {
         let adt = crate::adt::get_adt().unwrap();
         let (device_addr, _) = adt.get_device_addr("/arm-io/uart0", 0).unwrap();
@@ -49,7 +49,7 @@ impl Uart {
     }
 }
 
-impl fmt::Write for Uart {
+impl fmt::Write for EarlyUart {
     fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
         for character in s.bytes() {
             if character == b'\n' {
@@ -64,13 +64,15 @@ impl fmt::Write for Uart {
 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
-    let uart = unsafe { &mut UART };
+    let uart = unsafe { &mut EARLY_UART };
     if let Some(uart) = uart {
         uart.write_fmt(args).expect("Printing to uart failed");
     }
 }
 
-pub fn initialize() {
-    let uart = unsafe { &mut UART };
-    uart.replace(Uart::new());
+/// # Safety
+///   This should only be called during system startup while the relocations haven't yet been done.
+pub unsafe fn probe_early() {
+    let uart = &mut EARLY_UART;
+    uart.replace(EarlyUart::new());
 }

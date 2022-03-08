@@ -130,7 +130,10 @@ pub extern "C" fn start_rust(boot_args: &BootArgs, base: *const u8, stack_bottom
     unsafe { BASE = base };
 
     exceptions::handling_init();
-    uart::initialize();
+
+    // # Safety
+    //   It is safe to call probe early here since we are in a single-threaded context.
+    unsafe { uart::probe_early() };
 
     chickens::init_cpu();
 
