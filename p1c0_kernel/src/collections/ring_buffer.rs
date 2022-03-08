@@ -1,8 +1,9 @@
+use crate::collections::ring_buffer::Error::AlreadySplit;
 /// Single-producer, single-consumer buffer that allows the user to share data across threads
 use core::{
     cell::UnsafeCell,
     mem::MaybeUninit,
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicU8, AtomicUsize, Ordering},
 };
 
 #[derive(Debug)]
@@ -16,13 +17,16 @@ pub struct RingBuffer<const SIZE: usize> {
     data: [UnsafeCell<MaybeUninit<u8>>; SIZE],
     read_index: AtomicUsize,
     write_index: AtomicUsize,
-    is_split: AtomicBool,
+    split: AtomicU8,
 }
 
 /// # Safety
 /// The RingBuffer can only be accessed by the Writer/Reader, so even though it is an unsafe cell it
 /// still isn't accessed directly via the ring buffer, but rather through the Writer/Reader
 unsafe impl<const SIZE: usize> Sync for RingBuffer<SIZE> {}
+
+const WRITER_SPLIT_TOK: u8 = 1 << 0;
+const READER_SPLIT_TOK: u8 = 1 << 1;
 
 impl<const SIZE: usize> RingBuffer<SIZE> {
     pub const fn new() -> Self {
@@ -32,7 +36,7 @@ impl<const SIZE: usize> RingBuffer<SIZE> {
             data: [CELL; SIZE],
             read_index: AtomicUsize::new(0),
             write_index: AtomicUsize::new(0),
-            is_split: AtomicBool::new(false),
+            split: AtomicU8::new(0),
         }
     }
 
@@ -114,10 +118,68 @@ impl<const SIZE: usize> RingBuffer<SIZE> {
     }
 
     pub fn split(&self) -> Result<(Writer<'_, SIZE>, Reader<'_, SIZE>), Error> {
-        if !self.is_split.swap(true, Ordering::Relaxed) {
+        let split = self.split.load(Ordering::Relaxed);
+        if (split & (READER_SPLIT_TOK | WRITER_SPLIT_TOK)) != 0 {
+            return Err(AlreadySplit);
+        }
+
+        if self
+            .split
+            .compare_exchange(
+                split,
+                READER_SPLIT_TOK | WRITER_SPLIT_TOK,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            )
+            .is_ok()
+        {
             Ok((Writer { buffer: self }, Reader { buffer: self }))
         } else {
             Err(Error::AlreadySplit)
+        }
+    }
+
+    pub fn split_writer(&self) -> Result<Writer<'_, SIZE>, Error> {
+        loop {
+            let split = self.split.load(Ordering::Relaxed);
+            if (split & WRITER_SPLIT_TOK) != 0 {
+                return Err(AlreadySplit);
+            }
+
+            if self
+                .split
+                .compare_exchange(
+                    split,
+                    split | WRITER_SPLIT_TOK,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
+                return Ok(Writer { buffer: self });
+            }
+        }
+    }
+
+    pub fn split_reader(&self) -> Result<Reader<'_, SIZE>, Error> {
+        loop {
+            let split = self.split.load(Ordering::Relaxed);
+            if (split & READER_SPLIT_TOK) != 0 {
+                return Err(AlreadySplit);
+            }
+
+            if self
+                .split
+                .compare_exchange(
+                    split,
+                    split | READER_SPLIT_TOK,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
+                return Ok(Reader { buffer: self });
+            }
         }
     }
 }
@@ -267,5 +329,21 @@ mod test {
                 }
             });
         });
+    }
+
+    #[test]
+    fn test_can_split_reader_and_writer_separately() {
+        let ring_buffer: RingBuffer<16> = RingBuffer::new();
+        let _writer = ring_buffer.split_writer().unwrap();
+        assert!(matches!(
+            ring_buffer.split_writer(),
+            Err(Error::AlreadySplit)
+        ));
+
+        let _reader = ring_buffer.split_reader().unwrap();
+        assert!(matches!(
+            ring_buffer.split_reader(),
+            Err(Error::AlreadySplit)
+        ));
     }
 }
