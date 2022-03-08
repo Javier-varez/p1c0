@@ -133,24 +133,20 @@ impl MemoryManager {
             .expect("Boot args can be mapped");
 
         // Now unmap identity mapping
+        arch::mmu::MMU.remove_identity_mappings();
+
         let adt = crate::adt::get_adt().unwrap();
         let chosen = adt.find_node("/chosen").expect("There is a chosen node");
         let dram_base = chosen
             .find_property("dram-base")
             .and_then(|prop| prop.usize_value().ok())
-            .map(|addr| addr as *const u8)
+            .and_then(|addr| PhysicalAddress::try_from_ptr(addr as *const u8).ok())
             .expect("There is a dram base");
         let dram_size = chosen
             .find_property("dram-size")
             .and_then(|prop| prop.usize_value().ok())
             .expect("There is a dram base");
 
-        arch::mmu::MMU
-            .unmap_region(VirtualAddress::try_from_ptr(dram_base).unwrap(), dram_size)
-            .expect("Can remove identity mapping");
-
-        let dram_base =
-            PhysicalAddress::try_from_ptr(dram_base).expect("The DRAM base is not page aligned");
         self.initialize_physical_page_allocator(
             dram_base,
             dram_size,
