@@ -8,6 +8,7 @@ pub enum Error {
     EarlyPrintFailed,
     PrintFailed,
     BufferFull,
+    WriterLocked,
 }
 
 /// Marker trait to indicate this logger can be used early during the boot chain
@@ -55,7 +56,8 @@ impl<'a> core::fmt::Write for LogWriter<'a> {
 #[doc(hidden)]
 pub fn _print(args: core::fmt::Arguments) -> Result<(), Error> {
     if is_kernel_relocated() {
-        let mut writer = LOG_WRITER.lock();
+        let mut writer = LOG_WRITER.try_lock().map_err(|_| Error::WriterLocked)?;
+
         if writer.is_none() {
             let buffer_writer = BUFFER
                 .split_writer()
@@ -77,18 +79,17 @@ pub fn _print(args: core::fmt::Arguments) -> Result<(), Error> {
         //   this should be safe given that code is single-threaded until the kernel is relocated,
         //   at which point we will no longer use the early printer.
         let early_print = unsafe { EARLY_PRINT.clone().take() };
-        match early_print.map(|ptr| unsafe { &mut *ptr }) {
-            Some(printer) => {
-                printer
-                    .write_fmt(args)
-                    .map_err(|_| Error::EarlyPrintFailed)?;
-            }
-            None => {}
+        if let Some(printer) = early_print.map(|ptr| unsafe { &mut *ptr }) {
+            printer
+                .write_fmt(args)
+                .map_err(|_| Error::EarlyPrintFailed)?;
         }
     }
     Ok(())
 }
 
+/// # Safety
+///   This should only be called during system startup while the relocations haven't yet been done.
 #[inline]
 pub unsafe fn register_early_printer<T: EarlyPrint>(printer: &'static mut T) {
     EARLY_PRINT.replace(printer);

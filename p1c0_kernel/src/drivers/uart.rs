@@ -3,7 +3,7 @@ use tock_registers::{
     registers::{ReadOnly, ReadWrite},
 };
 
-use crate::{print, println};
+use crate::print;
 
 // Defines bitfields for the UART registers
 register_bitfields![u32,
