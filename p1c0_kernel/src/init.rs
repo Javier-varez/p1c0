@@ -22,6 +22,8 @@ use crate::{
 /// relocation.
 static mut BASE: *const u8 = core::ptr::null();
 
+static mut RELOCATION_DONE: bool = false;
+
 fn transition_to_el1(stack_bottom: *const ()) -> ! {
     // Do not trap timer to EL2.
     CNTHCTL_EL2.write(CNTHCTL_EL2::EL1PCTEN::SET + CNTHCTL_EL2::EL1PCEN::SET);
@@ -92,6 +94,11 @@ unsafe fn jump_to_high_kernel() -> ! {
 }
 
 unsafe fn kernel_prelude() {
+    // At this point the Kernel is relocated and the initial boot process is done.
+    // We set this flag to let the kernel know that it can use regular memory management
+    // from now onwards.
+    RELOCATION_DONE = true;
+
     println!("Entering kernel prelude with PC: {:?}", read_pc());
 
     memory::MemoryManager::instance().late_init();
@@ -148,4 +155,12 @@ pub extern "C" fn start_rust(boot_args: &BootArgs, base: *const u8, stack_bottom
             panic!();
         }
     }
+}
+
+#[inline]
+pub fn is_kernel_relocated() -> bool {
+    // This is only written during startup when interrupts are not enabled. Therefore it is safe to
+    // read before booted (because it is written and read from the same thread) and afterwards
+    // (because it never changes again).
+    unsafe { RELOCATION_DONE }
 }
