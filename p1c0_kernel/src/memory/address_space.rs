@@ -194,15 +194,15 @@ impl KernelAddressSpace {
         ))
     }
 
-    pub fn add_logical_range<'a>(
-        &'a mut self,
+    pub fn add_logical_range(
+        &mut self,
         name: &str,
         la: LogicalAddress,
         size_bytes: usize,
         attributes: Attributes,
         permissions: Permissions,
         physical_region: Option<PhysicalMemoryRegion>,
-    ) -> Result<&'a LogicalMemoryRange, Error> {
+    ) -> Result<&LogicalMemoryRange, Error> {
         println!(
             "Adding logical range `{}` at {}, size 0x{:x}, permissions {:?}",
             name, la, size_bytes, permissions
