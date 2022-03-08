@@ -98,10 +98,10 @@ unsafe fn kernel_prelude() {
     // We set this flag to let the kernel know that it can use regular memory management
     // from now onwards.
     RELOCATION_DONE = true;
-
     println!("Entering kernel prelude with PC: {:?}", read_pc());
 
     memory::MemoryManager::instance().late_init();
+    uart::probe_late();
 
     exceptions::handling_init();
     // This services and initializes the watchdog (on first call). To avoid a reboot we should
@@ -130,6 +130,11 @@ unsafe extern "C" fn el1_entry() -> ! {
 
 #[no_mangle]
 pub extern "C" fn start_rust(boot_args: &BootArgs, base: *const u8, stack_bottom: *const ()) -> ! {
+    // Warning: Be very careful of the work that is done at this stage. At this point in time the
+    // kernel is about to be relocated and doesn't have an enabled MMU. What this means is that most
+    // of the operations will not work or will not be compatible (e.g.: addresses) with the
+    // relocated kernel.
+
     // SAFETY
     // This is safe because at this point there is only one thread running and no one has accessed
     // the boot args yet.

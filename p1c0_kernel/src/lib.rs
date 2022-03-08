@@ -23,7 +23,7 @@ pub mod thread;
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
     drivers::display::_print(args);
-    drivers::uart::_print(args);
+    print::_print(args).unwrap();
 }
 
 /// Prints to the host through the display console interface
