@@ -7,6 +7,11 @@ static mut SAVED_DAIF: u64 = 0;
 
 use core::cell::UnsafeCell;
 
+#[derive(Debug)]
+pub enum Error {
+    WouldBlock,
+}
+
 pub struct SpinLock<T> {
     lock: atomic::AtomicBool,
     data: UnsafeCell<T>,
@@ -21,43 +26,49 @@ impl<T> SpinLock<T> {
     }
 
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
-        let mut saved_daif;
-
         loop {
-            saved_daif = DAIF.get();
-            DAIF.write(DAIF::D::Masked + DAIF::I::Masked + DAIF::A::Masked + DAIF::F::Masked);
-            unsafe { barrier::dsb(barrier::ISHST) };
-
-            match self.lock.compare_exchange_weak(
-                false,
-                true,
-                atomic::Ordering::Acquire,
-                atomic::Ordering::Relaxed,
-            ) {
-                Ok(_) => break,
-                Err(_) => {
-                    // Restore daif. This gives the processor a chance to run some
-                    // interrupt/exceptions while looping
-                    DAIF.set(saved_daif);
-
-                    // Add a barrier here to ensure that subsequent memory accesses really execute
-                    // out of the critical section
-                    unsafe { barrier::dsb(barrier::ISHST) };
-                }
+            if let Ok(guard) = self.try_lock() {
+                return guard;
             }
         }
+    }
 
-        let prev_nesting = CRITICAL_NESTING.fetch_add(1, atomic::Ordering::Acquire);
-        if prev_nesting == core::u32::MAX {
-            panic!("We have reached the maximum value for CRITICAL_NESTING. This is MOST LIKELY a bug in user code");
-        } else if prev_nesting == 0 {
-            // Save the daif value for later when it is unlocked
-            unsafe { SAVED_DAIF = saved_daif };
-        }
+    pub fn try_lock(&self) -> Result<SpinLockGuard<'_, T>, Error> {
+        let saved_daif = DAIF.get();
 
-        SpinLockGuard {
-            lock: self,
-            data: unsafe { &mut *self.data.get() },
+        DAIF.write(DAIF::D::Masked + DAIF::I::Masked + DAIF::A::Masked + DAIF::F::Masked);
+        unsafe { barrier::dsb(barrier::ISHST) };
+
+        match self.lock.compare_exchange(
+            false,
+            true,
+            atomic::Ordering::Acquire,
+            atomic::Ordering::Relaxed,
+        ) {
+            Ok(_) => {
+                let prev_nesting = CRITICAL_NESTING.fetch_add(1, atomic::Ordering::Acquire);
+                if prev_nesting == core::u32::MAX {
+                    panic!("We have reached the maximum value for CRITICAL_NESTING. This is MOST LIKELY a bug in user code");
+                } else if prev_nesting == 0 {
+                    // Save the daif value for later when it is unlocked
+                    unsafe { SAVED_DAIF = saved_daif };
+                }
+
+                Ok(SpinLockGuard {
+                    lock: self,
+                    data: unsafe { &mut *self.data.get() },
+                })
+            }
+            Err(_) => {
+                // Restore daif. This gives the processor a chance to run some
+                // interrupt/exceptions while looping
+                DAIF.set(saved_daif);
+
+                // Add a barrier here to ensure that subsequent memory accesses really execute
+                // out of the critical section
+                unsafe { barrier::dsb(barrier::ISHST) };
+                Err(Error::WouldBlock)
+            }
         }
     }
 
@@ -76,6 +87,7 @@ impl<T> SpinLock<T> {
 }
 
 unsafe impl<T> Send for SpinLock<T> {}
+
 unsafe impl<T> Sync for SpinLock<T> {}
 
 pub struct SpinLockGuard<'a, T> {
