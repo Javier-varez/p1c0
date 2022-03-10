@@ -146,9 +146,9 @@ impl<T> IntrusiveList<T> {
     }
 
     /// Consumes the list and calls the given callable to free/return each element
-    pub fn release<F>(self, free: F)
+    pub fn release<F>(mut self, mut free: F)
     where
-        F: Fn(OwnedMutPtr<IntrusiveItem<T>>),
+        F: FnMut(OwnedMutPtr<IntrusiveItem<T>>),
     {
         let mut element = self.head;
         while !element.is_null() {
@@ -168,6 +168,11 @@ impl<T> IntrusiveList<T> {
         // need to make sure that the elements are actually released
         self.head = core::ptr::null_mut();
         self.tail = core::ptr::null_mut();
+    }
+
+    /// Joins two lists together.
+    pub fn join(&mut self, other: IntrusiveList<T>) {
+        other.release(|element| self.push(element));
     }
 }
 
@@ -424,6 +429,42 @@ mod test {
         removed_list.release(|element| {
             unsafe { element.into_box() };
         });
+
+        list.release(|element| {
+            unsafe { element.into_box() };
+        });
+    }
+
+    #[test]
+    fn join_two_lists() {
+        let a = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(32)));
+        let b = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(23)));
+        let c = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(84)));
+        let d = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(234)));
+        let e = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(84)));
+
+        let mut list = IntrusiveList::<_>::new();
+        list.push(a);
+        list.push(b);
+        list.push(c);
+        list.push(d);
+        list.push(e);
+
+        let vector: Vec<_> = list.iter().map(|item| item.inner).collect();
+        assert_eq!(vector, vec![32, 23, 84, 234, 84]);
+
+        let removed_list = list.drain_filter(|element| *element.deref() == 84);
+
+        let vector: Vec<_> = list.iter().map(|item| item.inner).collect();
+        assert_eq!(vector, vec![32, 23, 234]);
+
+        let vector: Vec<_> = removed_list.iter().map(|item| item.inner).collect();
+        assert_eq!(vector, vec![84, 84]);
+
+        list.join(removed_list);
+
+        let vector: Vec<_> = list.iter().map(|item| item.inner).collect();
+        assert_eq!(vector, vec![32, 23, 234, 84, 84]);
 
         list.release(|element| {
             unsafe { element.into_box() };
