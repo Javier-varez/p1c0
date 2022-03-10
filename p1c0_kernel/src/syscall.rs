@@ -352,6 +352,7 @@ define_syscalls!(
     [0, Noop, noop, handle_noop, ()],
     [1, Reboot, reboot, handle_reboot, ()],
     [2, Sleep, sleep_us, handle_sleep_us, (u64)],
+    [3, Yield, yield_exec, handle_yield_exec, ()],
     [0x8000, Multiply, multiply, handle_multiply, (u32, u32) -> u32],
 );
 
@@ -381,4 +382,8 @@ fn handle_multiply(a: u32, b: u32) -> u32 {
 fn handle_sleep_us(cx: &mut ExceptionContext, duration_us: u64) {
     let duration = core::time::Duration::from_micros(duration_us);
     crate::thread::sleep_current_thread(cx, duration);
+}
+
+fn handle_yield_exec(cx: &mut ExceptionContext) {
+    crate::thread::run_scheduler(cx);
 }
