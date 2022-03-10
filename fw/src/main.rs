@@ -10,9 +10,7 @@ use p1c0::print_boot_args;
 use p1c0_kernel::{
     arch::get_exception_level,
     boot_args::get_boot_args,
-    drivers::{
-        display::Display, gpio::GpioBank, hid::HidDev, interfaces::timer::Timer, spi::Spi, wdt,
-    },
+    drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi, wdt},
     println,
     syscall::Syscall,
     thread::{self, print_thread_info},
@@ -40,7 +38,6 @@ fn kernel_entry() {
     #[cfg(feature = "emulator")]
     print_semihosting_caps();
 
-    // TODO(javier-varez): Replace all delays by actual sleeps once that is implemented.
     thread::spawn(move || {
         print_thread_info();
 
@@ -52,16 +49,13 @@ fn kernel_entry() {
 
             println!("Count {}", count);
             count += 1;
-
-            p1c0_kernel::drivers::generic_timer::get_timer()
-                .delay(core::time::Duration::from_secs(1));
+            Syscall::sleep_us(1_000_000);
         }
     });
 
     thread::spawn(move || loop {
         println!("Second thread");
-        p1c0_kernel::drivers::generic_timer::get_timer()
-            .delay(core::time::Duration::from_millis(750));
+        Syscall::sleep_us(750_000);
     });
 
     #[cfg(not(feature = "emulator"))]
@@ -82,7 +76,7 @@ fn kernel_entry() {
     thread::Builder::new().name("WDT").spawn(move || loop {
         wdt::service();
 
-        p1c0_kernel::drivers::generic_timer::get_timer().delay(core::time::Duration::from_secs(1));
+        Syscall::sleep_us(1_000_000);
     });
 
     thread::initialize();

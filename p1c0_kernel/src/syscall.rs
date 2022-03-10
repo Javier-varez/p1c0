@@ -204,7 +204,7 @@ macro_rules! call_syscall_hdlr {
         $syscall_hdlr_name: ident,
         ()
     ) => {
-        $syscall_hdlr_name();
+        $syscall_hdlr_name($context);
     };
     (
         $context: expr,
@@ -212,7 +212,7 @@ macro_rules! call_syscall_hdlr {
         ($arg0_ty: ty)
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
-        $syscall_hdlr_name(arg0);
+        $syscall_hdlr_name($context, arg0);
     };
     (
         $context: expr,
@@ -221,7 +221,7 @@ macro_rules! call_syscall_hdlr {
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
-        $syscall_hdlr_name(arg0, arg1);
+        $syscall_hdlr_name($context, arg0, arg1);
     };
     (
         $context: expr,
@@ -231,7 +231,7 @@ macro_rules! call_syscall_hdlr {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
         let arg2 = $context.gpr[2] as $arg2_ty;
-        $syscall_hdlr_name(arg0, arg1, arg2);
+        $syscall_hdlr_name($context, arg0, arg1, arg2);
     };
     (
         $context: expr,
@@ -242,7 +242,7 @@ macro_rules! call_syscall_hdlr {
         let arg1 = $context.gpr[1] as $arg1_ty;
         let arg2 = $context.gpr[2] as $arg2_ty;
         let arg3 = $context.gpr[3] as $arg3_ty;
-        $syscall_hdlr_name(arg0, arg1, arg2, arg3);
+        $syscall_hdlr_name($context, arg0, arg1, arg2, arg3);
     };
     (
         $context: expr,
@@ -351,6 +351,7 @@ macro_rules! define_syscalls {
 define_syscalls!(
     [0, Noop, noop, handle_noop, ()],
     [1, Reboot, reboot, handle_reboot, ()],
+    [2, Sleep, sleep_us, handle_sleep_us, (u64)],
     [0x8000, Multiply, multiply, handle_multiply, (u32, u32) -> u32],
 );
 
@@ -358,11 +359,11 @@ pub enum Error {
     UnknownSyscall(u32),
 }
 
-fn handle_noop() {
+fn handle_noop(_e: &mut ExceptionContext) {
     println!("Syscall Noop");
 }
 
-fn handle_reboot() {
+fn handle_reboot(_e: &mut ExceptionContext) {
     println!("Syscall Reboot - Rebooting computer");
     wdt::service();
 
@@ -375,4 +376,9 @@ fn handle_reboot() {
 fn handle_multiply(a: u32, b: u32) -> u32 {
     println!("Syscall Multiplication");
     a * b
+}
+
+fn handle_sleep_us(cx: &mut ExceptionContext, duration_us: u64) {
+    let duration = core::time::Duration::from_micros(duration_us);
+    crate::thread::sleep_current_thread(cx, duration);
 }
