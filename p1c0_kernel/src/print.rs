@@ -1,6 +1,7 @@
 use crate::collections::ring_buffer::{self, RingBuffer};
 use crate::init::is_kernel_relocated;
 use crate::sync::spinlock::SpinLock;
+use crate::syscall::Syscall;
 use core::fmt::Write;
 
 #[derive(Debug)]
@@ -109,6 +110,8 @@ pub fn init_printer<T: Print + Sync>(printer: &'static T) {
                 Err(ring_buffer::Error::WouldBlock) => {
                     // TODO(javier-varez): Sleep here waiting for condition to happen instead of looping
                     // At the time of this writing there is no mechanism to do this.
+                    // We can at least yield to the scheduler again
+                    Syscall::yield_exec();
                     continue;
                 }
                 Err(e) => {
