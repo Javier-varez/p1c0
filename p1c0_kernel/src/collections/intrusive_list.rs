@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+
 use super::OwnedMutPtr;
 
 #[derive(Debug)]
@@ -17,7 +18,7 @@ impl<T> IntrusiveList<T> {
         }
     }
 
-    /// Apends an element to the tail of the queue
+    /// Appends an element to the tail of the queue
     pub fn push(&mut self, item: OwnedMutPtr<IntrusiveItem<T>>) {
         if self.head.is_null() {
             self.head = item.leak();
@@ -161,6 +162,12 @@ impl<T> IntrusiveList<T> {
 
             element = next;
         }
+
+        // Since we went through the list in one way, remove the head and tail now
+        // It is important that we do this because the list will be dropped later and we
+        // need to make sure that the elements are actually released
+        self.head = core::ptr::null_mut();
+        self.tail = core::ptr::null_mut();
     }
 }
 
@@ -276,6 +283,10 @@ mod test {
 
         let vector: Vec<_> = list.iter().map(|item| item.inner).collect();
         assert_eq!(vector, vec![32, 23, 84, 843]);
+
+        list.release(|element| {
+            unsafe { element.into_box() };
+        });
     }
 
     #[test]
@@ -297,6 +308,10 @@ mod test {
 
         let vector: Vec<_> = list.iter().rev().map(|item| item.inner).collect();
         assert_eq!(vector, vec![843, 84, 23, 32]);
+
+        list.release(|element| {
+            unsafe { element.into_box() };
+        });
     }
 
     #[test]
@@ -320,6 +335,10 @@ mod test {
         assert_eq!(iter.next_back(), Some(84));
         assert_eq!(iter.next(), None);
         assert_eq!(iter.next_back(), None);
+
+        list.release(|element| {
+            unsafe { element.into_box() };
+        });
     }
 
     #[test]
@@ -343,6 +362,10 @@ mod test {
 
         let vector: Vec<_> = list.iter().map(|item| item.inner).collect();
         assert_eq!(vector, vec![23, 84]);
+
+        list.release(|element| {
+            unsafe { element.into_box() };
+        });
     }
 
     #[test]
@@ -366,6 +389,10 @@ mod test {
 
         let vector: Vec<_> = list.iter().map(|item| item.inner).collect();
         assert_eq!(vector, vec![32, 84]);
+
+        list.release(|element| {
+            unsafe { element.into_box() };
+        });
     }
 
     #[test]
@@ -393,5 +420,13 @@ mod test {
 
         let vector: Vec<_> = removed_list.iter().map(|item| item.inner).collect();
         assert_eq!(vector, vec![84, 84]);
+
+        removed_list.release(|element| {
+            unsafe { element.into_box() };
+        });
+
+        list.release(|element| {
+            unsafe { element.into_box() };
+        });
     }
 }
