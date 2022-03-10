@@ -2,6 +2,7 @@ pub mod keyboard;
 
 use super::generic_timer;
 use super::gpio::{self, GpioBank, PinState};
+use super::interfaces::timer::Timer;
 use super::spi::{self, Spi};
 
 use crate::adt;

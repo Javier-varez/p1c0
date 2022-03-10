@@ -6,7 +6,7 @@ use tock_registers::{
 
 use crate::{
     adt::get_adt,
-    drivers::generic_timer,
+    drivers::{generic_timer, interfaces::timer::Timer},
     memory::{address::Address, MemoryManager},
 };
 

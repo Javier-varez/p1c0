@@ -10,7 +10,7 @@ use crate::{
     arch::{apply_rela_from_existing, exceptions, jump_to_addr, read_pc, RelaEntry},
     boot_args::BootArgs,
     chickens,
-    drivers::{aic, generic_timer, uart, wdt},
+    drivers::{aic, generic_timer, interfaces::timer::Timer, uart, wdt},
     memory::{
         self,
         address::{Address, PhysicalAddress},

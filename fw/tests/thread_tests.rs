@@ -6,8 +6,13 @@
 #![feature(default_alloc_error_handler)]
 
 use core::time::Duration;
-use p1c0 as _; // needed to link libentry (and _start)
-use p1c0_kernel::{drivers::generic_timer::get_timer, sync::spinlock::SpinLock, thread};
+use p1c0 as _;
+// needed to link libentry (and _start)
+use p1c0_kernel::{
+    drivers::{generic_timer::get_timer, interfaces::timer::Timer},
+    sync::spinlock::SpinLock,
+    thread,
+};
 
 #[panic_handler]
 fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {

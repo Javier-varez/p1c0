@@ -5,6 +5,8 @@ use tock_registers::{
     registers::InMemoryRegister,
 };
 
+use crate::drivers::interfaces::timer::Timer;
+
 #[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
 use core::arch::global_asm;
 

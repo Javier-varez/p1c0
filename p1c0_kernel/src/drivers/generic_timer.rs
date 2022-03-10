@@ -4,7 +4,10 @@ use cortex_a::{
 };
 use tock_registers::interfaces::{Readable, Writeable};
 
+use crate::drivers::interfaces::TimerResolution;
 use core::sync::atomic::{AtomicU32, Ordering};
+
+use super::interfaces;
 
 pub struct GenericTimer {
     ticks_per_cycle: AtomicU32,
@@ -18,12 +21,8 @@ impl GenericTimer {
     }
 }
 
-impl GenericTimer {
-    pub fn resolution(&self) -> u64 {
-        CNTFRQ_EL0.get()
-    }
-
-    pub fn initialize(&self, interval: core::time::Duration) {
+impl interfaces::timer::Timer for GenericTimer {
+    fn initialize(&self, interval: core::time::Duration) {
         let ticks_per_cycle =
             ((CNTFRQ_EL0.get() * interval.as_nanos() as u64) / 1_000_000_000) as u32;
         crate::println!("Ticks per cycle {}", ticks_per_cycle);
@@ -34,35 +33,31 @@ impl GenericTimer {
             .store(ticks_per_cycle, Ordering::Relaxed)
     }
 
-    pub fn ticks(&self) -> u64 {
+    fn resolution(&self) -> interfaces::TimerResolution {
+        TimerResolution::from_hz(CNTFRQ_EL0.get())
+    }
+
+    fn ticks(&self) -> interfaces::Ticks {
         // Ensures that we don't get an out of order value by adding an instruction barrier
         // (flushing the instruction pipeline)
         unsafe { barrier::isb(barrier::SY) };
-        CNTVCT_EL0.get()
+        interfaces::Ticks::new(CNTVCT_EL0.get())
     }
 
-    /// Delays execution for the given duration. Currently this is a blocking routine that does not
-    /// sleep, just simply spins
-    pub fn delay(&self, time: core::time::Duration) {
-        const S_TO_NS: u128 = 1_000_000_000;
-        let ticks = ((self.resolution() as u128 * time.as_nanos()) / S_TO_NS) as u64;
-        let start = self.ticks();
-
-        while self.ticks() < (start + ticks) {}
-    }
-
-    pub fn handle_irq(&self) {
+    fn handle_irq(&self) {
         CNTV_TVAL_EL0.set(self.ticks_per_cycle.load(Ordering::Relaxed) as u64);
         CNTV_CTL_EL0.write(CNTV_CTL_EL0::IMASK::CLEAR + CNTV_CTL_EL0::ENABLE::SET);
     }
 
-    pub fn is_irq_active(&self) -> bool {
+    fn is_irq_active(&self) -> bool {
         CNTV_CTL_EL0.matches_all(
             CNTV_CTL_EL0::IMASK::CLEAR + CNTV_CTL_EL0::ENABLE::SET + CNTV_CTL_EL0::ISTATUS::SET,
         )
     }
 }
 
+// TODO(javier-varez): As with everything else, this should be moved towards a more
+// generic interface where we instantiate everything from the ADT.
 static GENERIC_TIMER: GenericTimer = GenericTimer::new();
 
 pub fn get_timer() -> &'static GenericTimer {
