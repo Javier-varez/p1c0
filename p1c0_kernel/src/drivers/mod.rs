@@ -1,3 +1,5 @@
+pub mod interfaces;
+
 pub mod aic;
 pub mod display;
 pub mod generic_timer;

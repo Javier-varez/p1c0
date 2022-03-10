@@ -59,7 +59,10 @@ pub extern "C" fn kernel_main() {
 #[cfg(test)]
 mod tests {
     use super::print_boot_args;
-    use p1c0_kernel::{boot_args::get_boot_args, drivers::generic_timer::get_timer};
+    use p1c0_kernel::{
+        boot_args::get_boot_args,
+        drivers::{generic_timer::get_timer, interfaces::timer::Timer},
+    };
 
     #[test_case]
     fn test_print_boot_args() {
@@ -70,11 +73,11 @@ mod tests {
     fn test_system_timer() {
         let timer = get_timer();
         let resolution = timer.resolution();
-        crate::println!("Timer resolution is {}", resolution);
+        crate::println!("Timer resolution is {:?}", resolution);
         let old_ticks = timer.ticks();
-        crate::println!("Timer ticks is {}", old_ticks);
+        crate::println!("Timer ticks is {:?}", old_ticks);
         let new_ticks = timer.ticks();
-        crate::println!("Timer ticks is {}", new_ticks);
+        crate::println!("Timer ticks is {:?}", new_ticks);
         assert!(new_ticks > old_ticks);
     }
 }

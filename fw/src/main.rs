@@ -10,7 +10,9 @@ use p1c0::print_boot_args;
 use p1c0_kernel::{
     arch::get_exception_level,
     boot_args::get_boot_args,
-    drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi, wdt},
+    drivers::{
+        display::Display, gpio::GpioBank, hid::HidDev, interfaces::timer::Timer, spi::Spi, wdt,
+    },
     println,
     syscall::Syscall,
     thread::{self, print_thread_info},
