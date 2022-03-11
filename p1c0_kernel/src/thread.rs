@@ -322,7 +322,7 @@ pub fn exit_current_thread(cx: &mut ExceptionContext) {
         if let BlockReason::Join(handle) = thread.block_reason.as_ref().unwrap() {
             return handle.0 == tid;
         }
-        return false;
+        false
     });
     ACTIVE_THREADS.lock().join(unblocked_threads);
 
@@ -334,25 +334,19 @@ pub fn exit_current_thread(cx: &mut ExceptionContext) {
 fn validate_thread_handle(tid: u64) -> bool {
     // TODO(javier-varez): This could be made way more efficient than a linear search in two
     // containers.
-    if ACTIVE_THREADS
-        .lock()
-        .iter()
-        .find(|thread| thread.tid == tid)
-        .is_some()
-    {
+    if ACTIVE_THREADS.lock().iter().any(|thread| thread.tid == tid) {
         return true;
     }
 
     if BLOCKED_THREADS
         .lock()
         .iter()
-        .find(|thread| thread.tid == tid)
-        .is_some()
+        .any(|thread| thread.tid == tid)
     {
         return true;
     }
 
-    return false;
+    false
 }
 
 pub fn join_thread(cx: &mut ExceptionContext, tid: u64) {
