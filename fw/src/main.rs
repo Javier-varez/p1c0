@@ -79,6 +79,10 @@ fn kernel_entry() {
         Syscall::sleep_us(1_000_000);
     });
 
+    thread::spawn(move || {
+        println!("This thread will die!");
+    });
+
     thread::initialize();
 }
 

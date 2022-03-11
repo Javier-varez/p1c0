@@ -134,6 +134,7 @@ impl Builder {
             // TODO(javier-varez): Thread cleanup here
             // At this point we should destroy the thread and make sure its execution stops here.
             // Otherwise we might return into the void triggering an exception.
+            Syscall::thread_exit();
         });
 
         const DEFAULT_STACK_SIZE: usize = 1024;
@@ -294,9 +295,25 @@ pub fn sleep_current_thread(cx: &mut ExceptionContext, duration: Duration) {
     current_thread.replace(thread);
 }
 
+pub fn exit_current_thread(cx: &mut ExceptionContext) {
+    let mut current_thread = CURRENT_THREAD.lock();
+
+    let mut thread = current_thread
+        .take()
+        .expect("There is no current thread calling sleep!");
+
+    // Drop the thread
+    unsafe { thread.into_box() };
+
+    let thread = schedule_next_thread();
+    restore_thread_context(cx, &thread);
+    current_thread.replace(thread);
+}
+
 pub fn print_thread_info() {
     let current_thread = CURRENT_THREAD.lock();
     let threads = ACTIVE_THREADS.lock();
+    let blocked_threads = BLOCKED_THREADS.lock();
 
     crate::println!("Thread information:");
     if let Some(tcb) = &*current_thread {
@@ -312,6 +329,14 @@ pub fn print_thread_info() {
             crate::println!("\tThread: {}, tid: {}", name, tcb.tid);
         } else {
             crate::println!("\tAnonymous thread, tid: {}", tcb.tid);
+        }
+    }
+
+    for tcb in blocked_threads.iter() {
+        if let Some(name) = tcb.name() {
+            crate::println!("\tBlocked thread: {}, tid: {}", name, tcb.tid);
+        } else {
+            crate::println!("\tAnonymous blocked thread, tid: {}", tcb.tid);
         }
     }
     crate::println!();

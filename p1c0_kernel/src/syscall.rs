@@ -353,6 +353,7 @@ define_syscalls!(
     [1, Reboot, reboot, handle_reboot, ()],
     [2, Sleep, sleep_us, handle_sleep_us, (u64)],
     [3, Yield, yield_exec, handle_yield_exec, ()],
+    [4, ThreadExit, thread_exit, handle_thread_exit, ()],
     [0x8000, Multiply, multiply, handle_multiply, (u32, u32) -> u32],
 );
 
@@ -386,4 +387,8 @@ fn handle_sleep_us(cx: &mut ExceptionContext, duration_us: u64) {
 
 fn handle_yield_exec(cx: &mut ExceptionContext) {
     crate::thread::run_scheduler(cx);
+}
+
+fn handle_thread_exit(cx: &mut ExceptionContext) {
+    crate::thread::exit_current_thread(cx);
 }
