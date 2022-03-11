@@ -103,3 +103,23 @@ fn test_runs_multiple_threads() {
         timer.delay(Duration::from_millis(10));
     }
 }
+
+#[test_case]
+fn test_join_thread() {
+    *NUM_THREADS.lock() = 0;
+
+    let t1 = thread::spawn(|| {
+        let mut locked_num_threads = NUM_THREADS.lock();
+        *locked_num_threads += 1;
+    });
+
+    let t2 = thread::spawn(|| {
+        let mut locked_num_threads = NUM_THREADS.lock();
+        *locked_num_threads += 1;
+    });
+
+    t1.join();
+    assert!(*NUM_THREADS.lock() > 0);
+    t2.join();
+    assert!(*NUM_THREADS.lock() == 2);
+}
