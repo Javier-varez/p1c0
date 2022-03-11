@@ -20,6 +20,7 @@ use crate::{
 };
 
 use crate::drivers::generic_timer::get_timer;
+use crate::syscall::Syscall;
 use core::ops::Add;
 use core::time::Duration;
 use core::{
@@ -46,6 +47,7 @@ impl Stack {
 
 enum BlockReason {
     Sleep(Ticks),
+    Join(ThreadHandle),
 }
 
 pub struct ThreadControlBlock {
@@ -93,6 +95,14 @@ extern "C" fn thread_start(thread_control_block: &mut ThreadControlBlock) {
     };
 }
 
+pub struct ThreadHandle(u64);
+
+impl ThreadHandle {
+    pub fn join(self) {
+        Syscall::thread_join(self.0);
+    }
+}
+
 pub struct Builder {
     name: Option<String<32>>,
     stack_size: Option<usize>,
@@ -124,16 +134,13 @@ impl Builder {
         self
     }
 
-    pub fn spawn<F>(self, thread: F)
+    pub fn spawn<F>(self, thread: F) -> ThreadHandle
     where
         F: FnOnce() + Send + 'static,
     {
         let thread_wrapper = Box::new(move || {
-            // TODO(javier-varez): Thread initialization here
             thread();
-            // TODO(javier-varez): Thread cleanup here
-            // At this point we should destroy the thread and make sure its execution stops here.
-            // Otherwise we might return into the void triggering an exception.
+
             Syscall::thread_exit();
         });
 
@@ -147,9 +154,10 @@ impl Builder {
         let mut spsr = SPSR_EL1.extract();
         spsr.write(SPSR_EL1::M::EL1t);
         let regs = [0; 31];
+        let tid = NUM_THREADS.fetch_add(1, Ordering::Relaxed);
 
         let mut tcb = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(ThreadControlBlock {
-            tid: NUM_THREADS.fetch_add(1, Ordering::Relaxed),
+            tid,
             name,
             entry: Some(thread_wrapper),
             stack,
@@ -162,14 +170,16 @@ impl Builder {
         tcb.regs[0] = (&mut **tcb) as *mut ThreadControlBlock as u64;
 
         ACTIVE_THREADS.lock().push(tcb);
+
+        ThreadHandle(tid)
     }
 }
 
-pub fn spawn<F>(thread: F)
+pub fn spawn<F>(thread: F) -> ThreadHandle
 where
     F: FnOnce() + Send + 'static,
 {
-    Builder::new().spawn(thread);
+    Builder::new().spawn(thread)
 }
 
 pub fn initialize() -> ! {
@@ -209,7 +219,7 @@ pub fn initialize() -> ! {
     unreachable!();
 }
 
-fn save_thread_context(thread: &mut Tcb, cx: &mut ExceptionContext) {
+fn save_thread_context(thread: &mut Tcb, cx: &ExceptionContext) {
     thread.spsr = cx.spsr_el1.as_raw();
     thread.stack_ptr = cx.sp_el0;
     thread.regs.copy_from_slice(&cx.gpr[..]);
@@ -298,12 +308,68 @@ pub fn sleep_current_thread(cx: &mut ExceptionContext, duration: Duration) {
 pub fn exit_current_thread(cx: &mut ExceptionContext) {
     let mut current_thread = CURRENT_THREAD.lock();
 
-    let mut thread = current_thread
+    let thread = current_thread
         .take()
         .expect("There is no current thread calling sleep!");
 
+    let tid = thread.tid;
+
     // Drop the thread
     unsafe { thread.into_box() };
+
+    // Get the TID and unlock any threads that were waiting for this one to complete
+    let unblocked_threads = BLOCKED_THREADS.lock().drain_filter(|thread| {
+        if let BlockReason::Join(handle) = thread.block_reason.as_ref().unwrap() {
+            return handle.0 == tid;
+        }
+        return false;
+    });
+    ACTIVE_THREADS.lock().join(unblocked_threads);
+
+    let thread = schedule_next_thread();
+    restore_thread_context(cx, &thread);
+    current_thread.replace(thread);
+}
+
+fn validate_thread_handle(tid: u64) -> bool {
+    // TODO(javier-varez): This could be made way more efficient than a linear search in two
+    // containers.
+    if ACTIVE_THREADS
+        .lock()
+        .iter()
+        .find(|thread| thread.tid == tid)
+        .is_some()
+    {
+        return true;
+    }
+
+    if BLOCKED_THREADS
+        .lock()
+        .iter()
+        .find(|thread| thread.tid == tid)
+        .is_some()
+    {
+        return true;
+    }
+
+    return false;
+}
+
+pub fn join_thread(cx: &mut ExceptionContext, tid: u64) {
+    if !validate_thread_handle(tid) {
+        // TODO(javier-varez): Should return an error here
+        return;
+    }
+
+    let mut current_thread = CURRENT_THREAD.lock();
+
+    let mut thread = current_thread
+        .take()
+        .expect("There is no current thread calling sleep!");
+    save_thread_context(&mut thread, cx);
+
+    thread.block_reason = Some(BlockReason::Join(ThreadHandle(tid)));
+    BLOCKED_THREADS.lock().push(thread);
 
     let thread = schedule_next_thread();
     restore_thread_context(cx, &thread);

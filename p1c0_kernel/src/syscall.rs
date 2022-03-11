@@ -354,6 +354,7 @@ define_syscalls!(
     [2, Sleep, sleep_us, handle_sleep_us, (u64)],
     [3, Yield, yield_exec, handle_yield_exec, ()],
     [4, ThreadExit, thread_exit, handle_thread_exit, ()],
+    [5, ThreadJoin, thread_join, handle_thread_join, (u64)],
     [0x8000, Multiply, multiply, handle_multiply, (u32, u32) -> u32],
 );
 
@@ -391,4 +392,8 @@ fn handle_yield_exec(cx: &mut ExceptionContext) {
 
 fn handle_thread_exit(cx: &mut ExceptionContext) {
     crate::thread::exit_current_thread(cx);
+}
+
+fn handle_thread_join(cx: &mut ExceptionContext, tid: u64) {
+    crate::thread::join_thread(cx, tid);
 }
