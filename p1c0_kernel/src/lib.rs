@@ -24,7 +24,6 @@ pub mod thread;
 
 #[doc(hidden)]
 pub fn _print(args: ::core::fmt::Arguments) {
-    drivers::display::_print(args);
     match print::_print(args) {
         Ok(_) => {}
         Err(print::Error::WriterLocked) => {
@@ -36,7 +35,6 @@ pub fn _print(args: ::core::fmt::Arguments) {
     }
 }
 
-/// Prints to the host through the display console interface
 #[macro_export]
 macro_rules! print {
     ($($arg:tt)*) => {
@@ -44,7 +42,6 @@ macro_rules! print {
     };
 }
 
-/// Prints to the host through the display console interface, appending a newline.
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));
