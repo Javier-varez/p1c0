@@ -11,11 +11,11 @@ use crate::{
     boot_args::BootArgs,
     chickens,
     drivers::{aic, generic_timer, interfaces::timer::Timer, uart, wdt},
+    log_info,
     memory::{
         self,
         address::{Address, PhysicalAddress},
     },
-    println,
 };
 
 /// This is the original base passed by iBoot into the kernel. Does NOT change after kernel
@@ -65,9 +65,11 @@ unsafe fn jump_to_high_kernel() -> ! {
     let rela_end = &_rela_end as *const _ as *const RelaEntry;
     let rela_size = rela_end.offset_from(rela_start) as usize * core::mem::size_of::<RelaEntry>();
 
-    println!(
+    log_info!(
         "Relocating kernel to base {}, rela start {:?}, rela size {}",
-        new_base, rela_start, rela_size
+        new_base,
+        rela_start,
+        rela_size
     );
 
     let high_kernel_addr =
@@ -81,7 +83,7 @@ unsafe fn jump_to_high_kernel() -> ! {
     // Relocate ourselves again to the correct location
     apply_rela_from_existing(BASE as usize, new_base.as_usize(), rela_start, rela_size);
 
-    println!(
+    log_info!(
         "Jumping to relocated kernel at: {}, stack: {}, current PC {:?}",
         high_kernel_addr,
         high_stack,
@@ -98,7 +100,7 @@ unsafe fn kernel_prelude() {
     // We set this flag to let the kernel know that it can use regular memory management
     // from now onwards.
     RELOCATION_DONE = true;
-    println!("Entering kernel prelude with PC: {:?}", read_pc());
+    log_info!("Entering kernel prelude with PC: {:?}", read_pc());
 
     memory::MemoryManager::instance().late_init();
     uart::probe_late();

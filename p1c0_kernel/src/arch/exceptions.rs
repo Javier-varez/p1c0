@@ -14,7 +14,7 @@ use core::arch::global_asm;
 #[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
-use crate::{drivers::generic_timer, println, syscall::syscall_handler, thread};
+use crate::{drivers::generic_timer, log_debug, log_info, syscall::syscall_handler, thread};
 
 /// Wrapper structs for memory copies of registers.
 #[repr(transparent)]
@@ -70,7 +70,7 @@ unsafe extern "C" fn current_el0_synchronous(e: &mut ExceptionContext) {
             syscall_handler(e.esr_el1.instruction_specific_syndrome(), e);
         }
         _ => {
-            println!("Synchronous exception from EL0 stack");
+            log_info!("Synchronous exception from EL0 stack");
             default_exception_handler(e);
         }
     }
@@ -78,13 +78,13 @@ unsafe extern "C" fn current_el0_synchronous(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn current_el0_irq(e: &mut ExceptionContext) {
-    println!("IRQ from EL0 stack");
+    log_info!("IRQ from EL0 stack");
 
     if let Some(aic) = &mut crate::drivers::aic::AIC {
         if let Some((die, number, r#type)) = aic.get_current_irq() {
-            println!("Irq die {}", die);
-            println!("Irq number {}", number);
-            println!("Irq type {:?}", r#type);
+            log_debug!("Irq die {}", die);
+            log_debug!("Irq number {}", number);
+            log_debug!("Irq type {:?}", r#type);
         }
     }
     default_exception_handler(e);
@@ -101,12 +101,12 @@ fn handle_fiq(e: &mut ExceptionContext) {
         return;
     }
 
-    println!("FIQ");
+    log_info!("FIQ");
     if let Some(aic) = unsafe { crate::drivers::aic::AIC.as_mut() } {
         if let Some((die, number, r#type)) = aic.get_current_irq() {
-            println!("Irq die {}", die);
-            println!("Irq number {}", number);
-            println!("Irq type {:?}", r#type);
+            log_debug!("Irq die {}", die);
+            log_debug!("Irq number {}", number);
+            log_debug!("Irq type {:?}", r#type);
         }
     }
     default_exception_handler(e);
@@ -119,7 +119,7 @@ unsafe extern "C" fn current_el0_fiq(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn current_el0_serror(e: &mut ExceptionContext) {
-    println!("Serror exception from EL0 stack");
+    log_info!("Serror exception from EL0 stack");
     default_exception_handler(e);
 }
 
@@ -130,7 +130,7 @@ unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
             syscall_handler(e.esr_el1.instruction_specific_syndrome(), e);
         }
         _ => {
-            println!("Synchronous exception");
+            log_info!("Synchronous exception");
             default_exception_handler(e);
         }
     }
@@ -143,13 +143,13 @@ unsafe extern "C" fn current_elx_fiq(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
-    println!("IRQ");
+    log_info!("IRQ");
 
     if let Some(aic) = &mut crate::drivers::aic::AIC {
         if let Some((die, number, r#type)) = aic.get_current_irq() {
-            println!("Irq die {}", die);
-            println!("Irq number {}", number);
-            println!("Irq type {:?}", r#type);
+            log_debug!("Irq die {}", die);
+            log_debug!("Irq number {}", number);
+            log_debug!("Irq type {:?}", r#type);
         }
     }
 
@@ -158,13 +158,13 @@ unsafe extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
-    println!("Serror exception");
+    log_info!("Serror exception");
     default_exception_handler(e);
 }
 
 #[no_mangle]
 unsafe extern "C" fn lower_el_aarch64_synchronous(e: &mut ExceptionContext) {
-    crate::println!(
+    log_info!(
         "lower_el_aarch64_synchronous: {:?}",
         crate::arch::get_exception_level()
     );
@@ -173,7 +173,7 @@ unsafe extern "C" fn lower_el_aarch64_synchronous(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn lower_el_aarch64_irq(e: &mut ExceptionContext) {
-    crate::println!(
+    log_info!(
         "lower_el_aarch64_irq: {:?}",
         crate::arch::get_exception_level()
     );
@@ -182,7 +182,7 @@ unsafe extern "C" fn lower_el_aarch64_irq(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn lower_el_aarch64_fiq(e: &mut ExceptionContext) {
-    crate::println!(
+    log_info!(
         "lower_el_aarch64_fiq: {:?}",
         crate::arch::get_exception_level()
     );
@@ -191,7 +191,7 @@ unsafe extern "C" fn lower_el_aarch64_fiq(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn lower_el_aarch64_serror(e: &mut ExceptionContext) {
-    crate::println!(
+    log_info!(
         "lower_el_aarch64_serror: {:?}",
         crate::arch::get_exception_level()
     );
@@ -239,7 +239,7 @@ impl fmt::Display for SpsrEL1 {
 
         let to_flag_str = |x| -> _ {
             if x { "Set" } else { "Not set" }
-         };
+        };
 
         writeln!(f, "      Flags:")?;
         writeln!(f, "            Negative (N): {}", to_flag_str(self.0.is_set(SPSR_EL1::N)))?;
@@ -258,7 +258,7 @@ impl fmt::Display for SpsrEL1 {
         writeln!(f, "            FIQ    (F): {}", to_mask_str(self.0.is_set(SPSR_EL1::F)))?;
 
         write!(f, "      Illegal Execution State (IL): {}",
-            to_flag_str(self.0.is_set(SPSR_EL1::IL))
+               to_flag_str(self.0.is_set(SPSR_EL1::IL))
         )
     }
 }
@@ -340,7 +340,7 @@ impl fmt::Display for ExceptionContext {
         writeln!(f, "General purpose register:")?;
 
         #[rustfmt::skip]
-        let alternating = |x| -> _ {
+            let alternating = |x| -> _ {
             if x % 2 == 0 { "   " } else { "\n" }
         };
 
@@ -375,17 +375,17 @@ pub fn handling_init() {
     ) {
         HCR_EL2.write(
             HCR_EL2::RW::EL1IsAarch64
-                // These settings would make EL2 work just like an OS and also trap any exceptions
-                // from EL1 to EL2. EL1 cannot be used with them.
-                //
-                // + HCR_EL2::API::NoTrapPointerAuthInstToEl2
-                // + HCR_EL2::APK::NoTrapPointerAuthKeyRegsToEl2
-                // + HCR_EL2::TEA::RouteSyncExtAborts
-                // + HCR_EL2::E2H::EnableOsAtEl2
-                // + HCR_EL2::TGE::TrapGeneralExceptions
-                // + HCR_EL2::AMO::SET
-                // + HCR_EL2::IMO::SET
-                // + HCR_EL2::FMO::SET,
+            // These settings would make EL2 work just like an OS and also trap any exceptions
+            // from EL1 to EL2. EL1 cannot be used with them.
+            //
+            // + HCR_EL2::API::NoTrapPointerAuthInstToEl2
+            // + HCR_EL2::APK::NoTrapPointerAuthKeyRegsToEl2
+            // + HCR_EL2::TEA::RouteSyncExtAborts
+            // + HCR_EL2::E2H::EnableOsAtEl2
+            // + HCR_EL2::TGE::TrapGeneralExceptions
+            // + HCR_EL2::AMO::SET
+            // + HCR_EL2::IMO::SET
+            // + HCR_EL2::FMO::SET,
         );
 
         // Force HCR update to complete before next instruction.

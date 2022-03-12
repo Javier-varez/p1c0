@@ -9,10 +9,8 @@ use crate::{
         intrusive_list::{IntrusiveItem, IntrusiveList},
         OwnedMutPtr,
     },
+    log_info,
 };
-
-#[cfg(not(test))]
-use crate::println;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -102,9 +100,10 @@ impl PhysicalPageAllocator {
         pa: PhysicalAddress,
         num_pages: usize,
     ) -> Result<(), Error> {
-        println!(
+        log_info!(
             "PhysicalPageAllocator - Adding region with base address {}, num_pages {}",
-            pa, num_pages
+            pa,
+            num_pages
         );
 
         if let Some(region) = self
@@ -174,9 +173,10 @@ impl PhysicalPageAllocator {
         pa: PhysicalAddress,
         num_pages: usize,
     ) -> Result<(), Error> {
-        println!(
+        log_info!(
             "PhysicalPageAllocator - Stealing region with base address {}, num_pages {}",
-            pa, num_pages
+            pa,
+            num_pages
         );
 
         let mut contained_ranges = self
@@ -236,11 +236,11 @@ impl PhysicalPageAllocator {
     }
 
     pub fn print_regions(&self) {
-        println!("Available physical memory regions:");
+        log_info!("Available physical memory regions:");
         for region in self.regions.iter() {
             let start_addr = region.pa;
             let end_addr = unsafe { region.pa.offset(region.num_pages << PAGE_BITS) };
-            println!("\t{} -> {}", start_addr, end_addr);
+            log_info!("\t{} -> {}", start_addr, end_addr);
         }
     }
 
@@ -311,7 +311,7 @@ mod test {
                 .collect::<Vec<_>>(),
             vec![
                 PhysicalMemoryRegion::new(dram_base, 29),
-                PhysicalMemoryRegion::new(second_base, 2097116)
+                PhysicalMemoryRegion::new(second_base, 2097116),
             ]
         );
 

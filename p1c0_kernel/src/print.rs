@@ -37,7 +37,7 @@ pub trait Print {
 // However, given it runs in a single-threaded context it should be mostly ok.
 static mut EARLY_PRINT: Option<*mut dyn EarlyPrint> = None;
 
-const BUFFER_SIZE: usize = 8192;
+const BUFFER_SIZE: usize = 16384;
 static BUFFER: RingBuffer<BUFFER_SIZE> = RingBuffer::new();
 static LOG_WRITER: SpinLock<Option<LogWriter>> = SpinLock::new(None);
 

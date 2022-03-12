@@ -16,6 +16,7 @@ use crate::{
         OwnedMutPtr,
     },
     drivers::interfaces::{timer::Timer, Ticks},
+    log_info,
     sync::spinlock::SpinLock,
 };
 
@@ -375,29 +376,28 @@ pub fn print_thread_info() {
     let threads = ACTIVE_THREADS.lock();
     let blocked_threads = BLOCKED_THREADS.lock();
 
-    crate::println!("Thread information:");
+    log_info!("Thread information:");
     if let Some(tcb) = &*current_thread {
         if let Some(name) = tcb.name() {
-            crate::println!("\tCurrent thread: {}, tid: {}", name, tcb.tid);
+            log_info!("\tCurrent thread: {}, tid: {}", name, tcb.tid);
         } else {
-            crate::println!("\tCurrent thread tid: {}", tcb.tid);
+            log_info!("\tCurrent thread tid: {}", tcb.tid);
         }
     }
 
     for tcb in threads.iter() {
         if let Some(name) = tcb.name() {
-            crate::println!("\tThread: {}, tid: {}", name, tcb.tid);
+            log_info!("\tThread: {}, tid: {}", name, tcb.tid);
         } else {
-            crate::println!("\tAnonymous thread, tid: {}", tcb.tid);
+            log_info!("\tAnonymous thread, tid: {}", tcb.tid);
         }
     }
 
     for tcb in blocked_threads.iter() {
         if let Some(name) = tcb.name() {
-            crate::println!("\tBlocked thread: {}, tid: {}", name, tcb.tid);
+            log_info!("\tBlocked thread: {}, tid: {}", name, tcb.tid);
         } else {
-            crate::println!("\tAnonymous blocked thread, tid: {}", tcb.tid);
+            log_info!("\tAnonymous blocked thread, tid: {}", tcb.tid);
         }
     }
-    crate::println!();
 }

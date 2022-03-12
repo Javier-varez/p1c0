@@ -1,4 +1,4 @@
-use crate::{arch::exceptions::ExceptionContext, drivers::wdt, println};
+use crate::{arch::exceptions::ExceptionContext, drivers::wdt, log_info, log_warning};
 
 macro_rules! gen_syscall_caller {
     (
@@ -363,11 +363,11 @@ pub enum Error {
 }
 
 fn handle_noop(_e: &mut ExceptionContext) {
-    println!("Syscall Noop");
+    log_info!("Syscall Noop");
 }
 
 fn handle_reboot(_e: &mut ExceptionContext) {
-    println!("Syscall Reboot - Rebooting computer");
+    log_warning!("Syscall Reboot - Rebooting computer");
     wdt::service();
 
     // We hang here never servicing the WDT again, causing a reboot
@@ -377,7 +377,6 @@ fn handle_reboot(_e: &mut ExceptionContext) {
 }
 
 fn handle_multiply(a: u32, b: u32) -> u32 {
-    println!("Syscall Multiplication");
     a * b
 }
 

@@ -25,7 +25,6 @@ impl interfaces::timer::Timer for GenericTimer {
     fn initialize(&self, interval: core::time::Duration) {
         let ticks_per_cycle =
             ((CNTFRQ_EL0.get() * interval.as_nanos() as u64) / 1_000_000_000) as u32;
-        crate::println!("Ticks per cycle {}", ticks_per_cycle);
         CNTV_TVAL_EL0.set(ticks_per_cycle as u64);
         CNTV_CTL_EL0.write(CNTV_CTL_EL0::IMASK::CLEAR + CNTV_CTL_EL0::ENABLE::SET);
 

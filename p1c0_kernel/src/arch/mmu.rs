@@ -11,6 +11,7 @@ use cortex_a::{
 };
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
+use crate::{log_debug, log_error, log_info};
 use core::mem::MaybeUninit;
 use early_alloc::{AllocRef, EarlyAllocator};
 
@@ -19,9 +20,6 @@ use crate::memory::{
     map::{KernelSection, ALL_SECTIONS},
     Attributes, Permissions,
 };
-
-#[cfg(not(test))]
-use crate::println;
 
 pub const VA_MASK: u64 = (1 << 48) - (1 << 14);
 pub const PA_MASK: u64 = (1 << 48) - (1 << 14);
@@ -39,6 +37,7 @@ pub enum Error {
 }
 
 const MAIR_ATTR_OFFSET: usize = 2;
+
 fn mair_index_from_attrs(attrs: Attributes) -> u64 {
     ((attrs as u64) & 0x7) << MAIR_ATTR_OFFSET
 }
@@ -646,9 +645,9 @@ impl MemoryManagementUnit {
             SCTLR_EL1.read_as_enum(SCTLR_EL1::M),
             Some(SCTLR_EL1::M::Value::Enable)
         ) {
-            println!("MMU enabled");
+            log_info!("MMU enabled");
         } else {
-            println!("Error enabling MMU");
+            log_error!("Error enabling MMU");
         }
     }
 
@@ -660,9 +659,11 @@ impl MemoryManagementUnit {
         attributes: Attributes,
         permissions: Permissions,
     ) -> Result<(), Error> {
-        println!(
+        log_debug!(
             "Adding mapping from {:?} to {:?}, size 0x{:x}",
-            va, pa, size
+            va,
+            pa,
+            size
         );
 
         // Size needs to be aligned to page size
@@ -687,7 +688,7 @@ impl MemoryManagementUnit {
     }
 
     pub fn unmap_region(&mut self, va: VirtualAddress, mut size: usize) -> Result<(), Error> {
-        println!("Removing mapping at {:?}, size 0x{:x}", va, size);
+        log_debug!("Removing mapping at {:?}, size 0x{:x}", va, size);
 
         // Size needs to be aligned to page size
         if (size % PAGE_SIZE) != 0 {

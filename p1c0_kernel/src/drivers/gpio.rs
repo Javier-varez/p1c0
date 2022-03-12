@@ -5,7 +5,7 @@ use tock_registers::{
 };
 
 use crate::{
-    adt,
+    adt, log_error,
     memory::{self, address::Address, MemoryManager},
     sync::spinlock::SpinLock,
 };
@@ -73,6 +73,7 @@ impl From<PinState> for u32 {
 
 pub mod mode {
     pub struct Input {}
+
     pub struct Output {}
 }
 
@@ -182,7 +183,7 @@ impl GpioBank {
                 taken: SpinLock::new([false; MAX_PINS]),
             })
         } else {
-            crate::println!(
+            log_error!(
                 "Cannot instantiate gpio {}. Missing property #gpio-pins.",
                 gpio_bank
             );

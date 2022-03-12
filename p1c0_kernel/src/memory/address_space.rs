@@ -7,7 +7,7 @@ use super::{
     physical_page_allocator::{PhysicalMemoryRegion, PhysicalPage},
     Attributes, Permissions,
 };
-use crate::{arch::mmu::PAGE_SIZE, println};
+use crate::{arch::mmu::PAGE_SIZE, log_info};
 
 use heapless::String;
 
@@ -203,9 +203,12 @@ impl KernelAddressSpace {
         permissions: Permissions,
         physical_region: Option<PhysicalMemoryRegion>,
     ) -> Result<&LogicalMemoryRange, Error> {
-        println!(
+        log_info!(
             "Adding logical range `{}` at {}, size 0x{:x}, permissions {:?}",
-            name, la, size_bytes, permissions
+            name,
+            la,
+            size_bytes,
+            permissions
         );
 
         self.check_overlaps(la.into_virtual(), size_bytes)?;
@@ -278,9 +281,11 @@ impl KernelAddressSpace {
         };
         self.mmio_ranges.push(range);
 
-        println!(
+        log_info!(
             "Adding io range `{}` at {}, size 0x{:x}",
-            name, va, size_bytes
+            name,
+            va,
+            size_bytes
         );
 
         Ok(va)

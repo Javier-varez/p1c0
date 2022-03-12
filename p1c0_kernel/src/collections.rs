@@ -6,8 +6,7 @@ pub mod ring_buffer;
 extern crate alloc;
 use alloc::boxed::Box;
 
-#[cfg(not(test))]
-use crate::println;
+use crate::log_warning;
 
 /// This is a type that owns a pointer and cannot be dropped. If it is dropped it logs the problem.
 /// Instead, the pointer should be freed and used in a different manner (e.g: using it
@@ -97,10 +96,10 @@ impl<T> core::ops::Deref for OwnedPtr<T> {
 impl<T> Drop for OwnedMutPtr<T> {
     fn drop(&mut self) {
         // TODO(javier-varez): Print backtrace here when available
-        println!(
+        log_warning!(
             "Attempted to drop an OwnedMutPtr<{}> with address {:?}",
             core::any::type_name::<T>(),
-            self.inner,
+            self.inner
         );
     }
 }
@@ -108,7 +107,7 @@ impl<T> Drop for OwnedMutPtr<T> {
 impl<T> Drop for OwnedPtr<T> {
     fn drop(&mut self) {
         // TODO(javier-varez): Print backtrace here when available
-        println!(
+        log_warning!(
             "Attempted to drop an OwnedPtr<{}> with address {:?}",
             core::any::type_name::<T>(),
             self.inner
