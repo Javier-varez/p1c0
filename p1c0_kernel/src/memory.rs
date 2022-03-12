@@ -99,7 +99,11 @@ impl MemoryManager {
     ///   Should only be called once on system boot before the MMU is initialized (done by this
     ///   function)
     pub unsafe fn early_init() {
-        arch::mmu::initialize();
+        // At this point we cannot use the lock because the memory manager is not initialized
+        MEMORY_MANAGER.access_inner_without_locking(|mem_mgr| {
+            let (high_table, low_table) = mem_mgr.kernel_address_space.tables();
+            arch::mmu::initialize(high_table, low_table);
+        });
     }
 
     pub fn instance() -> SpinLockGuard<'static, Self> {
@@ -124,6 +128,7 @@ impl MemoryManager {
             PhysicalAddress::from_unaligned_ptr(device_tree as *const _).align_to_page();
         arch::mmu::MMU
             .map_region(
+                self.kernel_address_space.high_table(),
                 ADT_VIRTUAL_BASE,
                 device_tree,
                 device_tree_size,
@@ -133,7 +138,7 @@ impl MemoryManager {
             .expect("Boot args can be mapped");
 
         // Now unmap identity mapping
-        arch::mmu::MMU.remove_identity_mappings();
+        arch::mmu::MMU.remove_identity_mappings(self.kernel_address_space.low_table());
 
         let adt = crate::adt::get_adt().unwrap();
         let chosen = adt.find_node("/chosen").expect("There is a chosen node");
@@ -176,14 +181,20 @@ impl MemoryManager {
             .add_logical_range(name, la, size_bytes, attributes, permissions, Some(region))
             .expect("Error mapping logical range");
 
+        let la = logical_range.la;
+        let size = logical_range.size_bytes;
+        let attributes = logical_range.attributes;
+        let permissions = logical_range.permissions;
+
         unsafe {
             arch::mmu::MMU
                 .map_region(
-                    logical_range.la.into_virtual(),
-                    logical_range.la.into_physical(),
-                    logical_range.size_bytes,
-                    logical_range.attributes,
-                    logical_range.permissions,
+                    self.kernel_address_space.high_table(),
+                    la.into_virtual(),
+                    la.into_physical(),
+                    size,
+                    attributes,
+                    permissions,
                 )
                 .expect("MMU cannot map requested region")
         };
@@ -206,6 +217,7 @@ impl MemoryManager {
         unsafe {
             arch::mmu::MMU
                 .map_region(
+                    self.kernel_address_space.high_table(),
                     va,
                     pa,
                     size_bytes,
@@ -219,9 +231,9 @@ impl MemoryManager {
     }
 
     pub fn remove_mapping_by_name(&mut self, name: &str) -> Result<(), Error> {
-        let range = self.kernel_address_space.remove_range_by_name(name)?;
+        let (table, range) = self.kernel_address_space.remove_range_by_name(name)?;
         unsafe {
-            arch::mmu::MMU.unmap_region(range.virtual_address(), range.size_bytes())?;
+            arch::mmu::MMU.unmap_region(table, range.virtual_address(), range.size_bytes())?;
         }
 
         Ok(())

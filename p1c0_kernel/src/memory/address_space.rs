@@ -7,10 +7,14 @@ use super::{
     physical_page_allocator::{PhysicalMemoryRegion, PhysicalPage},
     Attributes, Permissions,
 };
-use crate::{arch::mmu::PAGE_SIZE, log_info};
+use crate::{
+    arch::mmu::{self, PAGE_SIZE},
+    log_info,
+};
 
 use heapless::String;
 
+use crate::arch::mmu::LevelTable;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::str::FromStr;
@@ -143,7 +147,9 @@ impl MemoryRange for GenericMemoryRange {
 
 pub(super) struct KernelAddressSpace {
     // FIXME(javier-varez): Using vec here is most likely not a good idea for performance reasons.
-    // Find a better alternative with better insersion/removal/lookup performance
+    // Find a better alternative with better insertion/removal/lookup performance
+    high_address_table: mmu::LevelTable,
+    low_address_table: mmu::LevelTable,
     virtual_ranges: Vec<VirtualMemoryRange>,
     logical_ranges: Vec<LogicalMemoryRange>,
     mmio_ranges: Vec<MMIORange>,
@@ -153,6 +159,8 @@ pub(super) struct KernelAddressSpace {
 impl KernelAddressSpace {
     pub const fn new() -> Self {
         Self {
+            high_address_table: mmu::LevelTable::new(),
+            low_address_table: mmu::LevelTable::new(),
             virtual_ranges: vec![],
             logical_ranges: vec![],
             mmio_ranges: vec![],
@@ -291,7 +299,10 @@ impl KernelAddressSpace {
         Ok(va)
     }
 
-    pub fn remove_range_by_name(&mut self, name: &str) -> Result<GenericMemoryRange, Error> {
+    pub fn remove_range_by_name(
+        &mut self,
+        name: &str,
+    ) -> Result<(&mut LevelTable, GenericMemoryRange), Error> {
         if let Some((index, _range)) = self
             .logical_ranges
             .iter_mut()
@@ -299,7 +310,7 @@ impl KernelAddressSpace {
             .find(|(_idx, range)| range.name == name)
         {
             let range = self.logical_ranges.remove(index);
-            return Ok(range.into());
+            return Ok((&mut self.high_address_table, range.into()));
         }
 
         if let Some((index, _range)) = self
@@ -309,7 +320,7 @@ impl KernelAddressSpace {
             .find(|(_idx, range)| range.name == name)
         {
             let range = self.virtual_ranges.remove(index);
-            return Ok(range.into());
+            return Ok((&mut self.high_address_table, range.into()));
         }
 
         if let Some((index, _range)) = self
@@ -319,11 +330,23 @@ impl KernelAddressSpace {
             .find(|(_idx, range)| range.name == name)
         {
             let range = self.mmio_ranges.remove(index);
-            return Ok(range.into());
+            return Ok((&mut self.high_address_table, range.into()));
         }
 
         Err(Error::MemoryRangeNotFound(
             String::from_str(name).map_err(|_| Error::NameTooLong)?,
         ))
+    }
+
+    pub(super) fn high_table(&mut self) -> &mut LevelTable {
+        &mut self.high_address_table
+    }
+
+    pub(super) fn low_table(&mut self) -> &mut LevelTable {
+        &mut self.low_address_table
+    }
+
+    pub(super) fn tables(&mut self) -> (&mut LevelTable, &mut LevelTable) {
+        (&mut self.high_address_table, &mut self.low_address_table)
     }
 }
