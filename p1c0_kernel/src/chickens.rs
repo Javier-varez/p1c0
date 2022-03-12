@@ -66,7 +66,7 @@ pub fn init_cpu() {
         MIDR_PART_T6001_ICESTORM => init_m1_icestorm(),
         MIDR_PART_T8103_FIRESTORM => todo!(),
         MIDR_PART_T8103_ICESTORM => init_m1_icestorm(),
-        _ => panic!("Unkown CPU type!"),
+        _ => panic!("Unknown CPU type!"),
     };
 
     let core = MPIDR_EL1.get() & 0xff;

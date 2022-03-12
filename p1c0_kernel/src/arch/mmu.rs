@@ -86,7 +86,7 @@ enum DescriptorType {
 
 #[derive(Clone, Debug)]
 #[repr(C)]
-struct DescriptorEntry(u64);
+pub struct DescriptorEntry(u64);
 
 impl DescriptorEntry {
     const VALID_BIT: u64 = 1 << 0;
@@ -310,7 +310,7 @@ impl TranslationLevel {
 /// Levels must be aligned at least at 16KB according to the translation granule.
 /// In addition, each level must be 11 bits, that's why we have 2048 entries in a level table
 #[repr(C, align(0x4000))]
-struct LevelTable {
+pub struct LevelTable {
     table: [DescriptorEntry; 2048],
 }
 
@@ -328,7 +328,7 @@ impl DerefMut for LevelTable {
 }
 
 impl LevelTable {
-    const fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             table: [INVALID_DESCRIPTOR; 2048],
         }
@@ -475,23 +475,22 @@ impl LevelTable {
 
 pub struct MemoryManagementUnit {
     initialized: bool,
-    high_table: LevelTable,
-    low_table: LevelTable,
 }
 
 impl MemoryManagementUnit {
     const fn new() -> Self {
-        Self {
-            initialized: false,
-            high_table: LevelTable::new(),
-            low_table: LevelTable::new(),
-        }
+        Self { initialized: false }
     }
 
-    fn add_kernel_mapping(&mut self, section: &KernelSection) -> Result<(), Error> {
+    fn add_kernel_mapping(
+        &mut self,
+        section: &KernelSection,
+        high_table: &mut LevelTable,
+    ) -> Result<(), Error> {
         let pa = section.pa();
         let va = section.la().into_virtual();
         self.map_region(
+            high_table,
             va,
             pa,
             section.size_bytes(),
@@ -500,15 +499,15 @@ impl MemoryManagementUnit {
         )
     }
 
-    fn add_kernel_mappings(&mut self) -> Result<(), Error> {
+    fn add_kernel_mappings(&mut self, high_table: &mut LevelTable) -> Result<(), Error> {
         for section_id in ALL_SECTIONS.iter() {
             let section = KernelSection::from_id(*section_id);
-            self.add_kernel_mapping(&section)?;
+            self.add_kernel_mapping(&section, high_table)?;
         }
         Ok(())
     }
 
-    fn add_default_mappings(&mut self) {
+    fn add_default_mappings(&mut self, high_table: &mut LevelTable, low_table: &mut LevelTable) {
         let adt = crate::adt::get_adt().unwrap();
         let chosen = adt.find_node("/chosen").expect("There is a chosen node");
         let dram_base = chosen
@@ -523,6 +522,7 @@ impl MemoryManagementUnit {
 
         // Add initial identity mapping. To be removed after relocation.
         self.map_region(
+            low_table,
             VirtualAddress::try_from_ptr(dram_base).expect("Address is not aligned to page size"),
             PhysicalAddress::try_from_ptr(dram_base).expect("Address is not aligned to page size"),
             dram_size,
@@ -531,7 +531,7 @@ impl MemoryManagementUnit {
         )
         .expect("Mappings overlap");
 
-        self.add_kernel_mappings()
+        self.add_kernel_mappings(high_table)
             .expect("Kernel can not be mapped");
 
         // Map mmio ranges as defined in the ADT
@@ -542,6 +542,7 @@ impl MemoryManagementUnit {
             let mmio_region_base = range.get_parent_addr() as *const u8;
             let mmio_region_size = range.get_size();
             self.map_region(
+                low_table,
                 VirtualAddress::try_from_ptr(mmio_region_base)
                     .expect("Address is not aligned to page size"),
                 PhysicalAddress::try_from_ptr(mmio_region_base)
@@ -554,7 +555,7 @@ impl MemoryManagementUnit {
         }
     }
 
-    pub fn remove_identity_mappings(&mut self) {
+    pub fn remove_identity_mappings(&mut self, low_table: &mut LevelTable) {
         let adt = crate::adt::get_adt().unwrap();
         let chosen = adt.find_node("/chosen").expect("There is a chosen node");
         let dram_base = chosen
@@ -568,6 +569,7 @@ impl MemoryManagementUnit {
             .expect("There is no dram base");
 
         self.unmap_region(
+            low_table,
             VirtualAddress::try_from_ptr(dram_base).expect("Address is not aligned to page size"),
             dram_size,
         )
@@ -581,6 +583,7 @@ impl MemoryManagementUnit {
             let mmio_region_base = range.get_parent_addr() as *const u8;
             let mmio_region_size = range.get_size();
             self.unmap_region(
+                low_table,
                 VirtualAddress::try_from_ptr(mmio_region_base)
                     .expect("Address is not aligned to page size"),
                 mmio_region_size,
@@ -589,12 +592,12 @@ impl MemoryManagementUnit {
         }
     }
 
-    pub fn init_and_enable(&mut self) {
+    pub fn init_and_enable(&mut self, high_table: &mut LevelTable, low_table: &mut LevelTable) {
         if self.initialized {
-            return;
+            panic!("MMU Already initialized!");
         }
-        self.add_default_mappings();
-        self.enable();
+        self.add_default_mappings(high_table, low_table);
+        self.enable(high_table, low_table);
         self.initialized = true;
     }
 
@@ -602,7 +605,7 @@ impl MemoryManagementUnit {
         self.initialized
     }
 
-    fn enable(&self) {
+    fn enable(&self, high_table: &mut LevelTable, low_table: &mut LevelTable) {
         MAIR_EL1.write(
             MAIR_EL1::Attr0_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
                 + MAIR_EL1::Attr0_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
@@ -624,8 +627,8 @@ impl MemoryManagementUnit {
                 + TCR_EL1::T1SZ.val(16),
         );
 
-        TTBR0_EL1.set_baddr(self.low_table.table.as_ptr() as u64);
-        TTBR1_EL1.set_baddr(self.high_table.table.as_ptr() as u64);
+        TTBR0_EL1.set_baddr(low_table.table.as_ptr() as u64);
+        TTBR1_EL1.set_baddr(high_table.table.as_ptr() as u64);
 
         unsafe {
             barrier::dsb(barrier::ISHST);
@@ -653,6 +656,7 @@ impl MemoryManagementUnit {
 
     pub fn map_region(
         &mut self,
+        table: &mut LevelTable,
         va: VirtualAddress,
         pa: PhysicalAddress,
         mut size: usize,
@@ -671,12 +675,6 @@ impl MemoryManagementUnit {
             size = size + PAGE_SIZE - (size % PAGE_SIZE);
         }
 
-        let table = if va.is_high_address() {
-            &mut self.high_table
-        } else {
-            &mut self.low_table
-        };
-
         table.map_region(
             va,
             pa,
@@ -687,19 +685,18 @@ impl MemoryManagementUnit {
         )
     }
 
-    pub fn unmap_region(&mut self, va: VirtualAddress, mut size: usize) -> Result<(), Error> {
+    pub fn unmap_region(
+        &mut self,
+        table: &mut LevelTable,
+        va: VirtualAddress,
+        mut size: usize,
+    ) -> Result<(), Error> {
         log_debug!("Removing mapping at {:?}, size 0x{:x}", va, size);
 
         // Size needs to be aligned to page size
         if (size % PAGE_SIZE) != 0 {
             size = size + PAGE_SIZE - (size % PAGE_SIZE);
         }
-
-        let table = if va.is_high_address() {
-            &mut self.high_table
-        } else {
-            &mut self.low_table
-        };
 
         table.unmap_region(va, size, TranslationLevel::Level0)?;
 
@@ -715,8 +712,8 @@ impl MemoryManagementUnit {
     }
 }
 
-pub fn initialize() {
-    unsafe { MMU.init_and_enable() };
+pub fn initialize(high_table: &mut LevelTable, low_table: &mut LevelTable) {
+    unsafe { MMU.init_and_enable(high_table, low_table) };
 }
 
 pub fn is_initialized() -> bool {
@@ -735,15 +732,24 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
+        let mut low_table = LevelTable::new();
+
+        assert!(matches!(low_table[0].ty(), DescriptorType::Invalid));
 
         let from = VirtualAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
-        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
-            .expect("Adding region was successful");
+        mmu.map_region(
+            &mut low_table,
+            from,
+            to,
+            size,
+            Attributes::Normal,
+            Permissions::RWX,
+        )
+        .expect("Adding region was successful");
 
-        let low_table = &mut mmu.low_table;
+        let low_table = &mut low_table;
         assert!(matches!(low_table[0].ty(), DescriptorType::Table));
         assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
@@ -786,15 +792,24 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
+        let mut low_table = LevelTable::new();
+
+        assert!(matches!(low_table[0].ty(), DescriptorType::Invalid));
 
         let from = VirtualAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = 1 << 25;
-        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
-            .expect("Adding region was successful");
+        mmu.map_region(
+            &mut low_table,
+            from,
+            to,
+            size,
+            Attributes::Normal,
+            Permissions::RWX,
+        )
+        .expect("Adding region was successful");
 
-        let low_table = &mut mmu.low_table;
+        let low_table = &mut low_table;
         assert!(matches!(low_table[0].ty(), DescriptorType::Table));
         assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
@@ -827,7 +842,9 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
+        let mut low_table = LevelTable::new();
+
+        assert!(matches!(low_table[0].ty(), DescriptorType::Invalid));
 
         let block_size = 1 << 25;
         let page_size = 1 << 14;
@@ -835,10 +852,17 @@ mod test {
         let from = VirtualAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
-        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
-            .expect("Adding region was successful");
+        mmu.map_region(
+            &mut low_table,
+            from,
+            to,
+            size,
+            Attributes::Normal,
+            Permissions::RWX,
+        )
+        .expect("Adding region was successful");
 
-        let low_table = &mut mmu.low_table;
+        let low_table = &mut low_table;
         assert!(matches!(low_table[0].ty(), DescriptorType::Table));
         assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
@@ -886,7 +910,9 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
+        let mut low_table = LevelTable::new();
+
+        assert!(matches!(low_table[0].ty(), DescriptorType::Invalid));
 
         let block_size = 1 << 25;
         let page_size = 1 << 14;
@@ -895,10 +921,17 @@ mod test {
         let from = VirtualAddress::try_from_ptr(va as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
-        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
-            .expect("Adding region was successful");
+        mmu.map_region(
+            &mut low_table,
+            from,
+            to,
+            size,
+            Attributes::Normal,
+            Permissions::RWX,
+        )
+        .expect("Adding region was successful");
 
-        let low_table = &mut mmu.low_table;
+        let low_table = &mut low_table;
         assert!(matches!(low_table[0].ty(), DescriptorType::Table));
         assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
@@ -950,17 +983,25 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
+        let mut low_table = LevelTable::new();
 
         let from = VirtualAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
-        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
-            .expect("Could add region");
+        mmu.map_region(
+            &mut low_table,
+            from,
+            to,
+            size,
+            Attributes::Normal,
+            Permissions::RWX,
+        )
+        .expect("Could add region");
 
-        mmu.unmap_region(from, size).expect("Could remove region");
+        mmu.unmap_region(&mut low_table, from, size)
+            .expect("Could remove region");
 
-        let low_table = &mut mmu.low_table;
+        let low_table = &mut low_table;
         assert!(matches!(low_table[0].ty(), DescriptorType::Table));
         assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
@@ -1003,17 +1044,25 @@ mod test {
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        assert!(matches!(mmu.low_table[0].ty(), DescriptorType::Invalid));
+        let mut low_table = LevelTable::new();
 
         let from = VirtualAddress::try_from_ptr(0x10000000000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x10000000000 as *const u8).unwrap();
         let size = 0x800000000;
-        mmu.map_region(from, to, size, Attributes::Normal, Permissions::RWX)
-            .expect("Could add region");
+        mmu.map_region(
+            &mut low_table,
+            from,
+            to,
+            size,
+            Attributes::Normal,
+            Permissions::RWX,
+        )
+        .expect("Could add region");
 
-        mmu.unmap_region(from, size).expect("Could remove region");
+        mmu.unmap_region(&mut low_table, from, size)
+            .expect("Could remove region");
 
-        let low_table = &mut mmu.low_table;
+        let low_table = &mut low_table;
         assert!(matches!(low_table[0].ty(), DescriptorType::Table));
         assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
 
