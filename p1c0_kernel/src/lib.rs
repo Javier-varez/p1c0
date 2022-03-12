@@ -13,6 +13,7 @@ pub mod crc;
 pub mod drivers;
 mod font;
 pub mod init;
+pub mod log;
 pub mod macros;
 pub mod memory;
 pub mod print;
