@@ -5,13 +5,14 @@
 use embedded_graphics::pixelcolor::Rgb888;
 use tinybmp::Bmp;
 
+use p1c0_kernel::{log_debug, log_error, log_info};
+
 use p1c0::print_boot_args;
 
 use p1c0_kernel::{
     arch::get_exception_level,
     boot_args::get_boot_args,
     drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi, wdt},
-    println,
     syscall::Syscall,
     thread::{self, print_thread_info},
 };
@@ -28,9 +29,8 @@ fn kernel_entry() {
     let logo = Bmp::<Rgb888>::from_slice(ATE_LOGO_DATA).unwrap();
     Display::init(&logo);
 
-    println!("p1c0 running on Apple M1 Pro");
-    println!("Exception level: {:?}", get_exception_level());
-    println!();
+    log_debug!("p1c0 running on Apple M1 Pro");
+    log_debug!("Exception level: {:?}", get_exception_level());
 
     let boot_args = get_boot_args();
     print_boot_args(boot_args);
@@ -47,14 +47,14 @@ fn kernel_entry() {
                 Syscall::reboot();
             }
 
-            println!("Count {}", count);
+            log_info!("Count {}", count);
             count += 1;
             Syscall::sleep_us(1_000_000);
         }
     });
 
     thread::spawn(move || loop {
-        println!("Second thread");
+        log_info!("Second thread");
         Syscall::sleep_us(750_000);
     });
 
@@ -80,7 +80,7 @@ fn kernel_entry() {
     });
 
     thread::spawn(move || {
-        println!("This thread will die!");
+        log_info!("This thread will die!");
     });
 
     thread::initialize();
@@ -101,7 +101,7 @@ pub extern "C" fn kernel_main() -> ! {
 fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     // Mask interrupts.
     DAIF.write(DAIF::D::Masked + DAIF::A::Masked + DAIF::I::Masked + DAIF::F::Masked);
-    println!("Panicked with message: {:?}", panic_info);
+    log_error!("Panicked with message: {:?}", panic_info);
 
     #[cfg(feature = "emulator")]
     arm_semihosting::exit(1);

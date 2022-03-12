@@ -5,7 +5,10 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(default_alloc_error_handler)]
 
-use p1c0_kernel::{boot_args::BootArgs, println};
+use p1c0_kernel::{boot_args::BootArgs, log_info};
+
+#[cfg(feature = "emulator")]
+use p1c0_kernel::log_debug;
 
 #[panic_handler]
 #[cfg(test)]
@@ -14,39 +17,37 @@ fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
 }
 
 pub fn print_boot_args(boot_args: &BootArgs) {
-    println!("===== BOOT ARGS =====");
-    println!("Revision:           {}", boot_args.revision);
-    println!("Version:            {}", boot_args.version);
-    println!("Virtual base:       0x{:x}", boot_args.virt_base);
-    println!("Physical base:      0x{:x}", boot_args.phys_base);
-    println!("Mem size:           0x{:x}", boot_args.mem_size);
-    println!("Top of kernel data: 0x{:x}", boot_args.top_of_kernel_data);
-    println!("Video base:         {:?}", boot_args.boot_video.base);
-    println!("Video num displays: {}", boot_args.boot_video.display);
-    println!("Video stride:       {}", boot_args.boot_video.stride);
-    println!("Video width:        {}", boot_args.boot_video.width);
-    println!("Video height:       {}", boot_args.boot_video.height);
-    println!("Video depth:        0x{:x}", boot_args.boot_video.depth);
-    println!("Machine type:       {}", boot_args.machine_type);
-    println!("Device tree:        {:?}", boot_args.device_tree);
-    println!("Device tree size:   0x{:x}", boot_args.device_tree_size);
-    println!("Boot flags:         {}", boot_args.boot_flags);
-    println!("Mem size actual:    0x{:x}", boot_args.mem_size_actual);
-    println!();
+    log_info!("Boot args:");
+    log_info!("\tRevision:           {}", boot_args.revision);
+    log_info!("\tVersion:            {}", boot_args.version);
+    log_info!("\tVirtual base:       0x{:x}", boot_args.virt_base);
+    log_info!("\tPhysical base:      0x{:x}", boot_args.phys_base);
+    log_info!("\tMem size:           0x{:x}", boot_args.mem_size);
+    log_info!("\tTop of kernel data: 0x{:x}", boot_args.top_of_kernel_data);
+    log_info!("\tVideo base:         {:?}", boot_args.boot_video.base);
+    log_info!("\tVideo num displays: {}", boot_args.boot_video.display);
+    log_info!("\tVideo stride:       {}", boot_args.boot_video.stride);
+    log_info!("\tVideo width:        {}", boot_args.boot_video.width);
+    log_info!("\tVideo height:       {}", boot_args.boot_video.height);
+    log_info!("\tVideo depth:        0x{:x}", boot_args.boot_video.depth);
+    log_info!("\tMachine type:       {}", boot_args.machine_type);
+    log_info!("\tDevice tree:        {:?}", boot_args.device_tree);
+    log_info!("\tDevice tree size:   0x{:x}", boot_args.device_tree_size);
+    log_info!("\tBoot flags:         {}", boot_args.boot_flags);
+    log_info!("\tMem size actual:    0x{:x}", boot_args.mem_size_actual);
 }
 
 #[cfg(feature = "emulator")]
 pub fn print_semihosting_caps() {
     let ext = arm_semihosting::load_extensions().unwrap();
 
-    println!("Running emulator with semihosting extensions:");
-    println!("Extended exit:          {}", ext.supports_extended_exit());
-    println!("Stdout-stderr support:  {}", ext.supports_stdout_stderr());
-    println!(
+    log_debug!("Running emulator with semihosting extensions");
+    log_debug!("Extended exit:          {}", ext.supports_extended_exit());
+    log_debug!("Stdout-stderr support:  {}", ext.supports_stdout_stderr());
+    log_debug!(
         "Cmdline arguments: [{}]",
         arm_semihosting::get_cmd_line().unwrap()
     );
-    println!();
 }
 
 #[no_mangle]
@@ -62,6 +63,7 @@ mod tests {
     use p1c0_kernel::{
         boot_args::get_boot_args,
         drivers::{generic_timer::get_timer, interfaces::timer::Timer},
+        log_debug,
     };
 
     #[test_case]
@@ -73,11 +75,11 @@ mod tests {
     fn test_system_timer() {
         let timer = get_timer();
         let resolution = timer.resolution();
-        crate::println!("Timer resolution is {:?}", resolution);
+        log_debug!("Timer resolution is {:?}", resolution);
         let old_ticks = timer.ticks();
-        crate::println!("Timer ticks is {:?}", old_ticks);
+        log_debug!("Timer ticks is {:?}", old_ticks);
         let new_ticks = timer.ticks();
-        crate::println!("Timer ticks is {:?}", new_ticks);
+        log_debug!("Timer ticks is {:?}", new_ticks);
         assert!(new_ticks > old_ticks);
     }
 }

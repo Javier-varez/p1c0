@@ -1,3 +1,5 @@
+use crate::{log_error, log_info};
+
 // TODO(jalv): Add missing entries here
 static SCAN_TABLE: [Option<char>; 256] = [
     None,
@@ -330,14 +332,14 @@ impl Keyboard {
 
         // TODO(javier-varez): Send key-down event
         if let Some(c) = code.to_char() {
-            crate::print!("{}", c);
+            log_info!("User pressed key: {}", c);
         }
     }
 
     pub fn handle_report(&mut self, report: KeyboardReport) {
         // Ignore error reports
         if report.has_error() {
-            crate::println!("Too many keys pressed");
+            log_error!("Too many keys pressed");
             return;
         }
 

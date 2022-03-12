@@ -5,7 +5,7 @@ use super::gpio::{self, GpioBank, PinState};
 use super::interfaces::timer::Timer;
 use super::spi::{self, Spi};
 
-use crate::adt;
+use crate::{adt, log_error, log_warning};
 
 use core::{mem::MaybeUninit, time::Duration};
 
@@ -152,7 +152,7 @@ impl<'a> HidDev<'a> {
 
         let crc = crate::crc::crc16(0, packet_bytes);
         if crc != 0 {
-            crate::println!("Invalid CRC from hid device {}", crc);
+            log_error!("Invalid CRC from hid device {}", crc);
             return Err(Error::IOError(IoError::InvalidCRC));
         }
 
@@ -174,7 +174,7 @@ impl<'a> HidDev<'a> {
                 self.keyboard_dev.handle_report(report);
             }
         } else {
-            crate::println!("Short keyboard packet");
+            log_error!("Short keyboard packet");
         }
     }
 
@@ -187,10 +187,10 @@ impl<'a> HidDev<'a> {
                 }
                 TRACKPAD_DEVICE_ID => {
                     // Ignore trackpad packets for now
-                    // crate::println!("Trackpad packet, {:?}", packet);
+                    // log_info!("Trackpad packet, {:?}", packet);
                 }
                 _ => {
-                    crate::println!("Unknown packet, {:?}", packet);
+                    log_warning!("Unknown packet, {:?}", packet);
                 }
             }
         }

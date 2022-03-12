@@ -1,5 +1,3 @@
-use core::sync::atomic::{AtomicU8, Ordering};
-
 #[macro_export]
 macro_rules! ansi_escape_reset {
     () => {

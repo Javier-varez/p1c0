@@ -1,4 +1,4 @@
-use crate::println;
+use crate::log_debug;
 use crate::registers::*;
 use cortex_a::registers::*;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -57,7 +57,7 @@ pub fn init_cpu() {
 
     let part = MIDR_EL1.read(MIDR_EL1::PartNum);
     let revision = MIDR_EL1.read(MIDR_EL1::Revision);
-    println!("Part number: {}, Revision: {}", part, revision);
+    log_debug!("Part number: {}, Revision: {}", part, revision);
 
     match part {
         MIDR_PART_T6000_FIRESTORM => todo!(),
