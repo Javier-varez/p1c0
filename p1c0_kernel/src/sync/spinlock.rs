@@ -25,6 +25,13 @@ impl<T> SpinLock<T> {
         }
     }
 
+    /// # Safety
+    ///   In order for this to be safe you need to manually ensure that there is no other thread
+    ///   that could be accessing the object inside the lock
+    pub unsafe fn access_inner_without_locking(&self, mut f: impl FnMut(&mut T)) {
+        f(&mut *self.data.get())
+    }
+
     pub fn lock(&self) -> SpinLockGuard<'_, T> {
         loop {
             if let Ok(guard) = self.try_lock() {
