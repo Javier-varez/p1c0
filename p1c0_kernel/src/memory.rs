@@ -8,12 +8,12 @@ extern crate alloc;
 
 use crate::arch::{
     self,
-    mmu::{PAGE_BITS, PAGE_SIZE},
+    mmu::{LevelTable, TranslationLevel, PAGE_BITS, PAGE_SIZE},
 };
 
 use address::{LogicalAddress, PhysicalAddress, VirtualAddress};
 use address_space::KernelAddressSpace;
-use map::ADT_VIRTUAL_BASE;
+use map::{KernelSection, ADT_VIRTUAL_BASE};
 use physical_page_allocator::PhysicalPageAllocator;
 
 use crate::sync::spinlock::{SpinLock, SpinLockGuard};
@@ -95,12 +95,135 @@ impl MemoryManager {
         }
     }
 
+    fn add_kernel_mapping(&mut self, section: &KernelSection) -> Result<(), Error> {
+        let high_table = self.kernel_address_space.high_table();
+        let pa = section.pa();
+        let va = section.la().into_virtual();
+        high_table.map_region(
+            va,
+            pa,
+            section.size_bytes(),
+            Attributes::Normal,
+            section.permissions(),
+            TranslationLevel::Level0,
+        )?;
+        Ok(())
+    }
+
+    fn add_kernel_mappings(&mut self) -> Result<(), Error> {
+        for section_id in map::ALL_SECTIONS.iter() {
+            let section = map::KernelSection::from_id(*section_id);
+            self.add_kernel_mapping(&section)?;
+        }
+        Ok(())
+    }
+
+    fn add_default_mappings(&mut self) {
+        let adt = crate::adt::get_adt().unwrap();
+        let chosen = adt.find_node("/chosen").expect("There is a chosen node");
+        let dram_base = chosen
+            .find_property("dram-base")
+            .and_then(|prop| prop.usize_value().ok())
+            .map(|addr| addr as *const u8)
+            .expect("There is no dram base");
+        let dram_size = chosen
+            .find_property("dram-size")
+            .and_then(|prop| prop.usize_value().ok())
+            .expect("There is no dram base");
+
+        // Add initial identity mapping. To be removed after relocation.
+        self.kernel_address_space
+            .low_table()
+            .map_region(
+                VirtualAddress::try_from_ptr(dram_base)
+                    .expect("Address is not aligned to page size"),
+                PhysicalAddress::try_from_ptr(dram_base)
+                    .expect("Address is not aligned to page size"),
+                dram_size,
+                Attributes::Normal,
+                Permissions::RWX,
+                TranslationLevel::Level0,
+            )
+            .expect("Mappings overlap");
+
+        self.add_kernel_mappings()
+            .expect("Kernel can not be mapped");
+
+        // Map mmio ranges as defined in the ADT
+        let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
+        let node = adt.find_node("/arm-io").expect("There is not an arm-io");
+        let range_iter = node.range_iter(root_address_cells);
+        for range in range_iter {
+            let mmio_region_base = range.get_parent_addr() as *const u8;
+            let mmio_region_size = range.get_size();
+            self.kernel_address_space
+                .low_table()
+                .map_region(
+                    VirtualAddress::try_from_ptr(mmio_region_base)
+                        .expect("Address is not aligned to page size"),
+                    PhysicalAddress::try_from_ptr(mmio_region_base)
+                        .expect("Address is not aligned to page size"),
+                    mmio_region_size,
+                    Attributes::DevicenGnRnE,
+                    Permissions::RWX,
+                    TranslationLevel::Level0,
+                )
+                .expect("Mappings overlap");
+        }
+    }
+
+    pub fn remove_identity_mappings(&mut self) {
+        let low_table = self.kernel_address_space.low_table();
+
+        let adt = crate::adt::get_adt().unwrap();
+        let chosen = adt.find_node("/chosen").expect("There is a chosen node");
+        let dram_base = chosen
+            .find_property("dram-base")
+            .and_then(|prop| prop.usize_value().ok())
+            .map(|addr| addr as *const u8)
+            .expect("There is no dram base");
+        let dram_size = chosen
+            .find_property("dram-size")
+            .and_then(|prop| prop.usize_value().ok())
+            .expect("There is no dram base");
+
+        low_table
+            .unmap_region(
+                VirtualAddress::try_from_ptr(dram_base)
+                    .expect("Address is not aligned to page size"),
+                dram_size,
+                TranslationLevel::Level0,
+            )
+            .expect("Cannot unmap DRAM identity-map");
+
+        // Map mmio ranges as defined in the ADT
+        let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
+        let node = adt.find_node("/arm-io").expect("There is not an arm-io");
+        let range_iter = node.range_iter(root_address_cells);
+        for range in range_iter {
+            let mmio_region_base = range.get_parent_addr() as *const u8;
+            let mmio_region_size = range.get_size();
+            low_table
+                .unmap_region(
+                    VirtualAddress::try_from_ptr(mmio_region_base)
+                        .expect("Address is not aligned to page size"),
+                    mmio_region_size,
+                    TranslationLevel::Level0,
+                )
+                .expect("Cannot unmap MMIO identity-map");
+        }
+    }
+
     /// # Safety
     ///   Should only be called once on system boot before the MMU is initialized (done by this
     ///   function)
     pub unsafe fn early_init() {
         // At this point we cannot use the lock because the memory manager is not initialized
         MEMORY_MANAGER.access_inner_without_locking(|mem_mgr| {
+            // Create the default mappings before early initialization
+            mem_mgr.add_default_mappings();
+
+            // Initialize the MMU with the tables
             let (high_table, low_table) = mem_mgr.kernel_address_space.tables();
             arch::mmu::initialize(high_table, low_table);
         });
@@ -126,19 +249,20 @@ impl MemoryManager {
         let device_tree_size = boot_args.device_tree_size as usize;
         let device_tree =
             PhysicalAddress::from_unaligned_ptr(device_tree as *const _).align_to_page();
-        arch::mmu::MMU
+        self.kernel_address_space
+            .high_table()
             .map_region(
-                self.kernel_address_space.high_table(),
                 ADT_VIRTUAL_BASE,
                 device_tree,
                 device_tree_size,
                 Attributes::Normal,
                 Permissions::RO,
+                TranslationLevel::Level0,
             )
             .expect("Boot args can be mapped");
 
         // Now unmap identity mapping
-        arch::mmu::MMU.remove_identity_mappings(self.kernel_address_space.low_table());
+        self.remove_identity_mappings();
 
         let adt = crate::adt::get_adt().unwrap();
         let chosen = adt.find_node("/chosen").expect("There is a chosen node");
@@ -187,14 +311,15 @@ impl MemoryManager {
         let permissions = logical_range.permissions;
 
         unsafe {
-            arch::mmu::MMU
+            self.kernel_address_space
+                .high_table()
                 .map_region(
-                    self.kernel_address_space.high_table(),
                     la.into_virtual(),
                     la.into_physical(),
                     size,
                     attributes,
                     permissions,
+                    TranslationLevel::Level0,
                 )
                 .expect("MMU cannot map requested region")
         };
@@ -215,14 +340,15 @@ impl MemoryManager {
             .allocate_io_range(name, size_bytes)?;
 
         unsafe {
-            arch::mmu::MMU
+            self.kernel_address_space
+                .high_table()
                 .map_region(
-                    self.kernel_address_space.high_table(),
                     va,
                     pa,
                     size_bytes,
                     Attributes::DevicenGnRnE,
                     Permissions::RW,
+                    TranslationLevel::Level0,
                 )
                 .expect("MMU cannot map requested region")
         };
@@ -233,7 +359,11 @@ impl MemoryManager {
     pub fn remove_mapping_by_name(&mut self, name: &str) -> Result<(), Error> {
         let (table, range) = self.kernel_address_space.remove_range_by_name(name)?;
         unsafe {
-            arch::mmu::MMU.unmap_region(table, range.virtual_address(), range.size_bytes())?;
+            table.unmap_region(
+                range.virtual_address(),
+                range.size_bytes(),
+                TranslationLevel::Level0,
+            )?;
         }
 
         Ok(())

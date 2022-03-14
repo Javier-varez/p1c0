@@ -334,12 +334,19 @@ impl LevelTable {
         }
     }
 
-    fn unmap_region(
+    pub fn unmap_region(
         &mut self,
         mut va: VirtualAddress,
-        size: usize,
+        mut size: usize,
         level: TranslationLevel,
     ) -> Result<(), Error> {
+        log_debug!("Removing mapping at {:?}, size 0x{:x}", va, size);
+
+        // Size needs to be aligned to page size
+        if (size % PAGE_SIZE) != 0 {
+            size = size + PAGE_SIZE - (size % PAGE_SIZE);
+        }
+
         let entry_size = level.entry_size();
 
         let mut remaining_size = size;
@@ -397,15 +404,27 @@ impl LevelTable {
         Ok(())
     }
 
-    fn map_region(
+    pub fn map_region(
         &mut self,
         mut va: VirtualAddress,
         mut pa: PhysicalAddress,
-        size: usize,
+        mut size: usize,
         attributes: Attributes,
         permissions: Permissions,
         level: TranslationLevel,
     ) -> Result<(), Error> {
+        log_debug!(
+            "Adding mapping from {:?} to {:?}, size 0x{:x}",
+            va,
+            pa,
+            size
+        );
+
+        // Size needs to be aligned to page size
+        if (size % PAGE_SIZE) != 0 {
+            size = size + PAGE_SIZE - (size % PAGE_SIZE);
+        }
+
         let entry_size = level.entry_size();
 
         let mut remaining_size = size;
@@ -482,121 +501,10 @@ impl MemoryManagementUnit {
         Self { initialized: false }
     }
 
-    fn add_kernel_mapping(
-        &mut self,
-        section: &KernelSection,
-        high_table: &mut LevelTable,
-    ) -> Result<(), Error> {
-        let pa = section.pa();
-        let va = section.la().into_virtual();
-        self.map_region(
-            high_table,
-            va,
-            pa,
-            section.size_bytes(),
-            Attributes::Normal,
-            section.permissions(),
-        )
-    }
-
-    fn add_kernel_mappings(&mut self, high_table: &mut LevelTable) -> Result<(), Error> {
-        for section_id in ALL_SECTIONS.iter() {
-            let section = KernelSection::from_id(*section_id);
-            self.add_kernel_mapping(&section, high_table)?;
-        }
-        Ok(())
-    }
-
-    fn add_default_mappings(&mut self, high_table: &mut LevelTable, low_table: &mut LevelTable) {
-        let adt = crate::adt::get_adt().unwrap();
-        let chosen = adt.find_node("/chosen").expect("There is a chosen node");
-        let dram_base = chosen
-            .find_property("dram-base")
-            .and_then(|prop| prop.usize_value().ok())
-            .map(|addr| addr as *const u8)
-            .expect("There is no dram base");
-        let dram_size = chosen
-            .find_property("dram-size")
-            .and_then(|prop| prop.usize_value().ok())
-            .expect("There is no dram base");
-
-        // Add initial identity mapping. To be removed after relocation.
-        self.map_region(
-            low_table,
-            VirtualAddress::try_from_ptr(dram_base).expect("Address is not aligned to page size"),
-            PhysicalAddress::try_from_ptr(dram_base).expect("Address is not aligned to page size"),
-            dram_size,
-            Attributes::Normal,
-            Permissions::RWX,
-        )
-        .expect("Mappings overlap");
-
-        self.add_kernel_mappings(high_table)
-            .expect("Kernel can not be mapped");
-
-        // Map mmio ranges as defined in the ADT
-        let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
-        let node = adt.find_node("/arm-io").expect("There is not an arm-io");
-        let range_iter = node.range_iter(root_address_cells);
-        for range in range_iter {
-            let mmio_region_base = range.get_parent_addr() as *const u8;
-            let mmio_region_size = range.get_size();
-            self.map_region(
-                low_table,
-                VirtualAddress::try_from_ptr(mmio_region_base)
-                    .expect("Address is not aligned to page size"),
-                PhysicalAddress::try_from_ptr(mmio_region_base)
-                    .expect("Address is not aligned to page size"),
-                mmio_region_size,
-                Attributes::DevicenGnRnE,
-                Permissions::RWX,
-            )
-            .expect("Mappings overlap");
-        }
-    }
-
-    pub fn remove_identity_mappings(&mut self, low_table: &mut LevelTable) {
-        let adt = crate::adt::get_adt().unwrap();
-        let chosen = adt.find_node("/chosen").expect("There is a chosen node");
-        let dram_base = chosen
-            .find_property("dram-base")
-            .and_then(|prop| prop.usize_value().ok())
-            .map(|addr| addr as *const u8)
-            .expect("There is no dram base");
-        let dram_size = chosen
-            .find_property("dram-size")
-            .and_then(|prop| prop.usize_value().ok())
-            .expect("There is no dram base");
-
-        self.unmap_region(
-            low_table,
-            VirtualAddress::try_from_ptr(dram_base).expect("Address is not aligned to page size"),
-            dram_size,
-        )
-        .expect("Cannot unmap DRAM identity-map");
-
-        // Map mmio ranges as defined in the ADT
-        let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
-        let node = adt.find_node("/arm-io").expect("There is not an arm-io");
-        let range_iter = node.range_iter(root_address_cells);
-        for range in range_iter {
-            let mmio_region_base = range.get_parent_addr() as *const u8;
-            let mmio_region_size = range.get_size();
-            self.unmap_region(
-                low_table,
-                VirtualAddress::try_from_ptr(mmio_region_base)
-                    .expect("Address is not aligned to page size"),
-                mmio_region_size,
-            )
-            .expect("Cannot unmap MMIO identity-map");
-        }
-    }
-
     pub fn init_and_enable(&mut self, high_table: &mut LevelTable, low_table: &mut LevelTable) {
         if self.initialized {
             panic!("MMU Already initialized!");
         }
-        self.add_default_mappings(high_table, low_table);
         self.enable(high_table, low_table);
         self.initialized = true;
     }
@@ -605,7 +513,7 @@ impl MemoryManagementUnit {
         self.initialized
     }
 
-    fn enable(&self, high_table: &mut LevelTable, low_table: &mut LevelTable) {
+    fn enable(&mut self, high_table: &mut LevelTable, low_table: &mut LevelTable) {
         MAIR_EL1.write(
             MAIR_EL1::Attr0_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
                 + MAIR_EL1::Attr0_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
@@ -635,14 +543,10 @@ impl MemoryManagementUnit {
             barrier::isb(barrier::SY);
         }
 
+        // Actually enable the MMU
         SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
 
-        unsafe {
-            core::arch::asm!("dsb ishst");
-            core::arch::asm!("tlbi vmalle1is");
-            core::arch::asm!("dsb ish");
-            core::arch::asm!("isb");
-        }
+        self.flush_tlb();
 
         if matches!(
             SCTLR_EL1.read_as_enum(SCTLR_EL1::M),
@@ -654,61 +558,14 @@ impl MemoryManagementUnit {
         }
     }
 
-    pub fn map_region(
-        &mut self,
-        table: &mut LevelTable,
-        va: VirtualAddress,
-        pa: PhysicalAddress,
-        mut size: usize,
-        attributes: Attributes,
-        permissions: Permissions,
-    ) -> Result<(), Error> {
-        log_debug!(
-            "Adding mapping from {:?} to {:?}, size 0x{:x}",
-            va,
-            pa,
-            size
-        );
-
-        // Size needs to be aligned to page size
-        if (size % PAGE_SIZE) != 0 {
-            size = size + PAGE_SIZE - (size % PAGE_SIZE);
-        }
-
-        table.map_region(
-            va,
-            pa,
-            size,
-            attributes,
-            permissions,
-            TranslationLevel::Level0,
-        )
-    }
-
-    pub fn unmap_region(
-        &mut self,
-        table: &mut LevelTable,
-        va: VirtualAddress,
-        mut size: usize,
-    ) -> Result<(), Error> {
-        log_debug!("Removing mapping at {:?}, size 0x{:x}", va, size);
-
-        // Size needs to be aligned to page size
-        if (size % PAGE_SIZE) != 0 {
-            size = size + PAGE_SIZE - (size % PAGE_SIZE);
-        }
-
-        table.unmap_region(va, size, TranslationLevel::Level0)?;
-
-        #[cfg(all(not(test), target_arch = "aarch64"))]
+    pub fn flush_tlb(&mut self) {
+        #[cfg(all(test, target_arch = "aarch64"))]
         unsafe {
             core::arch::asm!("dsb ishst");
             core::arch::asm!("tlbi vmalle1is");
             core::arch::asm!("dsb ish");
             core::arch::asm!("isb");
         }
-
-        Ok(())
     }
 }
 
@@ -726,34 +583,31 @@ mod test {
 
     #[test]
     fn single_page_mapping() {
-        let mut mmu = MemoryManagementUnit::new();
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        let mut low_table = LevelTable::new();
-
-        assert!(matches!(low_table[0].ty(), DescriptorType::Invalid));
+        let mut table = LevelTable::new();
 
         let from = VirtualAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
-        mmu.map_region(
-            &mut low_table,
-            from,
-            to,
-            size,
-            Attributes::Normal,
-            Permissions::RWX,
-        )
-        .expect("Adding region was successful");
+        table
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                Permissions::RWX,
+                TranslationLevel::Level0,
+            )
+            .expect("Adding region was successful");
 
-        let low_table = &mut low_table;
-        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
-        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
+        assert!(matches!(table[0].ty(), DescriptorType::Table));
+        assert!(matches!(table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = low_table[0].get_table().expect("Is a table");
+        let level1 = table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -786,34 +640,31 @@ mod test {
 
     #[test]
     fn single_block_mapping() {
-        let mut mmu = MemoryManagementUnit::new();
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        let mut low_table = LevelTable::new();
-
-        assert!(matches!(low_table[0].ty(), DescriptorType::Invalid));
+        let mut table = LevelTable::new();
 
         let from = VirtualAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = 1 << 25;
-        mmu.map_region(
-            &mut low_table,
-            from,
-            to,
-            size,
-            Attributes::Normal,
-            Permissions::RWX,
-        )
-        .expect("Adding region was successful");
+        table
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                Permissions::RWX,
+                TranslationLevel::Level0,
+            )
+            .expect("Adding region was successful");
 
-        let low_table = &mut low_table;
-        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
-        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
+        assert!(matches!(table[0].ty(), DescriptorType::Table));
+        assert!(matches!(table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = low_table[0].get_table().expect("Is a table");
+        let level1 = table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -836,15 +687,12 @@ mod test {
 
     #[test]
     fn large_aligned_block_mapping() {
-        let mut mmu = MemoryManagementUnit::new();
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        let mut low_table = LevelTable::new();
-
-        assert!(matches!(low_table[0].ty(), DescriptorType::Invalid));
+        let mut table = LevelTable::new();
 
         let block_size = 1 << 25;
         let page_size = 1 << 14;
@@ -852,21 +700,21 @@ mod test {
         let from = VirtualAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
-        mmu.map_region(
-            &mut low_table,
-            from,
-            to,
-            size,
-            Attributes::Normal,
-            Permissions::RWX,
-        )
-        .expect("Adding region was successful");
+        table
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                Permissions::RWX,
+                TranslationLevel::Level0,
+            )
+            .expect("Adding region was successful");
 
-        let low_table = &mut low_table;
-        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
-        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
+        assert!(matches!(table[0].ty(), DescriptorType::Table));
+        assert!(matches!(table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = low_table[0].get_table().expect("Is a table");
+        let level1 = table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -904,15 +752,12 @@ mod test {
 
     #[test]
     fn large_unaligned_block_mapping() {
-        let mut mmu = MemoryManagementUnit::new();
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        let mut low_table = LevelTable::new();
-
-        assert!(matches!(low_table[0].ty(), DescriptorType::Invalid));
+        let mut table = LevelTable::new();
 
         let block_size = 1 << 25;
         let page_size = 1 << 14;
@@ -921,21 +766,21 @@ mod test {
         let from = VirtualAddress::try_from_ptr(va as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
-        mmu.map_region(
-            &mut low_table,
-            from,
-            to,
-            size,
-            Attributes::Normal,
-            Permissions::RWX,
-        )
-        .expect("Adding region was successful");
+        table
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                Permissions::RWX,
+                TranslationLevel::Level0,
+            )
+            .expect("Adding region was successful");
 
-        let low_table = &mut low_table;
-        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
-        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
+        assert!(matches!(table[0].ty(), DescriptorType::Table));
+        assert!(matches!(table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = low_table[0].get_table().expect("Is a table");
+        let level1 = table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -977,35 +822,36 @@ mod test {
 
     #[test]
     fn unmap_single_page() {
-        let mut mmu = MemoryManagementUnit::new();
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        let mut low_table = LevelTable::new();
+        let mut table = LevelTable::new();
 
         let from = VirtualAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
-        mmu.map_region(
-            &mut low_table,
-            from,
-            to,
-            size,
-            Attributes::Normal,
-            Permissions::RWX,
-        )
-        .expect("Could add region");
+        table
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                Permissions::RWX,
+                TranslationLevel::Level0,
+            )
+            .expect("Could add region");
 
-        mmu.unmap_region(&mut low_table, from, size)
+        table
+            .unmap_region(from, size, TranslationLevel::Level0)
             .expect("Could remove region");
 
-        let low_table = &mut low_table;
-        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
-        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
+        let table = &mut table;
+        assert!(matches!(table[0].ty(), DescriptorType::Table));
+        assert!(matches!(table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = low_table[0].get_table().expect("Is a table");
+        let level1 = table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x12 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
@@ -1038,35 +884,36 @@ mod test {
 
     #[test]
     fn unmap_multiple_blocks() {
-        let mut mmu = MemoryManagementUnit::new();
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
         unsafe { MMU.initialized = true };
 
-        let mut low_table = LevelTable::new();
+        let mut table = LevelTable::new();
 
         let from = VirtualAddress::try_from_ptr(0x10000000000 as *const u8).unwrap();
         let to = PhysicalAddress::try_from_ptr(0x10000000000 as *const u8).unwrap();
         let size = 0x800000000;
-        mmu.map_region(
-            &mut low_table,
-            from,
-            to,
-            size,
-            Attributes::Normal,
-            Permissions::RWX,
-        )
-        .expect("Could add region");
+        table
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                Permissions::RWX,
+                TranslationLevel::Level0,
+            )
+            .expect("Could add region");
 
-        mmu.unmap_region(&mut low_table, from, size)
+        table
+            .unmap_region(from, size, TranslationLevel::Level0)
             .expect("Could remove region");
 
-        let low_table = &mut low_table;
-        assert!(matches!(low_table[0].ty(), DescriptorType::Table));
-        assert!(matches!(low_table[1].ty(), DescriptorType::Invalid));
+        let table = &mut table;
+        assert!(matches!(table[0].ty(), DescriptorType::Table));
+        assert!(matches!(table[1].ty(), DescriptorType::Invalid));
 
-        let level1 = low_table[0].get_table().expect("Is a table");
+        let level1 = table[0].get_table().expect("Is a table");
         for (idx, desc) in level1.table.iter().enumerate() {
             if idx == 0x10 {
                 assert!(matches!(desc.ty(), DescriptorType::Table));
