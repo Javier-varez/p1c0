@@ -182,6 +182,25 @@ impl<const SIZE: usize> RingBuffer<SIZE> {
             }
         }
     }
+
+    pub unsafe fn split_reader_unchecked(&self) -> Reader<'_, SIZE> {
+        loop {
+            let split = self.split.load(Ordering::Relaxed);
+
+            if self
+                .split
+                .compare_exchange(
+                    split,
+                    split | READER_SPLIT_TOK,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
+                return Reader { buffer: self };
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
