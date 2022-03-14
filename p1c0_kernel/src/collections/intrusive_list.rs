@@ -68,6 +68,20 @@ impl<T> IntrusiveList<T> {
         }
     }
 
+    pub fn iter_mut(&mut self) -> IntrusiveListMutIter<'_, T> {
+        if self.head.is_null() {
+            IntrusiveListMutIter {
+                head_item: None,
+                tail_item: core::ptr::null_mut(),
+            }
+        } else {
+            IntrusiveListMutIter {
+                head_item: Some(unsafe { &mut *self.head }),
+                tail_item: self.tail,
+            }
+        }
+    }
+
     fn remove_element(
         &mut self,
         element: *mut IntrusiveItem<T>,
@@ -253,6 +267,50 @@ impl<'a, T> core::iter::DoubleEndedIterator for IntrusiveListIter<'a, T> {
         } else {
             let element = unsafe { &*self.tail_item };
             if self.tail_item == self.head_item.unwrap() as *const _ {
+                // This is the last item, we set both iters to None
+                self.head_item = None;
+                self.tail_item = core::ptr::null_mut();
+            } else {
+                self.tail_item = element.prev;
+            }
+            Some(element)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct IntrusiveListMutIter<'a, T> {
+    head_item: Option<&'a mut IntrusiveItem<T>>,
+    tail_item: *mut IntrusiveItem<T>,
+}
+
+impl<'a, T> core::iter::Iterator for IntrusiveListMutIter<'a, T> {
+    type Item = &'a mut IntrusiveItem<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.head_item.take() {
+            Some(item) => {
+                if item as *const _ == self.tail_item {
+                    // This is the last item, we set both iters to None
+                    self.head_item = None;
+                    self.tail_item = core::ptr::null_mut();
+                } else if !item.next.is_null() {
+                    self.head_item = Some(unsafe { &mut *item.next });
+                }
+                Some(item)
+            }
+            None => None,
+        }
+    }
+}
+
+impl<'a, T> core::iter::DoubleEndedIterator for IntrusiveListMutIter<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.tail_item.is_null() {
+            None
+        } else {
+            let element = unsafe { &mut *self.tail_item };
+            if self.tail_item == (*self.head_item.as_mut().unwrap()) as *mut _ {
                 // This is the last item, we set both iters to None
                 self.head_item = None;
                 self.tail_item = core::ptr::null_mut();
@@ -465,6 +523,39 @@ mod test {
 
         let vector: Vec<_> = list.iter().map(|item| item.inner).collect();
         assert_eq!(vector, vec![32, 23, 234, 84, 84]);
+
+        list.release(|element| {
+            unsafe { element.into_box() };
+        });
+    }
+
+    #[test]
+    fn double_ended_mut_iter() {
+        let a = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(32)));
+        let b = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(23)));
+        let c = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(84)));
+
+        let mut list = IntrusiveList::<_>::new();
+        list.push(a);
+        list.push(b);
+        list.push(c);
+
+        let d = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(843)));
+        list.push(d);
+
+        list.iter_mut().for_each(|element| {
+            if **element == 84 {
+                **element = 123;
+            }
+        });
+
+        let mut iter = list.iter().map(|item| item.inner);
+        assert_eq!(iter.next(), Some(32));
+        assert_eq!(iter.next_back(), Some(843));
+        assert_eq!(iter.next(), Some(23));
+        assert_eq!(iter.next_back(), Some(123));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next_back(), None);
 
         list.release(|element| {
             unsafe { element.into_box() };
