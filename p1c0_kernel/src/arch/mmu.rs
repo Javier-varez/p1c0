@@ -333,15 +333,17 @@ impl LevelTable {
             table: [INVALID_DESCRIPTOR; 2048],
         }
     }
+    pub fn unmap_region(&mut self, mut va: VirtualAddress, mut size: usize) -> Result<(), Error> {
+        log_debug!("Removing mapping at {:?}, size 0x{:x}", va, size);
+        self.unmap_region_internal(va, size, TranslationLevel::Level0)
+    }
 
-    pub fn unmap_region(
+    pub fn unmap_region_internal(
         &mut self,
         mut va: VirtualAddress,
         mut size: usize,
         level: TranslationLevel,
     ) -> Result<(), Error> {
-        log_debug!("Removing mapping at {:?}, size 0x{:x}", va, size);
-
         // Size needs to be aligned to page size
         if (size % PAGE_SIZE) != 0 {
             size = size + PAGE_SIZE - (size % PAGE_SIZE);
@@ -384,14 +386,21 @@ impl LevelTable {
                         descriptor_entry
                             .get_table()
                             .expect("Is a table")
-                            .map_region(va, pa, entry_size, attrs, permissions, level.next())?;
+                            .map_region_internal(
+                                va,
+                                pa,
+                                entry_size,
+                                attrs,
+                                permissions,
+                                level.next(),
+                            )?;
                     }
 
                     // Now unmap what's left
                     descriptor_entry
                         .get_table()
                         .expect("Is a table")
-                        .unmap_region(va, chunk_size, level.next())?;
+                        .unmap_region_internal(va, chunk_size, level.next())?;
                 }
             }
 
@@ -411,7 +420,6 @@ impl LevelTable {
         mut size: usize,
         attributes: Attributes,
         permissions: Permissions,
-        level: TranslationLevel,
     ) -> Result<(), Error> {
         log_debug!(
             "Adding mapping from {:?} to {:?}, size 0x{:x}",
@@ -420,6 +428,25 @@ impl LevelTable {
             size
         );
 
+        self.map_region_internal(
+            va,
+            pa,
+            size,
+            attributes,
+            permissions,
+            TranslationLevel::Level0,
+        )
+    }
+
+    fn map_region_internal(
+        &mut self,
+        mut va: VirtualAddress,
+        mut pa: PhysicalAddress,
+        mut size: usize,
+        attributes: Attributes,
+        permissions: Permissions,
+        level: TranslationLevel,
+    ) -> Result<(), Error> {
         // Size needs to be aligned to page size
         if (size % PAGE_SIZE) != 0 {
             size = size + PAGE_SIZE - (size % PAGE_SIZE);
@@ -478,7 +505,14 @@ impl LevelTable {
                 descriptor_entry
                     .get_table()
                     .expect("Is a table")
-                    .map_region(va, pa, chunk_size, attributes, permissions, level.next())?;
+                    .map_region_internal(
+                        va,
+                        pa,
+                        chunk_size,
+                        attributes,
+                        permissions,
+                        level.next(),
+                    )?;
             }
 
             unsafe {
@@ -558,6 +592,17 @@ impl MemoryManagementUnit {
         }
     }
 
+    pub fn switch_process_translation_table(&mut self, low_table: &mut LevelTable) {
+        TTBR0_EL1.set_baddr(low_table.table.as_ptr() as u64);
+
+        unsafe {
+            barrier::dsb(barrier::ISHST);
+            barrier::isb(barrier::SY);
+        }
+
+        self.flush_tlb()
+    }
+
     pub fn flush_tlb(&mut self) {
         #[cfg(all(test, target_arch = "aarch64"))]
         unsafe {
@@ -594,14 +639,7 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
         table
-            .map_region(
-                from,
-                to,
-                size,
-                Attributes::Normal,
-                Permissions::RWX,
-                TranslationLevel::Level0,
-            )
+            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
 
         assert!(matches!(table[0].ty(), DescriptorType::Table));
@@ -651,14 +689,7 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = 1 << 25;
         table
-            .map_region(
-                from,
-                to,
-                size,
-                Attributes::Normal,
-                Permissions::RWX,
-                TranslationLevel::Level0,
-            )
+            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
 
         assert!(matches!(table[0].ty(), DescriptorType::Table));
@@ -701,14 +732,7 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
         table
-            .map_region(
-                from,
-                to,
-                size,
-                Attributes::Normal,
-                Permissions::RWX,
-                TranslationLevel::Level0,
-            )
+            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
 
         assert!(matches!(table[0].ty(), DescriptorType::Table));
@@ -767,14 +791,7 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
         table
-            .map_region(
-                from,
-                to,
-                size,
-                Attributes::Normal,
-                Permissions::RWX,
-                TranslationLevel::Level0,
-            )
+            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Adding region was successful");
 
         assert!(matches!(table[0].ty(), DescriptorType::Table));
@@ -833,19 +850,10 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
         table
-            .map_region(
-                from,
-                to,
-                size,
-                Attributes::Normal,
-                Permissions::RWX,
-                TranslationLevel::Level0,
-            )
+            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Could add region");
 
-        table
-            .unmap_region(from, size, TranslationLevel::Level0)
-            .expect("Could remove region");
+        table.unmap_region(from, size).expect("Could remove region");
 
         let table = &mut table;
         assert!(matches!(table[0].ty(), DescriptorType::Table));
@@ -895,19 +903,10 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x10000000000 as *const u8).unwrap();
         let size = 0x800000000;
         table
-            .map_region(
-                from,
-                to,
-                size,
-                Attributes::Normal,
-                Permissions::RWX,
-                TranslationLevel::Level0,
-            )
+            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
             .expect("Could add region");
 
-        table
-            .unmap_region(from, size, TranslationLevel::Level0)
-            .expect("Could remove region");
+        table.unmap_region(from, size).expect("Could remove region");
 
         let table = &mut table;
         assert!(matches!(table[0].ty(), DescriptorType::Table));
