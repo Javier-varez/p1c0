@@ -5,6 +5,8 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(default_alloc_error_handler)]
 
+pub mod userspace_proc;
+
 use p1c0_kernel::{boot_args::BootArgs, log_info};
 
 #[cfg(feature = "emulator")]

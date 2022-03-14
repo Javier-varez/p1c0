@@ -1,3 +1,4 @@
+use crate::thread::current_pid;
 use crate::{arch::exceptions::ExceptionContext, drivers::wdt, log_info, log_warning};
 
 macro_rules! gen_syscall_caller {
@@ -398,7 +399,7 @@ fn handle_thread_join(cx: &mut ExceptionContext, tid: u64) {
     crate::thread::join_thread(cx, tid);
 }
 
-fn handle_puts(cx: &mut ExceptionContext, str_ptr: *const u8, length: usize) {
+fn handle_puts(_cx: &mut ExceptionContext, str_ptr: *const u8, length: usize) {
     if str_ptr.is_null() {
         return;
     }
@@ -407,6 +408,7 @@ fn handle_puts(cx: &mut ExceptionContext, str_ptr: *const u8, length: usize) {
     let slice = unsafe { core::slice::from_raw_parts(str_ptr, length) };
     if let Ok(string) = core::str::from_utf8(slice) {
         // TODO(javier-varez): Of course this needs to be redirected to stdout instead of using the klog system...
-        log_info!("Message from userspace: {}", string);
+
+        log_info!("Message from userspace pid {:?}: {}", current_pid(), string);
     }
 }

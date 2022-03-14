@@ -304,18 +304,16 @@ impl MemoryManager {
         let attributes = logical_range.attributes;
         let permissions = logical_range.permissions;
 
-        unsafe {
-            self.kernel_address_space
-                .high_table()
-                .map_region(
-                    la.into_virtual(),
-                    la.into_physical(),
-                    size,
-                    attributes,
-                    permissions,
-                )
-                .expect("MMU cannot map requested region")
-        };
+        self.kernel_address_space
+            .high_table()
+            .map_region(
+                la.into_virtual(),
+                la.into_physical(),
+                size,
+                attributes,
+                permissions,
+            )
+            .expect("MMU cannot map requested region");
 
         Ok(())
     }
@@ -332,27 +330,23 @@ impl MemoryManager {
             .kernel_address_space
             .allocate_io_range(name, size_bytes)?;
 
-        unsafe {
-            self.kernel_address_space
-                .high_table()
-                .map_region(
-                    va,
-                    pa,
-                    size_bytes,
-                    Attributes::DevicenGnRnE,
-                    Permissions::RW,
-                )
-                .expect("MMU cannot map requested region")
-        };
+        self.kernel_address_space
+            .high_table()
+            .map_region(
+                va,
+                pa,
+                size_bytes,
+                Attributes::DevicenGnRnE,
+                Permissions::RW,
+            )
+            .expect("MMU cannot map requested region");
 
         Ok(va)
     }
 
     pub fn remove_mapping_by_name(&mut self, name: &str) -> Result<(), Error> {
         let (table, range) = self.kernel_address_space.remove_range_by_name(name)?;
-        unsafe {
-            table.unmap_region(range.virtual_address(), range.size_bytes())?;
-        }
+        table.unmap_region(range.virtual_address(), range.size_bytes())?;
 
         Ok(())
     }
@@ -403,5 +397,9 @@ impl MemoryManager {
         self.physical_page_allocator.print_regions();
 
         Ok(())
+    }
+
+    pub fn page_allocator(&mut self) -> &mut PhysicalPageAllocator {
+        &mut self.physical_page_allocator
     }
 }

@@ -17,16 +17,13 @@ pub enum Error {
     RegionNotAvailable,
     /// Contains the overlap region
     RegionOverlapsWith(PhysicalAddress, usize),
+    NoMemoryAvailable,
 }
 
 fn pfn_from_pa(pa: PhysicalAddress) -> usize {
     assert!(pa.is_page_aligned());
 
     pa.as_usize() >> PAGE_BITS
-}
-
-pub struct PhysicalPage {
-    _pfn: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -81,6 +78,14 @@ impl PhysicalMemoryRegion {
         let other_pfn_end = other_pfn_start + num_pages;
 
         self_pfn_end == other_pfn_end
+    }
+
+    pub fn base_address(&self) -> PhysicalAddress {
+        self.pa
+    }
+
+    pub fn num_pages(&self) -> usize {
+        self.num_pages
     }
 }
 
@@ -251,6 +256,22 @@ impl PhysicalPageAllocator {
     ) -> Result<PhysicalMemoryRegion, Error> {
         self.steal_region(pa, num_pages)?;
         Ok(PhysicalMemoryRegion::new(pa, num_pages))
+    }
+
+    pub fn request_any_pages(&mut self, num_pages: usize) -> Result<PhysicalMemoryRegion, Error> {
+        let mut pa = None;
+        for region in self.regions.iter() {
+            if region.num_pages >= num_pages {
+                pa = Some(region.pa);
+                break;
+            }
+        }
+
+        if let Some(pa) = pa {
+            self.request_pages(pa, num_pages)
+        } else {
+            Err(Error::NoMemoryAvailable)
+        }
     }
 
     pub fn release_pages(&mut self, region: PhysicalMemoryRegion) -> Result<(), Error> {

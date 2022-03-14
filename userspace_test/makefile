@@ -57,7 +57,7 @@ build/%.o: src/%.cpp $(THIS_FILE)
 $(TARGET): $(OBJECTS) $(LINKER_SCRIPT) $(THIS_FILE)
 	@echo "\x1b[1;34mLinking $@\x1b[0m"
 	@mkdir -p $(dir $@)
-	$(SILENT)$(LD) -o $@ $(LD_FLAGS) $(OBJECTS)
+	$(SILENT)$(LD) -o $@ $(LD_FLAGS) -Map $(TARGET).map $(OBJECTS)
 
 $(TARGET_BIN): $(TARGET)
 	@echo "\x1b[1;34mGenerating $@\x1b[0m"

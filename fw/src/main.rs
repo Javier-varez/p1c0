@@ -12,10 +12,13 @@ use p1c0::print_boot_args;
 use p1c0_kernel::{
     arch::get_exception_level,
     boot_args::get_boot_args,
-    drivers::{display::Display, gpio::GpioBank, hid::HidDev, spi::Spi, wdt},
+    drivers::{display::Display, wdt},
     syscall::Syscall,
     thread::{self, print_thread_info},
 };
+
+#[cfg(not(feature = "emulator"))]
+use p1c0_kernel::drivers::{gpio::GpioBank, hid::HidDev, spi::Spi};
 
 use cortex_a::registers::DAIF;
 use tock_registers::interfaces::Writeable;
@@ -79,9 +82,7 @@ fn kernel_entry() {
         Syscall::sleep_us(1_000_000);
     });
 
-    thread::spawn(move || {
-        log_info!("This thread will die!");
-    });
+    p1c0::userspace_proc::create_process();
 
     thread::initialize();
 }

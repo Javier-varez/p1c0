@@ -22,14 +22,14 @@ void puts(const char *str) {
   const size_t string_length = strlen(str);
   asm volatile(
   "mov x0, %0\n"
-  "mov x1, %0\n"
-  "svc 1" : : "r" (str), "r" (string_length) : "x0", "x1" );
+  "mov x1, %1\n"
+  "svc 6" : : "r" (str), "r" (string_length) : "x0", "x1" );
 }
 
 void sleep(const u64 time_us) {
   asm volatile(
   "mov x0, %0\n"
-  "svc 1" : : "r" (time_us) : "x0");
+  "svc 2" : : "r" (time_us) : "x0");
 }
 
 CLINKAGE __attribute__((section(".init"))) int main() {
@@ -37,4 +37,5 @@ CLINKAGE __attribute__((section(".init"))) int main() {
     puts("Hi there!");
     sleep(1'000'000);
   }
+  return 0;
 }
