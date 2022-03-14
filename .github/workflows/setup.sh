@@ -25,5 +25,8 @@ echo "${QEMU_DIR}/bin" >> ${GITHUB_PATH}
 
 # Install other dependencies
 sudo apt update
-sudo apt install -y gcc-aarch64-linux-gnu
+sudo apt install -y \
+    gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu \
+    binutils-aarch64-linux-gnu
 cargo install cargo-binutils

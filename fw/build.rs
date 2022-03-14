@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let host = env::var("HOST").unwrap();
 
     let compiler = if host == "aarch64-apple-darwin" {
-        "clang"
+        "aarch64-none-elf-gcc"
     } else {
         "aarch64-linux-gnu-gcc"
     };
@@ -27,7 +27,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         .compiler(compiler)
         .compile("entry");
 
-    cmd!("make -C ../userspace_test").run().unwrap();
+    let cross_compile = if host == "aarch64-apple-darwin" {
+        "aarch64-none-elf-"
+    } else {
+        "aarch64-linux-gnu-"
+    };
+    cmd!("make -C ../userspace_test")
+        .env("CROSS_COMPILE", cross_compile)
+        .run()
+        .unwrap();
 
     println!("cargo:rerun-if-changed=startup.S");
     println!("cargo:rerun-if-changed=../userspace_test");
