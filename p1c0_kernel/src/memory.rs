@@ -8,7 +8,7 @@ extern crate alloc;
 
 use crate::arch::{
     self,
-    mmu::{LevelTable, TranslationLevel, PAGE_BITS, PAGE_SIZE},
+    mmu::{PAGE_BITS, PAGE_SIZE},
 };
 
 use address::{LogicalAddress, PhysicalAddress, VirtualAddress};
@@ -105,7 +105,6 @@ impl MemoryManager {
             section.size_bytes(),
             Attributes::Normal,
             section.permissions(),
-            TranslationLevel::Level0,
         )?;
         Ok(())
     }
@@ -142,7 +141,6 @@ impl MemoryManager {
                 dram_size,
                 Attributes::Normal,
                 Permissions::RWX,
-                TranslationLevel::Level0,
             )
             .expect("Mappings overlap");
 
@@ -166,7 +164,6 @@ impl MemoryManager {
                     mmio_region_size,
                     Attributes::DevicenGnRnE,
                     Permissions::RWX,
-                    TranslationLevel::Level0,
                 )
                 .expect("Mappings overlap");
         }
@@ -192,7 +189,6 @@ impl MemoryManager {
                 VirtualAddress::try_from_ptr(dram_base)
                     .expect("Address is not aligned to page size"),
                 dram_size,
-                TranslationLevel::Level0,
             )
             .expect("Cannot unmap DRAM identity-map");
 
@@ -208,7 +204,6 @@ impl MemoryManager {
                     VirtualAddress::try_from_ptr(mmio_region_base)
                         .expect("Address is not aligned to page size"),
                     mmio_region_size,
-                    TranslationLevel::Level0,
                 )
                 .expect("Cannot unmap MMIO identity-map");
         }
@@ -257,7 +252,6 @@ impl MemoryManager {
                 device_tree_size,
                 Attributes::Normal,
                 Permissions::RO,
-                TranslationLevel::Level0,
             )
             .expect("Boot args can be mapped");
 
@@ -319,7 +313,6 @@ impl MemoryManager {
                     size,
                     attributes,
                     permissions,
-                    TranslationLevel::Level0,
                 )
                 .expect("MMU cannot map requested region")
         };
@@ -348,7 +341,6 @@ impl MemoryManager {
                     size_bytes,
                     Attributes::DevicenGnRnE,
                     Permissions::RW,
-                    TranslationLevel::Level0,
                 )
                 .expect("MMU cannot map requested region")
         };
@@ -359,11 +351,7 @@ impl MemoryManager {
     pub fn remove_mapping_by_name(&mut self, name: &str) -> Result<(), Error> {
         let (table, range) = self.kernel_address_space.remove_range_by_name(name)?;
         unsafe {
-            table.unmap_region(
-                range.virtual_address(),
-                range.size_bytes(),
-                TranslationLevel::Level0,
-            )?;
+            table.unmap_region(range.virtual_address(), range.size_bytes())?;
         }
 
         Ok(())
