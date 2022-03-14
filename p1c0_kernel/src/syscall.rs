@@ -355,6 +355,7 @@ define_syscalls!(
     [3, Yield, yield_exec, handle_yield_exec, ()],
     [4, ThreadExit, thread_exit, handle_thread_exit, ()],
     [5, ThreadJoin, thread_join, handle_thread_join, (u64)],
+    [6, PutString, puts, handle_puts, (*const u8, usize)],
     [0x8000, Multiply, multiply, handle_multiply, (u32, u32) -> u32],
 );
 
@@ -395,4 +396,17 @@ fn handle_thread_exit(cx: &mut ExceptionContext) {
 
 fn handle_thread_join(cx: &mut ExceptionContext, tid: u64) {
     crate::thread::join_thread(cx, tid);
+}
+
+fn handle_puts(cx: &mut ExceptionContext, str_ptr: *const u8, length: usize) {
+    if str_ptr.is_null() {
+        return;
+    }
+
+    // We have to trust the user process... If a fault happens, it will be delivered to it anyway
+    let slice = unsafe { core::slice::from_raw_parts(str_ptr, length) };
+    if let Ok(string) = core::str::from_utf8(slice) {
+        // TODO(javier-varez): Of course this needs to be redirected to stdout instead of using the klog system...
+        log_info!("Message from userspace: {}", string);
+    }
 }
