@@ -1,7 +1,8 @@
 THIS_FILE := $(firstword $(MAKEFILE_LIST))
-CXX := aarch64-none-elf-g++
-LD := aarch64-none-elf-ld
-OBJCOPY := aarch64-none-elf-objcopy
+
+CXX := $(CROSS_COMPILE)g++
+LD := $(CROSS_COMPILE)ld
+OBJCOPY := $(CROSS_COMPILE)objcopy
 
 SOURCES := src/main.cpp
 LINKER_SCRIPT := p1c0.ld
