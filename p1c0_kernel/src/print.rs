@@ -37,6 +37,8 @@ pub trait Print {
 // However, given it runs in a single-threaded context it should be mostly ok.
 static mut EARLY_PRINT: Option<*mut dyn EarlyPrint> = None;
 
+static PRINT: SpinLock<Option<*const dyn Print>> = SpinLock::new(None);
+
 const BUFFER_SIZE: usize = 16384;
 static BUFFER: RingBuffer<BUFFER_SIZE> = RingBuffer::new();
 static LOG_WRITER: SpinLock<Option<LogWriter>> = SpinLock::new(None);
@@ -99,6 +101,7 @@ pub unsafe fn register_early_printer<T: EarlyPrint>(printer: &'static mut T) {
 #[inline]
 pub fn init_printer<T: Print + Sync>(printer: &'static T) {
     let mut reader = BUFFER.split_reader().expect("The buffer is already split!");
+    PRINT.lock().replace(printer as *const _);
 
     crate::thread::Builder::new()
         .name("Printer")
@@ -119,4 +122,19 @@ pub fn init_printer<T: Print + Sync>(printer: &'static T) {
                 }
             }
         });
+}
+
+pub unsafe fn force_flush() {
+    let mut reader = BUFFER.split_reader_unchecked();
+    let printer = &**PRINT.lock().as_ref().unwrap();
+    loop {
+        match reader.pop() {
+            Ok(val) => {
+                printer.write_u8(val).unwrap();
+            }
+            Err(e) => {
+                break;
+            }
+        }
+    }
 }

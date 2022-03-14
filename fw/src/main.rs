@@ -103,6 +103,10 @@ fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     DAIF.write(DAIF::D::Masked + DAIF::A::Masked + DAIF::I::Masked + DAIF::F::Masked);
     log_error!("Panicked with message: {:?}", panic_info);
 
+    unsafe {
+        p1c0_kernel::print::force_flush();
+    }
+
     #[cfg(feature = "emulator")]
     arm_semihosting::exit(1);
 
