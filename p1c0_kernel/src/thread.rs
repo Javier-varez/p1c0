@@ -10,6 +10,7 @@ use heapless::String;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::{
+    arch,
     arch::exceptions::ExceptionContext,
     collections::{
         intrusive_list::{IntrusiveItem, IntrusiveList},
@@ -21,6 +22,8 @@ use crate::{
 };
 
 use crate::drivers::generic_timer::get_timer;
+use crate::memory::address::{Address, VirtualAddress};
+use crate::process::ProcessHandle;
 use crate::syscall::Syscall;
 use core::ops::Add;
 use core::time::Duration;
@@ -29,7 +32,10 @@ use core::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-struct Stack(Vec<u64>);
+enum Stack {
+    KernelThread(Vec<u64>),
+    ProcessThread(VirtualAddress),
+}
 
 impl Stack {
     fn new(size: usize) -> Self {
@@ -38,11 +44,14 @@ impl Stack {
         unsafe {
             stack.set_len(size)
         };
-        Self(stack)
+        Self::KernelThread(stack)
     }
 
     fn top(&self) -> u64 {
-        &self.0[self.0.len() - 1] as *const _ as u64
+        match &self {
+            Stack::KernelThread(stack) => &stack[stack.len() - 1] as *const _ as u64,
+            Stack::ProcessThread(va) => va.as_u64() - 8,
+        }
     }
 }
 
@@ -54,6 +63,7 @@ enum BlockReason {
 pub struct ThreadControlBlock {
     tid: u64,
     name: String<32>,
+    process: Option<crate::process::ProcessHandle>,
     entry: Option<Box<dyn FnOnce()>>,
     stack: Stack,
 
@@ -162,6 +172,7 @@ impl Builder {
             name,
             entry: Some(thread_wrapper),
             stack,
+            process: None,
             block_reason: None,
             regs,
             elr: elr as u64,
@@ -181,6 +192,39 @@ where
     F: FnOnce() + Send + 'static,
 {
     Builder::new().spawn(thread)
+}
+
+pub(crate) fn new_for_process(
+    process: ProcessHandle,
+    stack_va: VirtualAddress,
+    entry_point: VirtualAddress,
+) -> ThreadHandle {
+    let name = String::new();
+    let stack = Stack::ProcessThread(stack_va);
+    let stack_ptr = stack.top();
+    let elr = entry_point.as_ptr();
+    let mut spsr = SPSR_EL1.extract();
+    spsr.write(SPSR_EL1::M::EL1t);
+    let regs = [0; 31];
+    let tid = NUM_THREADS.fetch_add(1, Ordering::Relaxed);
+
+    let mut tcb = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(ThreadControlBlock {
+        tid,
+        name,
+        entry: None,
+        stack,
+        process: Some(process),
+        block_reason: None,
+        regs,
+        elr: elr as u64,
+        spsr: spsr.get(),
+        stack_ptr,
+    })));
+    tcb.regs[0] = (&mut **tcb) as *mut ThreadControlBlock as u64;
+
+    ACTIVE_THREADS.lock().push(tcb);
+
+    ThreadHandle(tid)
 }
 
 pub fn initialize() -> ! {
@@ -275,6 +319,13 @@ pub fn run_scheduler(cx: &mut ExceptionContext) {
 
     let thread = schedule_next_thread();
     restore_thread_context(cx, &thread);
+
+    if let Some(handle) = thread.process.as_ref() {
+        crate::process::do_with_process(handle, |process| unsafe {
+            arch::mmu::MMU
+                .switch_process_translation_table(process.address_space().address_table());
+        });
+    }
 
     current_thread.replace(thread);
 }
@@ -400,4 +451,11 @@ pub fn print_thread_info() {
             log_info!("\tAnonymous blocked thread, tid: {}", tcb.tid);
         }
     }
+}
+
+pub fn current_pid() -> Option<ProcessHandle> {
+    CURRENT_THREAD
+        .lock()
+        .as_ref()
+        .and_then(|thread| thread.process.clone())
 }

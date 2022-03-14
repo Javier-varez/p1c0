@@ -132,7 +132,7 @@ pub unsafe fn force_flush() {
             Ok(val) => {
                 printer.write_u8(val).unwrap();
             }
-            Err(e) => {
+            Err(_error) => {
                 break;
             }
         }

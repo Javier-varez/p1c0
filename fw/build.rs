@@ -1,5 +1,6 @@
 use cc::Build;
 use std::{env, error::Error, fs::File, io::Write, path::PathBuf};
+use xshell::cmd;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -26,7 +27,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .compiler(compiler)
         .compile("entry");
 
+    cmd!("make -C ../userspace_test").run().unwrap();
+
     println!("cargo:rerun-if-changed=startup.S");
+    println!("cargo:rerun-if-changed=../userspace_test");
 
     Ok(())
 }

@@ -17,6 +17,7 @@ pub mod log;
 pub mod macros;
 pub mod memory;
 pub mod print;
+pub mod process;
 pub mod registers;
 pub mod sync;
 pub mod syscall;

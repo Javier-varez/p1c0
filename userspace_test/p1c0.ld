@@ -1,6 +1,6 @@
 ENTRY(main)
 
-. = 0;
+. = 0x1000000;
 
 PHDRS
 {
@@ -10,12 +10,9 @@ PHDRS
 }
 
 SECTIONS {
-    .init : {
+    .text : {
         *(.init)
         *(.init.*)
-    } :text
-
-    .text : {
         *(.text)
         *(.text.*)
         . = ALIGN(8);

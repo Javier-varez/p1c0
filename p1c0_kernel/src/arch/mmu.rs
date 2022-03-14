@@ -17,7 +17,6 @@ use early_alloc::{AllocRef, EarlyAllocator};
 
 use crate::memory::{
     address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress},
-    map::{KernelSection, ALL_SECTIONS},
     Attributes, Permissions,
 };
 
@@ -333,7 +332,7 @@ impl LevelTable {
             table: [INVALID_DESCRIPTOR; 2048],
         }
     }
-    pub fn unmap_region(&mut self, mut va: VirtualAddress, mut size: usize) -> Result<(), Error> {
+    pub fn unmap_region(&mut self, va: VirtualAddress, size: usize) -> Result<(), Error> {
         log_debug!("Removing mapping at {:?}, size 0x{:x}", va, size);
         self.unmap_region_internal(va, size, TranslationLevel::Level0)
     }
@@ -415,9 +414,9 @@ impl LevelTable {
 
     pub fn map_region(
         &mut self,
-        mut va: VirtualAddress,
-        mut pa: PhysicalAddress,
-        mut size: usize,
+        va: VirtualAddress,
+        pa: PhysicalAddress,
+        size: usize,
         attributes: Attributes,
         permissions: Permissions,
     ) -> Result<(), Error> {
@@ -593,9 +592,13 @@ impl MemoryManagementUnit {
     }
 
     pub fn switch_process_translation_table(&mut self, low_table: &mut LevelTable) {
-        TTBR0_EL1.set_baddr(low_table.table.as_ptr() as u64);
-
         unsafe {
+            let va = LogicalAddress::try_from_ptr(low_table.as_ptr() as *mut _)
+                .expect("Level table not aligned!!");
+            let pa = va.into_physical();
+
+            TTBR0_EL1.set_baddr(pa.as_u64());
+
             barrier::dsb(barrier::ISHST);
             barrier::isb(barrier::SY);
         }
@@ -607,7 +610,7 @@ impl MemoryManagementUnit {
         #[cfg(all(test, target_arch = "aarch64"))]
         unsafe {
             core::arch::asm!("dsb ishst");
-            core::arch::asm!("tlbi vmalle1is");
+            core::arch::asm!("tlbi alle1");
             core::arch::asm!("dsb ish");
             core::arch::asm!("isb");
         }
