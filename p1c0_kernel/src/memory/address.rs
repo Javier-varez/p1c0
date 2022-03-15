@@ -47,6 +47,10 @@ impl VirtualAddress {
         Ok(Self(addr))
     }
 
+    pub fn new_unaligned(ptr: *const u8) -> Self {
+        Self(ptr)
+    }
+
     /// # Safety
     ///   The user must guarantee that the resulting pointer is a valid VirtualAddress after this
     ///   operation. This means that it is within the limits of addressable virtual memory.

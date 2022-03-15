@@ -9,14 +9,34 @@ use crate::{
         OwnedMutPtr,
     },
     log_debug,
-    memory::address_space::ProcessAddressSpace,
+    memory::{
+        address_space::{self, ProcessAddressSpace},
+        physical_page_allocator,
+    },
     sync::spinlock::SpinLock,
     thread::{self, ThreadHandle},
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 
-use crate::memory::physical_page_allocator::Error;
 use core::sync::atomic::{AtomicU64, Ordering};
+
+#[derive(Debug)]
+pub enum Error {
+    AddressSpaceError(address_space::Error),
+    PageAllocError(physical_page_allocator::Error),
+}
+
+impl From<address_space::Error> for Error {
+    fn from(e: address_space::Error) -> Self {
+        Error::AddressSpaceError(e)
+    }
+}
+
+impl From<physical_page_allocator::Error> for Error {
+    fn from(e: physical_page_allocator::Error) -> Self {
+        Error::PageAllocError(e)
+    }
+}
 
 pub enum State {
     Running,
@@ -48,41 +68,48 @@ impl Builder {
     }
 
     pub fn map_section(
-        mut self,
+        &mut self,
         name: &str,
         va: VirtualAddress,
+        size_bytes: usize,
         data: &[u8],
         permissions: Permissions,
-    ) -> Self {
+    ) -> Result<(), Error> {
         log_debug!("Mapping section `{}` for new process", name);
-        let num_pages = crate::memory::num_pages_from_bytes(data.len());
+
+        // TODO(javier-varez): In reality this should be done lazily in most cases
+        let mut data_len = size_bytes;
+        if data.len() > data_len {
+            data_len = data.len();
+        }
+        let num_pages = crate::memory::num_pages_from_bytes(data_len);
         let pmr = MemoryManager::instance()
             .page_allocator()
-            .request_any_pages(num_pages)
-            .unwrap();
+            .request_any_pages(num_pages)?;
 
         self.address_space
-            .map_section(name, va, pmr, data.len(), permissions)
-            .unwrap();
+            .map_section(name, va, pmr, data_len, permissions)?;
 
         unsafe {
             core::ptr::copy_nonoverlapping(data.as_ptr(), va.as_mut_ptr(), data.len());
         }
 
-        self
+        Ok(())
     }
 
-    pub fn start(mut self, entry_point: VirtualAddress) -> Result<(), Error> {
+    pub fn start(
+        mut self,
+        entry_point: VirtualAddress,
+        base_address: VirtualAddress,
+    ) -> Result<(), Error> {
         // Allocate stack
         let pmr = MemoryManager::instance()
             .page_allocator()
-            .request_any_pages(1)
-            .unwrap();
+            .request_any_pages(1)?;
 
-        let stack_va = VirtualAddress::try_from_ptr(0x0000000100000000 as *const _).unwrap();
+        let stack_va = VirtualAddress::try_from_ptr(0xFFFF00000000 as *const _).unwrap();
         self.address_space
-            .map_section(".stack", stack_va, pmr, 4096, Permissions::RW)
-            .unwrap();
+            .map_section(".stack", stack_va, pmr, 4096, Permissions::RW)?;
 
         let pid = NUM_PROCESSES.fetch_add(1, Ordering::Relaxed);
 
@@ -90,6 +117,7 @@ impl Builder {
             ProcessHandle(pid),
             unsafe { stack_va.offset(4096) },
             entry_point,
+            base_address,
         );
 
         let process = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(Process {

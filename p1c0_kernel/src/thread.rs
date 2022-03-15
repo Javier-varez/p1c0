@@ -198,6 +198,7 @@ pub(crate) fn new_for_process(
     process: ProcessHandle,
     stack_va: VirtualAddress,
     entry_point: VirtualAddress,
+    base_address: VirtualAddress,
 ) -> ThreadHandle {
     let name = String::new();
     let stack = Stack::ProcessThread(stack_va);
@@ -220,7 +221,7 @@ pub(crate) fn new_for_process(
         spsr: spsr.get(),
         stack_ptr,
     })));
-    tcb.regs[0] = (&mut **tcb) as *mut ThreadControlBlock as u64;
+    tcb.regs[0] = base_address.as_u64();
 
     ACTIVE_THREADS.lock().push(tcb);
 
