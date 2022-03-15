@@ -31,6 +31,9 @@ pub fn _print(args: ::core::fmt::Arguments) {
         Err(print::Error::WriterLocked) => {
             // TODO(javier-varez): How do we push this to the user?
         }
+        Err(print::Error::BufferFull) => {
+            panic!("Print buffer full!");
+        }
         Err(e) => {
             panic!("Print failed with error: {:?}", e);
         }
