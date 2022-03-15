@@ -19,7 +19,7 @@ CXX_FLAGS := \
 	-fpic \
 	-O0 \
 	-g3 \
-	-std=gnu++20
+	-std=gnu++17
 
 LD_FLAGS := \
 	-nostdlib \
