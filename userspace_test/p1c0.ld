@@ -1,4 +1,4 @@
-ENTRY(main)
+ENTRY(_start)
 
 . = 0x1000000;
 
