@@ -11,6 +11,7 @@ pub mod chickens;
 mod collections;
 pub mod crc;
 pub mod drivers;
+pub mod elf;
 mod font;
 pub mod init;
 pub mod log;
