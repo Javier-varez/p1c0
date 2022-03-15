@@ -102,6 +102,11 @@ pub extern "C" fn kernel_main() -> ! {
 fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     // Mask interrupts.
     DAIF.write(DAIF::D::Masked + DAIF::A::Masked + DAIF::I::Masked + DAIF::F::Masked);
+
+    unsafe {
+        p1c0_kernel::print::force_flush();
+    }
+
     log_error!("Panicked with message: {:?}", panic_info);
 
     unsafe {
