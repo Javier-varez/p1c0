@@ -23,7 +23,7 @@ use crate::{
 
 use crate::drivers::generic_timer::get_timer;
 use crate::memory::address::{Address, VirtualAddress};
-use crate::process::ProcessHandle;
+use crate::process::{do_with_process, ProcessHandle};
 use crate::syscall::Syscall;
 use core::ops::Add;
 use core::time::Duration;
@@ -276,6 +276,13 @@ fn restore_thread_context(cx: &mut ExceptionContext, thread: &Tcb) {
     cx.sp_el0 = thread.stack_ptr;
     cx.gpr.copy_from_slice(&thread.regs[..]);
     cx.elr_el1 = thread.elr;
+
+    if let Some(handle) = thread.process.as_ref() {
+        do_with_process(handle, |process| unsafe {
+            arch::mmu::MMU
+                .switch_process_translation_table(process.address_space().address_table());
+        });
+    }
 }
 
 fn wake_asleep_threads() {
@@ -319,14 +326,6 @@ pub fn run_scheduler(cx: &mut ExceptionContext) {
 
     let thread = schedule_next_thread();
     restore_thread_context(cx, &thread);
-
-    if let Some(handle) = thread.process.as_ref() {
-        crate::process::do_with_process(handle, |process| unsafe {
-            arch::mmu::MMU
-                .switch_process_translation_table(process.address_space().address_table());
-        });
-    }
-
     current_thread.replace(thread);
 }
 
@@ -353,7 +352,6 @@ pub fn sleep_current_thread(cx: &mut ExceptionContext, duration: Duration) {
 
     let thread = schedule_next_thread();
     restore_thread_context(cx, &thread);
-
     current_thread.replace(thread);
 }
 
