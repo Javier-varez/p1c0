@@ -4,7 +4,10 @@ CXX := $(CROSS_COMPILE)g++
 LD := $(CROSS_COMPILE)ld
 OBJCOPY := $(CROSS_COMPILE)objcopy
 
-SOURCES := src/main.cpp
+SOURCES := \
+	src/main.cpp \
+	src/relocations.cpp
+
 LINKER_SCRIPT := p1c0.ld
 
 CXX_FLAGS := \
@@ -14,8 +17,9 @@ CXX_FLAGS := \
 	-fno-rtti \
 	-fno-exceptions \
 	-fpic \
-	-Os \
-	-g3
+	-O0 \
+	-g3 \
+	-std=gnu++20
 
 LD_FLAGS := \
 	-nostdlib \
