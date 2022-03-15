@@ -24,6 +24,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 pub enum Error {
     AddressSpaceError(address_space::Error),
     PageAllocError(physical_page_allocator::Error),
+    InvalidBase,
 }
 
 impl From<address_space::Error> for Error {
@@ -113,7 +114,9 @@ impl Builder {
             .page_allocator()
             .request_any_pages(1)?;
 
-        let stack_va = VirtualAddress::try_from_ptr(0xFFFF00000000 as *const _).unwrap();
+        let stack_va =
+            VirtualAddress::try_from_ptr((0xF00000000000 + base_address.as_u64()) as *const _)
+                .map_err(|_e| Error::InvalidBase)?;
         self.address_space
             .map_section(".stack", stack_va, pmr, 4096, Permissions::RW)?;
 
