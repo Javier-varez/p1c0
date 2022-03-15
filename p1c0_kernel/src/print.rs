@@ -39,7 +39,7 @@ static mut EARLY_PRINT: Option<*mut dyn EarlyPrint> = None;
 
 static PRINT: SpinLock<Option<*const dyn Print>> = SpinLock::new(None);
 
-const BUFFER_SIZE: usize = 16384;
+const BUFFER_SIZE: usize = 1024 * 256;
 static BUFFER: RingBuffer<BUFFER_SIZE> = RingBuffer::new();
 static LOG_WRITER: SpinLock<Option<LogWriter>> = SpinLock::new(None);
 
