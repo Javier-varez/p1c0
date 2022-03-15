@@ -18,7 +18,7 @@ target_compile_options(userspace_test PRIVATE
         -fpic
         -O0
         -g3
-        -std=gnu++20)
+        -std=gnu++17)
 
 target_include_directories(userspace_test PRIVATE include)
 
