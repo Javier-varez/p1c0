@@ -607,10 +607,10 @@ impl MemoryManagementUnit {
     }
 
     pub fn flush_tlb(&mut self) {
-        #[cfg(all(test, target_arch = "aarch64"))]
+        #[cfg(all(not(test), target_arch = "aarch64"))]
         unsafe {
             core::arch::asm!("dsb ishst");
-            core::arch::asm!("tlbi alle1");
+            core::arch::asm!("tlbi vmalle1");
             core::arch::asm!("dsb ish");
             core::arch::asm!("isb");
         }
