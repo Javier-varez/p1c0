@@ -58,13 +58,19 @@ bool format_hex(u32 number, char *str, u32 max_length) {
 CLINKAGE int _start(u64 base_addr) {
   // After booting we need to apply self-relocations (since this is a pie executable there is no dynamic loader to do
   // any relocations)
-  const RelaEntry *relocations = (const RelaEntry *) &_rela_start;
-  u64 rela_len_bytes = (u64) & _rela_end - (u64) & _rela_start;
+  const RelaEntry *relocations;
+  u64 rela_len_bytes;
+
+  asm volatile("adr %0, _rela_start\n"
+               "adr %1, _rela_end\n"
+               "sub %1, %1, %0\n" :
+  "=r" (relocations), "=r" (rela_len_bytes)::);
+
   apply_relocations(base_addr, relocations, rela_len_bytes);
 
   char str[16];
 
-  int i = 0;
+  int i = base_addr;
   // And now we can start doing work
   while (true) {
     puts("Hi there!");
