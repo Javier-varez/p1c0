@@ -124,17 +124,12 @@ pub fn init_printer<T: Print + Sync>(printer: &'static T) {
         });
 }
 
+/// # Safety
+///   Only callable from a single-threaded context if the reader thread is stuck
 pub unsafe fn force_flush() {
     let mut reader = BUFFER.split_reader_unchecked();
     let printer = &**PRINT.lock().as_ref().unwrap();
-    loop {
-        match reader.pop() {
-            Ok(val) => {
-                printer.write_u8(val).unwrap();
-            }
-            Err(_error) => {
-                break;
-            }
-        }
+    while let Ok(val) = reader.pop() {
+        printer.write_u8(val).unwrap();
     }
 }

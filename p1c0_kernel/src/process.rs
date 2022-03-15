@@ -54,8 +54,8 @@ pub struct Builder {
     address_space: ProcessAddressSpace,
 }
 
-impl Builder {
-    pub fn new() -> Self {
+impl Default for Builder {
+    fn default() -> Self {
         let mut addr_space = ProcessAddressSpace::new();
         // Temporarily map this address space
         unsafe {
@@ -65,6 +65,12 @@ impl Builder {
         Self {
             address_space: addr_space,
         }
+    }
+}
+
+impl Builder {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn map_section(
