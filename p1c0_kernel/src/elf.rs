@@ -217,7 +217,7 @@ impl<'a> ElfParser<'a> {
         let index = read_elf64_half!(self.elf_data, E_SHSTRNDX) as usize;
         if index != SHN_UNDEF {
             log_verbose!("str_table index {}", index);
-            self.section_header_iter().skip(index).next()
+            self.section_header_iter().nth(index)
         } else {
             None
         }
@@ -254,13 +254,13 @@ impl<'a> ElfParser<'a> {
         );
 
         for section in self.section_header_iter() {
-            if matches!(section.ty()?, ShType::Progbits) {
-                if section.vaddr() == program_header.vaddr() {
-                    log_verbose!("Found matching section by vaddr");
-                    // Matching section found
-                    let name_idx = section.name_idx() as usize;
-                    return Ok(self.find_section_name_by_index(name_idx));
-                }
+            if matches!(section.ty()?, ShType::Progbits)
+                && section.vaddr() == program_header.vaddr()
+            {
+                log_verbose!("Found matching section by vaddr");
+                // Matching section found
+                let name_idx = section.name_idx() as usize;
+                return Ok(self.find_section_name_by_index(name_idx));
             }
         }
 

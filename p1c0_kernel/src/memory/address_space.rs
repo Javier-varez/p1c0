@@ -331,12 +331,18 @@ pub struct ProcessAddressSpace {
     memory_ranges: Vec<VirtualMemoryRange>,
 }
 
-impl ProcessAddressSpace {
-    pub fn new() -> Self {
+impl Default for ProcessAddressSpace {
+    fn default() -> Self {
         Self {
             address_table: Box::new(mmu::LevelTable::new()),
             memory_ranges: vec![],
         }
+    }
+}
+
+impl ProcessAddressSpace {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     fn check_overlaps(&self, va: VirtualAddress, size_bytes: usize) -> Result<(), Error> {
