@@ -19,7 +19,7 @@ CXX_FLAGS := \
 	-nodefaultlibs \
 	-fno-rtti \
 	-fno-exceptions \
-	-fpic \
+	-fPIE \
 	-O0 \
 	-g3 \
 	-std=gnu++17
@@ -27,6 +27,7 @@ CXX_FLAGS := \
 LD_FLAGS := \
 	-nostdlib \
 	-no-dynamic-linker \
+	-static \
 	-pie \
 	-T $(LINKER_SCRIPT)
 
