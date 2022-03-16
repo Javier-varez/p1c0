@@ -13,7 +13,7 @@ use crate::arch::{
 
 use address::{LogicalAddress, PhysicalAddress, VirtualAddress};
 use address_space::KernelAddressSpace;
-use map::{KernelSection, ADT_VIRTUAL_BASE};
+use map::{KernelSection, ADT_VIRTUAL_BASE, FASTMAP_PAGE};
 use physical_page_allocator::PhysicalPageAllocator;
 
 use crate::sync::spinlock::{SpinLock, SpinLockGuard};
@@ -401,5 +401,20 @@ impl MemoryManager {
 
     pub fn page_allocator(&mut self) -> &mut PhysicalPageAllocator {
         &mut self.physical_page_allocator
+    }
+
+    pub fn do_with_fast_map(
+        &mut self,
+        pa: PhysicalAddress,
+        permissions: Permissions,
+        mut f: impl FnMut(VirtualAddress),
+    ) {
+        self.kernel_address_space
+            .fast_page_map(pa, permissions, Attributes::Normal)
+            .unwrap();
+
+        f(FASTMAP_PAGE);
+
+        self.kernel_address_space.fast_page_unmap().unwrap();
     }
 }

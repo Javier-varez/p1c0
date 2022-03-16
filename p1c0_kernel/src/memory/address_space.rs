@@ -15,6 +15,8 @@ use crate::{
 use heapless::String;
 
 use crate::arch::mmu::LevelTable;
+use crate::memory::address::PhysicalAddress;
+use crate::memory::map::FASTMAP_PAGE;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -24,10 +26,17 @@ const MAX_NAME_LENGTH: usize = 32;
 
 #[derive(Clone, Debug)]
 pub enum Error {
+    ArchSpecificError(mmu::Error),
     MemoryRangeNotFound(String<MAX_NAME_LENGTH>),
     MemoryRangeAlreadyExists(String<MAX_NAME_LENGTH>),
     MemoryRangeOverlaps(String<MAX_NAME_LENGTH>),
     NameTooLong,
+}
+
+impl From<mmu::Error> for Error {
+    fn from(e: mmu::Error) -> Self {
+        Error::ArchSpecificError(e)
+    }
 }
 
 pub(super) struct VirtualMemoryRange {
@@ -309,6 +318,35 @@ impl KernelAddressSpace {
         Err(Error::MemoryRangeNotFound(
             String::from_str(name).map_err(|_| Error::NameTooLong)?,
         ))
+    }
+
+    pub(super) fn fast_page_map(
+        &mut self,
+        pa: PhysicalAddress,
+        permissions: Permissions,
+        attributes: Attributes,
+    ) -> Result<(), Error> {
+        self.high_address_table
+            .map_region(FASTMAP_PAGE, pa, PAGE_SIZE, attributes, permissions)?;
+
+        // Ensure that the TLB discards any entries for the fast map page
+        unsafe {
+            mmu::MMU.flush_tlb_page(FASTMAP_PAGE);
+        }
+
+        Ok(())
+    }
+
+    pub(super) fn fast_page_unmap(&mut self) -> Result<(), Error> {
+        self.high_address_table
+            .unmap_region(FASTMAP_PAGE, PAGE_SIZE)?;
+
+        // Ensure that the TLB discards any entries for the fast map page
+        unsafe {
+            mmu::MMU.flush_tlb_page(FASTMAP_PAGE);
+        }
+
+        Ok(())
     }
 
     pub(super) fn high_table(&mut self) -> &mut LevelTable {
