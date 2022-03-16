@@ -35,9 +35,6 @@ OBJECTS := $(patsubst src/%.cpp, build/%.o, $(SOURCES))
 
 TARGET := build/userspace_test
 TARGET_BIN := $(TARGET).bin
-TARGET_TEXT := $(TARGET)_text.bin
-TARGET_RODATA := $(TARGET)_rodata.bin
-TARGET_DATA := $(TARGET)_data.bin
 
 ifeq ($(filter verbose, $(MAKECMDGOALS)), )
 SILENT := @
@@ -45,11 +42,11 @@ else
 SILENT :=
 endif
 
-all: $(TARGET_BIN) $(TARGET_TEXT) $(TARGET_RODATA) $(TARGET_DATA)
+all: $(TARGET_BIN)
 .PHONY += all
 
 clean:
-	rm -rf build
+	@rm -rf build
 .PHONY += clean
 
 bin: $(TARGET_BIN)
@@ -72,18 +69,3 @@ $(TARGET_BIN): $(TARGET)
 	@echo "\x1b[1;34mGenerating $@\x1b[0m"
 	@mkdir -p $(dir $@)
 	$(SILENT)$(OBJCOPY) -O binary $< $@
-
-$(TARGET_TEXT): $(TARGET)
-	@echo "\x1b[1;34mGenerating $@\x1b[0m"
-	@mkdir -p $(dir $@)
-	$(SILENT)$(OBJCOPY) -O binary -j .text $< $@
-
-$(TARGET_RODATA): $(TARGET)
-	@echo "\x1b[1;34mGenerating $@\x1b[0m"
-	@mkdir -p $(dir $@)
-	$(SILENT)$(OBJCOPY) -O binary -j .rodata $< $@
-
-$(TARGET_DATA): $(TARGET)
-	@echo "\x1b[1;34mGenerating $@\x1b[0m"
-	@mkdir -p $(dir $@)
-	$(SILENT)$(OBJCOPY) -O binary -j .data $< $@
