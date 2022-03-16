@@ -298,7 +298,7 @@ impl<'a> ProgramHeader<'a> {
         read_elf64_xword!(self.pheader_data, P_FILESIZE)
     }
 
-    pub fn permssions(&self) -> Permissions {
+    pub fn permissions(&self) -> Permissions {
         pub const PF_R: Elf64_Word = 4;
         pub const PF_W: Elf64_Word = 2;
         pub const PF_X: Elf64_Word = 1;

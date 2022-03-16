@@ -55,12 +55,44 @@ pub fn create_process(aslr: usize) -> Result<(), Error> {
 
             let segment_data = elf.get_segment_data(&header);
 
+            let permissions = match header.permissions() {
+                elf::Permissions {
+                    read: true,
+                    write: true,
+                    exec: false,
+                } => Permissions::RW,
+                elf::Permissions {
+                    read: true,
+                    write: false,
+                    exec: false,
+                } => Permissions::RO,
+                elf::Permissions {
+                    read: _,
+                    write: false,
+                    exec: true,
+                } => Permissions::RX,
+                elf::Permissions {
+                    read: true,
+                    write: true,
+                    exec: true,
+                } => Permissions::RWX,
+                elf::Permissions { read, write, exec } => {
+                    let read = if read { "R" } else { "-" };
+                    let write = if write { "W" } else { "-" };
+                    let exec = if exec { "X" } else { "-" };
+                    panic!(
+                        "Unsupported set of permissions found in elf {}{}{}",
+                        read, write, exec
+                    );
+                }
+            };
+
             process_builder.map_section(
                 elf.matching_section_name(&header)?.unwrap_or(""),
                 vaddr,
                 header.memsize() as usize,
                 segment_data,
-                Permissions::RWX, // TODO(javier-varez): Use proper permissions
+                permissions,
             )?;
         } else {
             log_warning!("Unhandled ELF program header with type {:?}", header_type);
@@ -68,8 +100,9 @@ pub fn create_process(aslr: usize) -> Result<(), Error> {
     }
 
     let vaddr = (elf.entry_point() as usize + aslr) as *const _;
-    let entry = VirtualAddress::new_unaligned(vaddr);
-    process_builder.start(entry, VirtualAddress::new_unaligned(aslr as *const _))?;
+    let entry_point = VirtualAddress::new_unaligned(vaddr);
+    let base_address = VirtualAddress::new_unaligned(aslr as *const _);
+    process_builder.start(entry_point, base_address)?;
 
     Ok(())
 }
