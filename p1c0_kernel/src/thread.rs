@@ -2,12 +2,9 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use cortex_a::{
-    asm::{barrier, wfi},
-    registers::{ELR_EL1, SPSR_EL1, SP_EL0},
-};
+use cortex_a::{asm::wfi, registers::SPSR_EL1};
 use heapless::String;
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::interfaces::Readable;
 
 use crate::{
     arch,
@@ -21,16 +18,14 @@ use crate::{
     sync::spinlock::SpinLock,
 };
 
+use crate::arch::exceptions::return_from_exception;
 use crate::drivers::generic_timer::get_timer;
 use crate::memory::address::{Address, VirtualAddress};
 use crate::process::{do_with_process, ProcessHandle};
 use crate::syscall::Syscall;
 use core::ops::Add;
+use core::sync::atomic::{AtomicU64, Ordering};
 use core::time::Duration;
-use core::{
-    arch::asm,
-    sync::atomic::{AtomicU64, Ordering},
-};
 
 enum Stack {
     KernelThread(Vec<u64>),
@@ -65,7 +60,7 @@ pub struct ThreadControlBlock {
     name: String<32>,
     process: Option<crate::process::ProcessHandle>,
     entry: Option<Box<dyn FnOnce()>>,
-    stack: Stack,
+    _stack: Stack,
 
     // Blocking conditions
     block_reason: Option<BlockReason>,
@@ -171,7 +166,7 @@ impl Builder {
             tid,
             name,
             entry: Some(thread_wrapper),
-            stack,
+            _stack: stack,
             process: None,
             block_reason: None,
             regs,
@@ -213,7 +208,7 @@ pub(crate) fn new_for_process(
         tid,
         name,
         entry: None,
-        stack,
+        _stack: stack,
         process: Some(process),
         block_reason: None,
         regs,
@@ -241,29 +236,14 @@ pub fn initialize() -> ! {
     let thread = ACTIVE_THREADS.lock().pop().expect("No threads found!");
     current_thread.replace(thread);
 
-    let tcb = current_thread.as_mut().unwrap();
+    let tcb = current_thread.as_ref().unwrap();
 
     // TODO(javier-varez): This should be a regular context switch or otherwise there are no guarantees on the value of registers on entry...
-    // Setting the EL0 thread stack pointer. This is used instead of the EL1 SP.
-    SP_EL0.set(tcb.stack.top());
-    ELR_EL1.set(thread_start as usize as u64);
-    SPSR_EL1.modify(SPSR_EL1::M::EL1t);
-
-    // Taking a static reference to the TCB is actually safe because it is used on thread entry and
-    // only in the context of the thread. As long as the thread is alive it should be safe to keep
-    // it. Note that the link in the list cannot be mutated via this reference
-    let tcb_raw = (&mut ***tcb) as *mut ThreadControlBlock;
+    let mut cx = ExceptionContext::default();
+    restore_thread_context(&mut cx, tcb);
     drop(current_thread);
 
-    // Jump to thread immediately
-    unsafe {
-        barrier::dsb(barrier::SY);
-        asm!(
-        "mov x0, {}",
-        "eret",
-        in(reg) tcb_raw);
-    }
-    unreachable!();
+    return_from_exception(cx);
 }
 
 fn save_thread_context(thread: &mut Tcb, cx: &ExceptionContext) {

@@ -52,6 +52,18 @@ pub struct ExceptionContext {
     pub gpr: [u64; 31],
 }
 
+impl Default for ExceptionContext {
+    fn default() -> Self {
+        Self {
+            elr_el1: 0,
+            spsr_el1: SpsrEL1(InMemoryRegister::new(0)),
+            esr_el1: EsrEL1(InMemoryRegister::new(0)),
+            sp_el0: 0,
+            gpr: [0; 31],
+        }
+    }
+}
+
 /// Prints verbose information about the exception and then panics.
 fn default_exception_handler(exc: &ExceptionContext) {
     panic!(
@@ -407,4 +419,41 @@ pub fn handling_init() {
         // Force VBAR update to complete before next instruction.
         unsafe { barrier::isb(barrier::SY) };
     }
+}
+
+/// This simulates a return from an exception with the given context. It can be used whenever
+/// you need to immediately return from an exception without waiting for the handler to finish.
+/// It is also useful to return from exceptions that never happened (like transitioning to another
+/// thread, or starting the scheduler)
+pub fn return_from_exception(cx: ExceptionContext) -> ! {
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        barrier::dsb(barrier::SY);
+        core::arch::asm!(
+        "ldp x0, x1, [x30, #0x00]",
+        "ldp x2, x3, [x30, #0x10]",
+        "msr ELR_EL1,  x0",
+        "msr SPSR_EL1, x1",
+        "msr SP_EL0, x3",
+        "ldp x0,  x1,  [x30, #0x20]",
+        "ldp x2,  x3,  [x30, #0x30]",
+        "ldp x4,  x5,  [x30, #0x40]",
+        "ldp x6,  x7,  [x30, #0x50]",
+        "ldp x8,  x9,  [x30, #0x60]",
+        "ldp x10, x11, [x30, #0x70]",
+        "ldp x12, x13, [x30, #0x80]",
+        "ldp x14, x15, [x30, #0x90]",
+        "ldp x16, x17, [x30, #0xA0]",
+        "ldp x18, x19, [x30, #0xB0]",
+        "ldp x20, x21, [x30, #0xC0]",
+        "ldp x22, x23, [x30, #0xD0]",
+        "ldp x24, x25, [x30, #0xE0]",
+        "ldp x26, x27, [x30, #0xF0]",
+        "ldp x28, x29, [x30, #0x100]",
+        "ldr x30, [x30, #0x110]",
+        "eret",
+        in("x30") (&cx) as *const _
+        );
+    }
+    unreachable!();
 }
