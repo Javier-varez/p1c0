@@ -105,8 +105,8 @@ impl GlobalPermissions {
         Self {
             unprivileged,
             privileged: match unprivileged {
-                // Permissions::RWX => Permissions::RW,
-                // Permissions::RX => Permissions::RO,
+                Permissions::RWX => Permissions::RW,
+                Permissions::RX => Permissions::RO,
                 perm => perm,
             },
         }
