@@ -63,33 +63,6 @@ fn default_exception_handler(exc: &ExceptionContext) {
     );
 }
 
-#[no_mangle]
-unsafe extern "C" fn current_el0_synchronous(e: &mut ExceptionContext) {
-    match e.esr_el1.exception_class() {
-        Some(ESR_EL1::EC::Value::SVC64) => {
-            syscall_handler(e.esr_el1.instruction_specific_syndrome(), e);
-        }
-        _ => {
-            log_info!("Synchronous exception from EL0 stack");
-            default_exception_handler(e);
-        }
-    }
-}
-
-#[no_mangle]
-unsafe extern "C" fn current_el0_irq(e: &mut ExceptionContext) {
-    log_info!("IRQ from EL0 stack");
-
-    if let Some(aic) = &mut crate::drivers::aic::AIC {
-        if let Some((die, number, r#type)) = aic.get_current_irq() {
-            log_debug!("Irq die {}", die);
-            log_debug!("Irq number {}", number);
-            log_debug!("Irq type {:?}", r#type);
-        }
-    }
-    default_exception_handler(e);
-}
-
 fn handle_fiq(e: &mut ExceptionContext) {
     let timer = generic_timer::get_timer();
 
@@ -112,6 +85,54 @@ fn handle_fiq(e: &mut ExceptionContext) {
     default_exception_handler(e);
 }
 
+enum ExceptionOrigin {
+    SameELAndStack,
+    SameELStackFromEL0,
+    LowerAarch64EL,
+}
+
+unsafe fn handle_synchronous(e: &mut ExceptionContext, origin: ExceptionOrigin) {
+    match e.esr_el1.exception_class() {
+        Some(ESR_EL1::EC::Value::SVC64) => {
+            syscall_handler(e.esr_el1.instruction_specific_syndrome(), e);
+        }
+        _ => {
+            match origin {
+                ExceptionOrigin::SameELStackFromEL0 => {
+                    log_info!("Synchronous exception from EL1 with EL0 stack");
+                }
+                ExceptionOrigin::SameELAndStack => {
+                    log_info!("Synchronous exception from EL1");
+                }
+                ExceptionOrigin::LowerAarch64EL => {
+                    log_info!("Synchronous exception from EL0");
+                }
+            }
+
+            default_exception_handler(e);
+        }
+    }
+}
+
+#[no_mangle]
+unsafe extern "C" fn current_el0_synchronous(e: &mut ExceptionContext) {
+    handle_synchronous(e, ExceptionOrigin::SameELStackFromEL0);
+}
+
+#[no_mangle]
+unsafe extern "C" fn current_el0_irq(e: &mut ExceptionContext) {
+    log_info!("IRQ from EL0 stack");
+
+    if let Some(aic) = &mut crate::drivers::aic::AIC {
+        if let Some((die, number, r#type)) = aic.get_current_irq() {
+            log_debug!("Irq die {}", die);
+            log_debug!("Irq number {}", number);
+            log_debug!("Irq type {:?}", r#type);
+        }
+    }
+    default_exception_handler(e);
+}
+
 #[no_mangle]
 unsafe extern "C" fn current_el0_fiq(e: &mut ExceptionContext) {
     handle_fiq(e);
@@ -125,15 +146,7 @@ unsafe extern "C" fn current_el0_serror(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn current_elx_synchronous(e: &mut ExceptionContext) {
-    match e.esr_el1.exception_class() {
-        Some(ESR_EL1::EC::Value::SVC64) => {
-            syscall_handler(e.esr_el1.instruction_specific_syndrome(), e);
-        }
-        _ => {
-            log_info!("Synchronous exception");
-            default_exception_handler(e);
-        }
-    }
+    handle_synchronous(e, ExceptionOrigin::SameELAndStack);
 }
 
 #[no_mangle]
@@ -164,11 +177,7 @@ unsafe extern "C" fn current_elx_serror(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn lower_el_aarch64_synchronous(e: &mut ExceptionContext) {
-    log_info!(
-        "lower_el_aarch64_synchronous: {:?}",
-        crate::arch::get_exception_level()
-    );
-    default_exception_handler(e);
+    handle_synchronous(e, ExceptionOrigin::LowerAarch64EL);
 }
 
 #[no_mangle]
@@ -182,11 +191,7 @@ unsafe extern "C" fn lower_el_aarch64_irq(e: &mut ExceptionContext) {
 
 #[no_mangle]
 unsafe extern "C" fn lower_el_aarch64_fiq(e: &mut ExceptionContext) {
-    log_info!(
-        "lower_el_aarch64_fiq: {:?}",
-        crate::arch::get_exception_level()
-    );
-    default_exception_handler(e);
+    handle_fiq(e)
 }
 
 #[no_mangle]
