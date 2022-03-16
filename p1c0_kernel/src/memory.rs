@@ -11,10 +11,10 @@ use crate::arch::{
     mmu::{PAGE_BITS, PAGE_SIZE},
 };
 
-use address::{LogicalAddress, PhysicalAddress, VirtualAddress};
+use address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress};
 use address_space::KernelAddressSpace;
 use map::{KernelSection, ADT_VIRTUAL_BASE, FASTMAP_PAGE};
-use physical_page_allocator::PhysicalPageAllocator;
+use physical_page_allocator::{PhysicalMemoryRegion, PhysicalPageAllocator};
 
 use crate::sync::spinlock::{SpinLock, SpinLockGuard};
 
@@ -33,6 +33,12 @@ pub enum Error {
     ArchitectureSpecific(arch::mmu::Error),
     AddressSpaceError(address_space::Error),
     PageAllocationError(physical_page_allocator::Error),
+}
+
+#[derive(Debug, PartialEq, PartialOrd)]
+pub enum AllocPolicy {
+    ZeroFill,
+    None,
 }
 
 impl From<arch::mmu::Error> for Error {
@@ -367,6 +373,25 @@ impl MemoryManager {
         Ok(())
     }
 
+    pub fn request_any_pages(
+        &mut self,
+        num_pages: usize,
+        policy: AllocPolicy,
+    ) -> Result<PhysicalMemoryRegion, Error> {
+        let pmr = self.physical_page_allocator.request_any_pages(num_pages)?;
+
+        if policy == AllocPolicy::ZeroFill {
+            for page_idx in 0..pmr.num_pages() {
+                let pa = unsafe { pmr.base_address().offset(page_idx * PAGE_SIZE) };
+                self.do_with_fast_map(pa, Permissions::RW, |va| unsafe {
+                    core::ptr::write_bytes(va.as_mut_ptr(), 0u8, PAGE_SIZE)
+                });
+            }
+        }
+
+        Ok(pmr)
+    }
+
     fn initialize_physical_page_allocator(
         &mut self,
         dram_base: PhysicalAddress,
@@ -397,10 +422,6 @@ impl MemoryManager {
         self.physical_page_allocator.print_regions();
 
         Ok(())
-    }
-
-    pub fn page_allocator(&mut self) -> &mut PhysicalPageAllocator {
-        &mut self.physical_page_allocator
     }
 
     pub fn do_with_fast_map(
