@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use crate::memory::address::{Address, VirtualAddress};
-use crate::memory::{MemoryManager, Permissions};
+use crate::memory::{GlobalPermissions, MemoryManager, Permissions};
 use crate::{
     collections::{
         intrusive_list::{IntrusiveItem, IntrusiveList},
@@ -82,13 +82,17 @@ impl Builder {
             let page_data = &data[current_offset..];
 
             // Try to perform a fast mapping of the page to load the contents
-            memory::MemoryManager::instance().do_with_fast_map(pa, Permissions::RW, |va| unsafe {
-                core::ptr::copy_nonoverlapping(
-                    page_data.as_ptr(),
-                    va.as_mut_ptr(),
-                    page_data.len(),
-                );
-            });
+            memory::MemoryManager::instance().do_with_fast_map(
+                pa,
+                GlobalPermissions::new_only_privileged(Permissions::RW),
+                |va| unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        page_data.as_ptr(),
+                        va.as_mut_ptr(),
+                        page_data.len(),
+                    );
+                },
+            );
 
             remaining_bytes -= chunk_size;
             current_offset += chunk_size;
@@ -117,8 +121,13 @@ impl Builder {
 
         self.copy_section(&pmr, data);
 
-        self.address_space
-            .map_section(name, va, pmr, size_bytes, permissions)?;
+        self.address_space.map_section(
+            name,
+            va,
+            pmr,
+            size_bytes,
+            GlobalPermissions::new_for_process(permissions),
+        )?;
 
         Ok(())
     }
@@ -134,8 +143,13 @@ impl Builder {
         let stack_va =
             VirtualAddress::try_from_ptr((0xF00000000000 + base_address.as_u64()) as *const _)
                 .map_err(|_e| Error::InvalidBase)?;
-        self.address_space
-            .map_section(".stack", stack_va, pmr, 4096, Permissions::RW)?;
+        self.address_space.map_section(
+            ".stack",
+            stack_va,
+            pmr,
+            4096,
+            GlobalPermissions::new_for_process(Permissions::RW),
+        )?;
 
         let pid = NUM_PROCESSES.fetch_add(1, Ordering::Relaxed);
 

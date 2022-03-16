@@ -80,10 +80,37 @@ impl TryFrom<u64> for Attributes {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Permissions {
+    None,
     RWX,
     RW,
     RX,
     RO,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct GlobalPermissions {
+    pub unprivileged: Permissions,
+    pub privileged: Permissions,
+}
+
+impl GlobalPermissions {
+    pub fn new_only_privileged(privileged: Permissions) -> Self {
+        Self {
+            unprivileged: Permissions::None,
+            privileged,
+        }
+    }
+
+    pub fn new_for_process(unprivileged: Permissions) -> Self {
+        Self {
+            unprivileged,
+            privileged: match unprivileged {
+                // Permissions::RWX => Permissions::RW,
+                // Permissions::RX => Permissions::RO,
+                perm => perm,
+            },
+        }
+    }
 }
 
 static MEMORY_MANAGER: SpinLock<MemoryManager> = SpinLock::new(MemoryManager::new());
@@ -146,7 +173,7 @@ impl MemoryManager {
                     .expect("Address is not aligned to page size"),
                 dram_size,
                 Attributes::Normal,
-                Permissions::RWX,
+                GlobalPermissions::new_only_privileged(Permissions::RWX),
             )
             .expect("Mappings overlap");
 
@@ -169,7 +196,7 @@ impl MemoryManager {
                         .expect("Address is not aligned to page size"),
                     mmio_region_size,
                     Attributes::DevicenGnRnE,
-                    Permissions::RWX,
+                    GlobalPermissions::new_only_privileged(Permissions::RWX),
                 )
                 .expect("Mappings overlap");
         }
@@ -257,7 +284,7 @@ impl MemoryManager {
                 device_tree,
                 device_tree_size,
                 Attributes::Normal,
-                Permissions::RO,
+                GlobalPermissions::new_only_privileged(Permissions::RO),
             )
             .expect("Boot args can be mapped");
 
@@ -308,7 +335,7 @@ impl MemoryManager {
         let la = logical_range.la;
         let size = logical_range.size_bytes;
         let attributes = logical_range.attributes;
-        let permissions = logical_range.permissions;
+        let permissions = GlobalPermissions::new_only_privileged(logical_range.permissions);
 
         self.kernel_address_space
             .high_table()
@@ -343,7 +370,7 @@ impl MemoryManager {
                 pa,
                 size_bytes,
                 Attributes::DevicenGnRnE,
-                Permissions::RW,
+                GlobalPermissions::new_only_privileged(Permissions::RW),
             )
             .expect("MMU cannot map requested region");
 
@@ -366,7 +393,7 @@ impl MemoryManager {
                 section.la(),
                 section.size_bytes(),
                 Attributes::Normal,
-                section.permissions(),
+                section.permissions().privileged,
                 None,
             )?;
         }
@@ -383,9 +410,11 @@ impl MemoryManager {
         if policy == AllocPolicy::ZeroFill {
             for page_idx in 0..pmr.num_pages() {
                 let pa = unsafe { pmr.base_address().offset(page_idx * PAGE_SIZE) };
-                self.do_with_fast_map(pa, Permissions::RW, |va| unsafe {
-                    core::ptr::write_bytes(va.as_mut_ptr(), 0u8, PAGE_SIZE)
-                });
+                self.do_with_fast_map(
+                    pa,
+                    GlobalPermissions::new_only_privileged(Permissions::RW),
+                    |va| unsafe { core::ptr::write_bytes(va.as_mut_ptr(), 0u8, PAGE_SIZE) },
+                );
             }
         }
 
@@ -427,7 +456,7 @@ impl MemoryManager {
     pub fn do_with_fast_map(
         &mut self,
         pa: PhysicalAddress,
-        permissions: Permissions,
+        permissions: GlobalPermissions,
         mut f: impl FnMut(VirtualAddress),
     ) {
         self.kernel_address_space

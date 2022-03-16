@@ -17,6 +17,7 @@ use heapless::String;
 use crate::arch::mmu::LevelTable;
 use crate::memory::address::PhysicalAddress;
 use crate::memory::map::FASTMAP_PAGE;
+use crate::memory::GlobalPermissions;
 use alloc::boxed::Box;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -44,7 +45,7 @@ pub(super) struct VirtualMemoryRange {
     pub size_bytes: usize,
     pub name: String<MAX_NAME_LENGTH>,
     pub _attributes: Attributes,
-    pub _permissions: Permissions,
+    pub _permissions: GlobalPermissions,
     pub _pmr: PhysicalMemoryRegion,
     // We can later add operations based on backed descriptors here
 }
@@ -323,7 +324,7 @@ impl KernelAddressSpace {
     pub(super) fn fast_page_map(
         &mut self,
         pa: PhysicalAddress,
-        permissions: Permissions,
+        permissions: GlobalPermissions,
         attributes: Attributes,
     ) -> Result<(), Error> {
         self.high_address_table
@@ -416,7 +417,7 @@ impl ProcessAddressSpace {
         pmr: PhysicalMemoryRegion,
         size_bytes: usize,
         attributes: Attributes,
-        permissions: Permissions,
+        permissions: GlobalPermissions,
     ) -> Result<(), Error> {
         self.check_overlaps(va, size_bytes)?;
 
@@ -447,7 +448,7 @@ impl ProcessAddressSpace {
         va: VirtualAddress,
         pmr: PhysicalMemoryRegion,
         size_bytes: usize,
-        permissions: Permissions,
+        permissions: GlobalPermissions,
     ) -> Result<(), Error> {
         let pa = pmr.base_address();
         self.address_table
