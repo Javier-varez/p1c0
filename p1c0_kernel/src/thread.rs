@@ -260,9 +260,8 @@ fn restore_thread_context(cx: &mut ExceptionContext, thread: &Tcb) {
     cx.elr_el1 = thread.elr;
 
     if let Some(handle) = thread.process.as_ref() {
-        do_with_process(handle, |process| unsafe {
-            arch::mmu::MMU
-                .switch_process_translation_table(process.address_space().address_table());
+        do_with_process(handle, |process| {
+            arch::mmu::switch_process_translation_table(process.address_space().address_table());
         });
     }
 }

@@ -331,9 +331,7 @@ impl KernelAddressSpace {
             .map_region(FASTMAP_PAGE, pa, PAGE_SIZE, attributes, permissions)?;
 
         // Ensure that the TLB discards any entries for the fast map page
-        unsafe {
-            mmu::MMU.flush_tlb_page(FASTMAP_PAGE);
-        }
+        mmu::flush_tlb_page(FASTMAP_PAGE);
 
         Ok(())
     }
@@ -343,9 +341,7 @@ impl KernelAddressSpace {
             .unmap_region(FASTMAP_PAGE, PAGE_SIZE)?;
 
         // Ensure that the TLB discards any entries for the fast map page
-        unsafe {
-            mmu::MMU.flush_tlb_page(FASTMAP_PAGE);
-        }
+        mmu::flush_tlb_page(FASTMAP_PAGE);
 
         Ok(())
     }
