@@ -29,7 +29,10 @@ const ELF: &[u8] = include_bytes!("../../userspace_test/build/userspace_test");
 pub fn create_process(aslr: usize) -> Result<(), Error> {
     let elf = elf::ElfParser::from_slice(ELF)?;
 
-    if !matches!(elf.elf_type(), elf::EType::Executable) {
+    if !matches!(
+        elf.elf_type(),
+        elf::EType::Executable | elf::EType::SharedObject
+    ) {
         log_warning!("Elf file is not executable, bailing");
         return Err(Error::FileNotExecutable);
     }
