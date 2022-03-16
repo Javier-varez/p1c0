@@ -3,6 +3,7 @@ use super::{
     Permissions,
 };
 use crate::arch::mmu::PAGE_SIZE;
+use crate::memory::GlobalPermissions;
 
 /// This is the base address for logical addresses.
 pub const KERNEL_LOGICAL_BASE: LogicalAddress =
@@ -51,7 +52,7 @@ pub struct KernelSection {
     name: &'static str,
     start: PhysicalAddress,
     size_bytes: usize,
-    permissions: Permissions,
+    permissions: GlobalPermissions,
 }
 
 impl KernelSection {
@@ -62,25 +63,25 @@ impl KernelSection {
                     ".text",
                     &_text_start as *const u8,
                     &_text_end as *const u8,
-                    Permissions::RX,
+                    GlobalPermissions::new_only_privileged(Permissions::RX),
                 ),
                 KernelSectionId::RoData => (
                     ".rodata",
                     &_rodata_start as *const _,
                     &_rodata_end as *const _,
-                    Permissions::RO,
+                    GlobalPermissions::new_only_privileged(Permissions::RO),
                 ),
                 KernelSectionId::Data => (
                     ".data",
                     &_data_start as *const _,
                     &_data_end as *const _,
-                    Permissions::RW,
+                    GlobalPermissions::new_only_privileged(Permissions::RW),
                 ),
                 KernelSectionId::Arena => (
                     ".arena",
                     &_arena_start as *const _,
                     &_arena_end as *const _,
-                    Permissions::RW,
+                    GlobalPermissions::new_only_privileged(Permissions::RW),
                 ),
             }
         };
@@ -121,7 +122,7 @@ impl KernelSection {
         self.size_bytes
     }
 
-    pub fn permissions(&self) -> Permissions {
+    pub fn permissions(&self) -> GlobalPermissions {
         self.permissions
     }
 }

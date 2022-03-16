@@ -17,13 +17,16 @@ use early_alloc::{AllocRef, EarlyAllocator};
 
 use crate::memory::{
     address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress},
-    Attributes, Permissions,
+    Attributes, GlobalPermissions, Permissions,
 };
 
 pub const VA_MASK: u64 = (1 << 48) - (1 << 14);
 pub const PA_MASK: u64 = (1 << 48) - (1 << 14);
 pub const PAGE_BITS: usize = 14;
 pub const PAGE_SIZE: usize = 1 << PAGE_BITS;
+
+const PXN: u64 = 1 << 53;
+const UXN: u64 = 1 << 54;
 
 const EARLY_ALLOCATOR_SIZE: usize = 128 * 1024;
 static EARLY_ALLOCATOR: EarlyAllocator<EARLY_ALLOCATOR_SIZE> = EarlyAllocator::new();
@@ -33,6 +36,7 @@ pub static mut MMU: MemoryManagementUnit = MemoryManagementUnit::new();
 pub enum Error {
     OverlapsExistingMapping(VirtualAddress, TranslationLevel),
     UnalignedAddress,
+    InvalidPermissions,
 }
 
 const MAIR_ATTR_OFFSET: usize = 2;
@@ -45,33 +49,96 @@ fn attributes_from_mapping(mapping: u64) -> Result<Attributes, Error> {
     Ok(Attributes::try_from((mapping >> MAIR_ATTR_OFFSET) & 0x7).unwrap())
 }
 
-fn permission_ap_bits(permissions: Permissions) -> u64 {
-    match permissions {
-        Permissions::RWX | Permissions::RW => 0b00 << 6,
-        Permissions::RX | Permissions::RO => 0b10 << 6,
-    }
+fn permission_ap_bits(permissions: GlobalPermissions) -> Result<u64, Error> {
+    let GlobalPermissions {
+        privileged,
+        unprivileged,
+    } = permissions;
+    Ok(match (privileged, unprivileged) {
+        (Permissions::RW | Permissions::RWX, Permissions::None) => 0b00 << 6,
+        (Permissions::RX | Permissions::RO, Permissions::None) => 0b10 << 6,
+        (Permissions::RW, Permissions::RW | Permissions::RWX) => 0b01 << 6,
+        (Permissions::RX | Permissions::RO, Permissions::RX | Permissions::RO) => 0b11 << 6,
+        _ => {
+            return Err(Error::InvalidPermissions);
+        }
+    })
 }
 
-fn permission_nx_bits(permissions: Permissions) -> u64 {
-    match permissions {
+fn permission_nx_bits(permissions: GlobalPermissions) -> Result<u64, Error> {
+    let GlobalPermissions {
+        privileged,
+        unprivileged,
+    } = permissions;
+
+    let pxn = match privileged {
         Permissions::RWX | Permissions::RX => 0,
-        Permissions::RW | Permissions::RO => 0x3 << 53, // UXN and PXN bits
-    }
+        _ => PXN,
+    };
+
+    let uxn = match unprivileged {
+        Permissions::RWX | Permissions::RX => 0,
+        _ => UXN,
+    };
+
+    Ok(pxn | uxn)
 }
 
-fn permission_bits(permissions: Permissions) -> u64 {
-    permission_ap_bits(permissions) | permission_nx_bits(permissions)
+fn permission_bits(permissions: GlobalPermissions) -> Result<u64, Error> {
+    Ok(permission_ap_bits(permissions)? | permission_nx_bits(permissions)?)
 }
 
-fn permissions_from_mapping(mapping: u64) -> Permissions {
-    let exec = (mapping & (0x03 << 53)) == 0;
+fn permissions_from_mapping(mapping: u64) -> GlobalPermissions {
+    let pxn = (mapping & PXN) != 0;
+    let uxn = (mapping & UXN) != 0;
     let writable = (mapping & (0b10 << 6)) == 0;
+    let user = (mapping & (0b01 << 6)) != 0;
 
-    match (exec, writable) {
-        (false, false) => Permissions::RO,
-        (true, false) => Permissions::RX,
-        (false, true) => Permissions::RW,
-        (true, true) => Permissions::RWX,
+    match (pxn, uxn, writable, user) {
+        (false, _, false, false) => GlobalPermissions {
+            privileged: Permissions::RX,
+            unprivileged: Permissions::None,
+        },
+        (true, _, false, false) => GlobalPermissions {
+            privileged: Permissions::RO,
+            unprivileged: Permissions::None,
+        },
+        (false, _, true, false) => GlobalPermissions {
+            privileged: Permissions::RWX,
+            unprivileged: Permissions::None,
+        },
+        (true, _, true, false) => GlobalPermissions {
+            privileged: Permissions::RW,
+            unprivileged: Permissions::None,
+        },
+        (false, false, false, true) => GlobalPermissions {
+            privileged: Permissions::RX,
+            unprivileged: Permissions::RX,
+        },
+        (true, false, false, true) => GlobalPermissions {
+            privileged: Permissions::RO,
+            unprivileged: Permissions::RX,
+        },
+        (false, true, false, true) => GlobalPermissions {
+            privileged: Permissions::RX,
+            unprivileged: Permissions::RO,
+        },
+        (true, true, false, true) => GlobalPermissions {
+            privileged: Permissions::RO,
+            unprivileged: Permissions::RO,
+        },
+        (_, false, true, true) => GlobalPermissions {
+            privileged: Permissions::RW,
+            unprivileged: Permissions::RWX,
+        },
+        (false, true, true, true) => GlobalPermissions {
+            privileged: Permissions::RWX,
+            unprivileged: Permissions::RW,
+        },
+        (true, true, true, true) => GlobalPermissions {
+            privileged: Permissions::RW,
+            unprivileged: Permissions::RW,
+        },
     }
 }
 
@@ -127,24 +194,24 @@ impl DescriptorEntry {
     fn new_block_desc(
         physical_addr: PhysicalAddress,
         attributes: Attributes,
-        permissions: Permissions,
-    ) -> Self {
-        Self(
+        permissions: GlobalPermissions,
+    ) -> Result<Self, Error> {
+        Ok(Self(
             Self::VALID_BIT
                 | Self::ACCESS_FLAG
                 | (physical_addr.as_usize() as u64 & PA_MASK)
                 | mair_index_from_attrs(attributes)
                 | Self::SHAREABILITY
-                | permission_bits(permissions),
-        )
+                | permission_bits(permissions)?,
+        ))
     }
 
     fn new_page_desc(
         physical_addr: PhysicalAddress,
         attributes: Attributes,
-        permissions: Permissions,
-    ) -> Self {
-        Self(
+        permissions: GlobalPermissions,
+    ) -> Result<Self, Error> {
+        Ok(Self(
             Self::VALID_BIT
                 | Self::TABLE_BIT
                 | Self::PAGE_BIT
@@ -152,8 +219,8 @@ impl DescriptorEntry {
                 | (physical_addr.as_u64() & PA_MASK)
                 | mair_index_from_attrs(attributes)
                 | Self::SHAREABILITY
-                | permission_bits(permissions),
-        )
+                | permission_bits(permissions)?,
+        ))
     }
 
     fn get_table(&mut self) -> Option<&mut LevelTable> {
@@ -210,7 +277,7 @@ impl DescriptorEntry {
         }
     }
 
-    fn permissions(&self) -> Option<Permissions> {
+    fn permissions(&self) -> Option<GlobalPermissions> {
         match self.ty() {
             DescriptorType::Page | DescriptorType::Block => Some(permissions_from_mapping(self.0)),
             _ => None,
@@ -418,7 +485,7 @@ impl LevelTable {
         pa: PhysicalAddress,
         size: usize,
         attributes: Attributes,
-        permissions: Permissions,
+        permissions: GlobalPermissions,
     ) -> Result<(), Error> {
         log_debug!(
             "Adding mapping from {:?} to {:?}, size 0x{:x}",
@@ -443,7 +510,7 @@ impl LevelTable {
         mut pa: PhysicalAddress,
         mut size: usize,
         attributes: Attributes,
-        permissions: Permissions,
+        permissions: GlobalPermissions,
         level: TranslationLevel,
     ) -> Result<(), Error> {
         // Size needs to be aligned to page size
@@ -492,9 +559,9 @@ impl LevelTable {
                 && !matches!(descriptor_entry.ty(), DescriptorType::Table)
             {
                 *descriptor_entry = if level.is_last() {
-                    DescriptorEntry::new_page_desc(pa, attributes, permissions)
+                    DescriptorEntry::new_page_desc(pa, attributes, permissions)?
                 } else {
-                    DescriptorEntry::new_block_desc(pa, attributes, permissions)
+                    DescriptorEntry::new_block_desc(pa, attributes, permissions)?
                 };
             } else {
                 if matches!(descriptor_entry.ty(), DescriptorType::Invalid) {
@@ -648,7 +715,13 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
         table
-            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                GlobalPermissions::new_only_privileged(Permissions::RWX),
+            )
             .expect("Adding region was successful");
 
         assert!(matches!(table[0].ty(), DescriptorType::Table));
@@ -698,7 +771,13 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = 1 << 25;
         table
-            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                GlobalPermissions::new_only_privileged(Permissions::RWX),
+            )
             .expect("Adding region was successful");
 
         assert!(matches!(table[0].ty(), DescriptorType::Table));
@@ -741,7 +820,13 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
         table
-            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                GlobalPermissions::new_only_privileged(Permissions::RWX),
+            )
             .expect("Adding region was successful");
 
         assert!(matches!(table[0].ty(), DescriptorType::Table));
@@ -800,7 +885,13 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x12344000000 as *const u8).unwrap();
         let size = block_size + page_size * 4;
         table
-            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                GlobalPermissions::new_only_privileged(Permissions::RWX),
+            )
             .expect("Adding region was successful");
 
         assert!(matches!(table[0].ty(), DescriptorType::Table));
@@ -859,7 +950,13 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x012345678000 as *const u8).unwrap();
         let size = 1 << 14;
         table
-            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                GlobalPermissions::new_only_privileged(Permissions::RWX),
+            )
             .expect("Could add region");
 
         table.unmap_region(from, size).expect("Could remove region");
@@ -912,7 +1009,13 @@ mod test {
         let to = PhysicalAddress::try_from_ptr(0x10000000000 as *const u8).unwrap();
         let size = 0x800000000;
         table
-            .map_region(from, to, size, Attributes::Normal, Permissions::RWX)
+            .map_region(
+                from,
+                to,
+                size,
+                Attributes::Normal,
+                GlobalPermissions::new_only_privileged(Permissions::RWX),
+            )
             .expect("Could add region");
 
         table.unmap_region(from, size).expect("Could remove region");
