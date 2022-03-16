@@ -205,7 +205,7 @@ pub(crate) fn new_for_process(
     let stack_ptr = stack.top();
     let elr = entry_point.as_ptr();
     let mut spsr = SPSR_EL1.extract();
-    spsr.write(SPSR_EL1::M::EL1t);
+    spsr.write(SPSR_EL1::M::EL0t);
     let regs = [0; 31];
     let tid = NUM_THREADS.fetch_add(1, Ordering::Relaxed);
 
@@ -243,6 +243,7 @@ pub fn initialize() -> ! {
 
     let tcb = current_thread.as_mut().unwrap();
 
+    // TODO(javier-varez): This should be a regular context switch or otherwise there are no guarantees on the value of registers on entry...
     // Setting the EL0 thread stack pointer. This is used instead of the EL1 SP.
     SP_EL0.set(tcb.stack.top());
     ELR_EL1.set(thread_start as usize as u64);
