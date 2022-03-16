@@ -609,10 +609,16 @@ impl MemoryManagementUnit {
     pub fn flush_tlb(&mut self) {
         #[cfg(all(not(test), target_arch = "aarch64"))]
         unsafe {
-            core::arch::asm!("dsb ishst");
-            core::arch::asm!("tlbi vmalle1");
-            core::arch::asm!("dsb ish");
-            core::arch::asm!("isb");
+            core::arch::asm!("dsb ishst\n", "tlbi vmalle1\n", "dsb ish\n", "isb\n");
+        }
+    }
+
+    pub fn flush_tlb_page(&mut self, addr: VirtualAddress) {
+        assert!(addr.is_page_aligned());
+
+        #[cfg(all(not(test), target_arch = "aarch64"))]
+        unsafe {
+            core::arch::asm!("dsb ishst\n", "tlbi vaae1, x0\n", "dsb ish\n", "isb\n", in("x0") addr.as_u64());
         }
     }
 }
