@@ -30,7 +30,8 @@ const UXN: u64 = 1 << 54;
 
 const EARLY_ALLOCATOR_SIZE: usize = 128 * 1024;
 static EARLY_ALLOCATOR: EarlyAllocator<EARLY_ALLOCATOR_SIZE> = EarlyAllocator::new();
-pub static mut MMU: MemoryManagementUnit = MemoryManagementUnit::new();
+
+static mut MMU_INITIALIZED: bool = false;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -167,7 +168,7 @@ impl DescriptorEntry {
     }
 
     fn new_table_desc() -> Self {
-        let early = unsafe { !MMU.is_initialized() };
+        let early = !is_initialized();
         let table_addr = if early {
             // FIXME: I'd love to use box here, but it seems to be triggering a compiler failure at
             // the time this code was written (Rust 1.59.0 nightly). Hopefully this gets fixed soon
@@ -227,7 +228,7 @@ impl DescriptorEntry {
         match self.ty() {
             DescriptorType::Table => {
                 let table_ptr = (self.0 & VA_MASK) as *mut LevelTable;
-                if unsafe { MMU.is_initialized() } {
+                if is_initialized() {
                     // If the MMU is initialized we have a physical pointer that should have a
                     // corresponding logical address.
                     let pa = PhysicalAddress::try_from_ptr(table_ptr as *const _)
@@ -592,110 +593,92 @@ impl LevelTable {
     }
 }
 
-pub struct MemoryManagementUnit {
-    initialized: bool,
+pub fn switch_process_translation_table(low_table: &mut LevelTable) {
+    unsafe {
+        let va = LogicalAddress::try_from_ptr(low_table.as_ptr() as *mut _)
+            .expect("Level table not aligned!!");
+        let pa = va.into_physical();
+
+        TTBR0_EL1.set_baddr(pa.as_u64());
+
+        barrier::dsb(barrier::ISHST);
+        barrier::isb(barrier::SY);
+    }
+
+    // TODO(javier-varez): We need better granularity here for performance
+    flush_tlb()
 }
 
-impl MemoryManagementUnit {
-    const fn new() -> Self {
-        Self { initialized: false }
+pub fn flush_tlb() {
+    #[cfg(all(not(test), target_arch = "aarch64"))]
+    unsafe {
+        core::arch::asm!("dsb ishst\n", "tlbi vmalle1\n", "dsb ish\n", "isb\n");
     }
+}
 
-    pub fn init_and_enable(&mut self, high_table: &mut LevelTable, low_table: &mut LevelTable) {
-        if self.initialized {
-            panic!("MMU Already initialized!");
-        }
-        self.enable(high_table, low_table);
-        self.initialized = true;
-    }
+pub fn flush_tlb_page(addr: VirtualAddress) {
+    assert!(addr.is_page_aligned());
 
-    pub fn is_initialized(&self) -> bool {
-        self.initialized
-    }
-
-    fn enable(&mut self, high_table: &mut LevelTable, low_table: &mut LevelTable) {
-        MAIR_EL1.write(
-            MAIR_EL1::Attr0_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
-                + MAIR_EL1::Attr0_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
-                + MAIR_EL1::Attr1_Device::nonGathering_nonReordering_noEarlyWriteAck
-                + MAIR_EL1::Attr2_Device::nonGathering_nonReordering_EarlyWriteAck,
-        );
-
-        TCR_EL1.write(
-            TCR_EL1::IPS::Bits_48
-                + TCR_EL1::TG1::KiB_16
-                + TCR_EL1::TG0::KiB_16
-                + TCR_EL1::SH1::Inner
-                + TCR_EL1::SH0::Inner
-                + TCR_EL1::ORGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
-                + TCR_EL1::ORGN1::WriteBack_ReadAlloc_WriteAlloc_Cacheable
-                + TCR_EL1::IRGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
-                + TCR_EL1::IRGN1::WriteBack_ReadAlloc_WriteAlloc_Cacheable
-                + TCR_EL1::T0SZ.val(16)
-                + TCR_EL1::T1SZ.val(16),
-        );
-
-        TTBR0_EL1.set_baddr(low_table.table.as_ptr() as u64);
-        TTBR1_EL1.set_baddr(high_table.table.as_ptr() as u64);
-
-        unsafe {
-            barrier::dsb(barrier::ISHST);
-            barrier::isb(barrier::SY);
-        }
-
-        // Actually enable the MMU
-        SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
-
-        self.flush_tlb();
-
-        if matches!(
-            SCTLR_EL1.read_as_enum(SCTLR_EL1::M),
-            Some(SCTLR_EL1::M::Value::Enable)
-        ) {
-            log_info!("MMU enabled");
-        } else {
-            log_error!("Error enabling MMU");
-        }
-    }
-
-    pub fn switch_process_translation_table(&mut self, low_table: &mut LevelTable) {
-        unsafe {
-            let va = LogicalAddress::try_from_ptr(low_table.as_ptr() as *mut _)
-                .expect("Level table not aligned!!");
-            let pa = va.into_physical();
-
-            TTBR0_EL1.set_baddr(pa.as_u64());
-
-            barrier::dsb(barrier::ISHST);
-            barrier::isb(barrier::SY);
-        }
-
-        self.flush_tlb()
-    }
-
-    pub fn flush_tlb(&mut self) {
-        #[cfg(all(not(test), target_arch = "aarch64"))]
-        unsafe {
-            core::arch::asm!("dsb ishst\n", "tlbi vmalle1\n", "dsb ish\n", "isb\n");
-        }
-    }
-
-    pub fn flush_tlb_page(&mut self, addr: VirtualAddress) {
-        assert!(addr.is_page_aligned());
-
-        #[cfg(all(not(test), target_arch = "aarch64"))]
-        unsafe {
-            core::arch::asm!("dsb ishst\n", "tlbi vaae1, x0\n", "dsb ish\n", "isb\n", in("x0") addr.as_u64());
-        }
+    #[cfg(all(not(test), target_arch = "aarch64"))]
+    unsafe {
+        core::arch::asm!("dsb ishst\n", "tlbi vaae1, x0\n", "dsb ish\n", "isb\n", in("x0") addr.as_u64());
     }
 }
 
 pub fn initialize(high_table: &mut LevelTable, low_table: &mut LevelTable) {
-    unsafe { MMU.init_and_enable(high_table, low_table) };
+    if unsafe { MMU_INITIALIZED } {
+        panic!("MMU Already initialized!");
+    }
+
+    MAIR_EL1.write(
+        MAIR_EL1::Attr0_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc
+            + MAIR_EL1::Attr0_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
+            + MAIR_EL1::Attr1_Device::nonGathering_nonReordering_noEarlyWriteAck
+            + MAIR_EL1::Attr2_Device::nonGathering_nonReordering_EarlyWriteAck,
+    );
+
+    TCR_EL1.write(
+        TCR_EL1::IPS::Bits_48
+            + TCR_EL1::TG1::KiB_16
+            + TCR_EL1::TG0::KiB_16
+            + TCR_EL1::SH1::Inner
+            + TCR_EL1::SH0::Inner
+            + TCR_EL1::ORGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
+            + TCR_EL1::ORGN1::WriteBack_ReadAlloc_WriteAlloc_Cacheable
+            + TCR_EL1::IRGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
+            + TCR_EL1::IRGN1::WriteBack_ReadAlloc_WriteAlloc_Cacheable
+            + TCR_EL1::T0SZ.val(16)
+            + TCR_EL1::T1SZ.val(16),
+    );
+
+    TTBR0_EL1.set_baddr(low_table.table.as_ptr() as u64);
+    TTBR1_EL1.set_baddr(high_table.table.as_ptr() as u64);
+
+    unsafe {
+        barrier::dsb(barrier::ISHST);
+        barrier::isb(barrier::SY);
+    }
+
+    // Actually enable the MMU
+    SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);
+
+    flush_tlb();
+
+    if matches!(
+        SCTLR_EL1.read_as_enum(SCTLR_EL1::M),
+        Some(SCTLR_EL1::M::Value::Enable)
+    ) {
+        log_info!("MMU enabled");
+    } else {
+        log_error!("Error enabling MMU");
+    }
+
+    // It is safe to set it here, because we are in a single-threaded context
+    unsafe { MMU_INITIALIZED = true };
 }
 
 pub fn is_initialized() -> bool {
-    unsafe { MMU.is_initialized() }
+    unsafe { MMU_INITIALIZED }
 }
 
 #[cfg(test)]
@@ -707,7 +690,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        unsafe { MMU.initialized = true };
+        unsafe { MMU_INITIALIZED = true };
 
         let mut table = LevelTable::new();
 
@@ -763,7 +746,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        unsafe { MMU.initialized = true };
+        unsafe { MMU_INITIALIZED = true };
 
         let mut table = LevelTable::new();
 
@@ -809,7 +792,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        unsafe { MMU.initialized = true };
+        unsafe { MMU_INITIALIZED = true };
 
         let mut table = LevelTable::new();
 
@@ -873,7 +856,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        unsafe { MMU.initialized = true };
+        unsafe { MMU_INITIALIZED = true };
 
         let mut table = LevelTable::new();
 
@@ -942,7 +925,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        unsafe { MMU.initialized = true };
+        unsafe { MMU_INITIALIZED = true };
 
         let mut table = LevelTable::new();
 
@@ -1001,7 +984,7 @@ mod test {
         // Let's trick the test to use the global allocator instead of the early allocator. On
         // tests our assumptions don't hold for the global allocator, so we need to make sure to
         // use an adequate allocator.
-        unsafe { MMU.initialized = true };
+        unsafe { MMU_INITIALIZED = true };
 
         let mut table = LevelTable::new();
 
