@@ -2,6 +2,7 @@ use super::{
     address::{LogicalAddress, PhysicalAddress, VirtualAddress},
     Permissions,
 };
+use crate::arch::mmu::PAGE_SIZE;
 
 /// This is the base address for logical addresses.
 pub const KERNEL_LOGICAL_BASE: LogicalAddress =
@@ -14,7 +15,11 @@ pub const ADT_VIRTUAL_BASE: VirtualAddress =
 /// Last 4GB are reserved for MMIO
 pub const MMIO_BASE: VirtualAddress =
     unsafe { VirtualAddress::new_unchecked(0xFFFFFFFF00000000 as *const u8) };
-pub const MMIO_SIZE: usize = 4 * 1024 * 1024 * 1024;
+pub const MMIO_SIZE: usize = 4 * 1024 * 1024 * 1024 - PAGE_SIZE;
+
+/// Last page is used for fast mapping into the kernel address space.
+pub const FASTMAP_PAGE: VirtualAddress =
+    unsafe { VirtualAddress::new_unchecked(0xFFFFFFFFFFFFC000 as *const u8) };
 
 extern "C" {
     static _text_start: u8;
