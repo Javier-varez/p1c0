@@ -3,27 +3,25 @@ extern crate alloc;
 use crate::memory::address::{Address, VirtualAddress};
 use crate::memory::{MemoryManager, Permissions};
 use crate::{
-    arch,
     collections::{
         intrusive_list::{IntrusiveItem, IntrusiveList},
         OwnedMutPtr,
     },
-    log_debug,
-    memory::{
-        address_space::{self, ProcessAddressSpace},
-        physical_page_allocator,
-    },
+    log_debug, memory,
+    memory::address_space::{self, ProcessAddressSpace},
     sync::spinlock::SpinLock,
     thread::{self, ThreadHandle},
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 
+use crate::arch::mmu::PAGE_SIZE;
+use crate::memory::physical_page_allocator::PhysicalMemoryRegion;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug)]
 pub enum Error {
     AddressSpaceError(address_space::Error),
-    PageAllocError(physical_page_allocator::Error),
+    MemoryError(memory::Error),
     InvalidBase,
 }
 
@@ -33,9 +31,9 @@ impl From<address_space::Error> for Error {
     }
 }
 
-impl From<physical_page_allocator::Error> for Error {
-    fn from(e: physical_page_allocator::Error) -> Self {
-        Error::PageAllocError(e)
+impl From<memory::Error> for Error {
+    fn from(e: memory::Error) -> Self {
+        Error::MemoryError(e)
     }
 }
 
@@ -57,14 +55,8 @@ pub struct Builder {
 
 impl Default for Builder {
     fn default() -> Self {
-        let mut addr_space = ProcessAddressSpace::new();
-        // Temporarily map this address space
-        unsafe {
-            arch::mmu::MMU.switch_process_translation_table(addr_space.address_table());
-        }
-
         Self {
-            address_space: addr_space,
+            address_space: ProcessAddressSpace::new(),
         }
     }
 }
@@ -72,6 +64,38 @@ impl Default for Builder {
 impl Builder {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    fn copy_section(&mut self, pmr: &PhysicalMemoryRegion, data: &[u8]) {
+        // Initialize the physical page
+        let mut remaining_bytes = data.len();
+        let mut current_offset = 0;
+
+        for i in 0..pmr.num_pages() {
+            let pa = unsafe { pmr.base_address().offset(i * PAGE_SIZE) };
+            let chunk_size = if remaining_bytes >= PAGE_SIZE {
+                PAGE_SIZE
+            } else {
+                remaining_bytes
+            };
+
+            let page_data = &data[current_offset..];
+
+            // Try to perform a fast mapping of the page to load the contents
+            memory::MemoryManager::instance().do_with_fast_map(pa, Permissions::RW, |va| unsafe {
+                core::ptr::copy_nonoverlapping(
+                    page_data.as_ptr(),
+                    va.as_mut_ptr(),
+                    page_data.len(),
+                );
+            });
+
+            remaining_bytes -= chunk_size;
+            current_offset += chunk_size;
+        }
+
+        assert_eq!(remaining_bytes, 0);
+        assert_eq!(current_offset, data.len());
     }
 
     pub fn map_section(
@@ -85,21 +109,16 @@ impl Builder {
         log_debug!("Mapping section `{}` for new process", name);
 
         // TODO(javier-varez): In reality this should be done lazily in most cases
-        let mut data_len = size_bytes;
-        if data.len() > data_len {
-            data_len = data.len();
-        }
-        let num_pages = crate::memory::num_pages_from_bytes(data_len);
+        assert!(size_bytes >= data.len());
+
+        let num_pages = crate::memory::num_pages_from_bytes(size_bytes);
         let pmr = MemoryManager::instance()
-            .page_allocator()
-            .request_any_pages(num_pages)?;
+            .request_any_pages(num_pages, memory::AllocPolicy::ZeroFill)?;
+
+        self.copy_section(&pmr, data);
 
         self.address_space
-            .map_section(name, va, pmr, data_len, permissions)?;
-
-        unsafe {
-            core::ptr::copy_nonoverlapping(data.as_ptr(), va.as_mut_ptr(), data.len());
-        }
+            .map_section(name, va, pmr, size_bytes, permissions)?;
 
         Ok(())
     }
@@ -110,9 +129,7 @@ impl Builder {
         base_address: VirtualAddress,
     ) -> Result<(), Error> {
         // Allocate stack
-        let pmr = MemoryManager::instance()
-            .page_allocator()
-            .request_any_pages(1)?;
+        let pmr = MemoryManager::instance().request_any_pages(1, memory::AllocPolicy::ZeroFill)?;
 
         let stack_va =
             VirtualAddress::try_from_ptr((0xF00000000000 + base_address.as_u64()) as *const _)
