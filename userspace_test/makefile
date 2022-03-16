@@ -1,12 +1,15 @@
 THIS_FILE := $(firstword $(MAKEFILE_LIST))
 
+CROSS_COMPILE ?= aarch64-none-elf-
+
 CXX := $(CROSS_COMPILE)g++
 LD := $(CROSS_COMPILE)ld
 OBJCOPY := $(CROSS_COMPILE)objcopy
 
 SOURCES := \
 	src/main.cpp \
-	src/relocations.cpp
+	src/relocations.cpp \
+	src/syscalls.cpp
 
 LINKER_SCRIPT := p1c0.ld
 

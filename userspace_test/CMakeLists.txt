@@ -8,7 +8,8 @@ project(userspace_test)
 
 add_executable(userspace_test
         src/main.cpp
-        src/relocations.cpp)
+        src/relocations.cpp
+        src/syscalls.cpp)
 
 target_compile_options(userspace_test PRIVATE
         -nostdlib
