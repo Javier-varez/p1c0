@@ -34,6 +34,10 @@ path = "tests/syscall_tests.rs"
 name = "unknown_syscall_tests"
 path = "tests/unknown_syscall_tests.rs"
 
+[[test]]
+name = "initcall_tests"
+path = "tests/initcall_tests.rs"
+
 [features]
 emulator = ["arm-semihosting"]
 # The binary feature builds a bin file instead of a macho file and uses a different ld script
@@ -42,6 +46,7 @@ default = []
 
 [dependencies]
 p1c0-kernel = { path = "../p1c0_kernel" }
+p1c0-macros = { path = "../p1c0_macros" }
 embedded-graphics = "0.7.1"
 tinybmp = "0.3.1"
 cortex-a = { git = "https://github.com/Javier-varez/cortex-a.git", branch = "master" }
