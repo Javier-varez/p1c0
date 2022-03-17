@@ -90,6 +90,9 @@ unsafe fn jump_to_high_kernel() -> ! {
         read_pc()
     );
 
+    // Store the new base as logical address from now on, since it did change
+    BASE = new_base.as_ptr();
+
     // From this point onwards the execution is redirected to the new kernel_prelude entrypoint.
     // We restore the initial stack using the new base address and.
     jump_to_addr(high_kernel_addr.as_usize(), high_stack.as_ptr());
