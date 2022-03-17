@@ -2,6 +2,7 @@
 
 members = [
     "p1c0_kernel",
+    "p1c0_macros",
     "test_fwk"
 ]
 

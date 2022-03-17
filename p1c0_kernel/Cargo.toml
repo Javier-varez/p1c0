@@ -14,3 +14,4 @@ embedded-graphics = "0.7.1"
 cortex-a = { git = "https://github.com/Javier-varez/cortex-a.git", branch = "master" }
 tock-registers = "0.7.0"
 heapless = "0.7.9"
+p1c0-macros = { path = "../p1c0_macros" }
