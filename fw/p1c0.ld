@@ -128,6 +128,12 @@ SECTIONS {
     .init : ALIGN(0x4000) {
         *(.init)
         *(.init.*)
+        /* Function pointers should be naturally aligned */
+        . = ALIGN(8);
+        _initcall_start = .;
+        *(.initcall)
+        *(.initcall.*)
+        _initcall_end = .;
     } :text
     .text : ALIGN(0x4000) {
         *(.text)

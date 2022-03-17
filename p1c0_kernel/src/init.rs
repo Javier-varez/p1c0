@@ -120,6 +120,9 @@ unsafe fn kernel_prelude() {
     const TIMESTEP: Duration = Duration::from_millis(1);
     generic_timer::get_timer().initialize(TIMESTEP);
 
+    // Invoke all initcalls functions
+    run_initcalls();
+
     kernel_main();
 }
 
@@ -173,4 +176,28 @@ pub fn is_kernel_relocated() -> bool {
     // read before booted (because it is written and read from the same thread) and afterwards
     // (because it never changes again).
     unsafe { RELOCATION_DONE }
+}
+
+/// Initcalls are expected to be called after relocation before the kernel starts parsing the ADT
+/// and probing devices. This gives drivers a chance to register themselves and later be used for
+/// probing devices.
+///
+/// # Safety
+/// This function should be called in a single-threaded context when relocations have been
+/// completed.
+unsafe fn run_initcalls() {
+    extern "C" {
+        static _initcall_start: extern "C" fn();
+        static _initcall_end: extern "C" fn();
+    }
+
+    let start = &_initcall_start as *const extern "C" fn();
+    let end = &_initcall_end as *const extern "C" fn();
+    let size = end.offset_from(start);
+
+    let initcalls = core::slice::from_raw_parts(start, size as usize);
+
+    for initcall in initcalls {
+        initcall();
+    }
 }
