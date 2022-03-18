@@ -25,6 +25,11 @@ SECTIONS {
         . = ALIGN(8);
         _initcall_start = .;
         *(.initcall)
+        *(.initcall.prio4.*)
+        *(.initcall.prio3.*)
+        *(.initcall.prio2.*)
+        *(.initcall.prio1.*)
+        *(.initcall.prio0.*)
         *(.initcall.*)
         _initcall_end = .;
     } :text
