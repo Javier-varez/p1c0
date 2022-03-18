@@ -182,9 +182,9 @@ impl<T> RwSpinLock<T> {
             // We cannot lock more than 2 giga-times
             assert_ne!(lock & Self::NUM_READERS_MASK, Self::NUM_READERS_MASK);
 
-            let affects_nesting = lock & Self::NUM_READERS_MASK == 0;
+            let affects_nesting = (lock & Self::NUM_READERS_MASK) == 0;
 
-            let new_lock = lock + 1 << Self::NUM_READERS_OFFSET;
+            let new_lock = lock + (1 << Self::NUM_READERS_OFFSET);
 
             match self.lock.compare_exchange(
                 lock,
@@ -227,7 +227,7 @@ impl<T> RwSpinLock<T> {
                 affects_critical_nesting = true;
             }
 
-            let new_lock = lock - 1 << Self::NUM_READERS_OFFSET;
+            let new_lock = lock - (1 << Self::NUM_READERS_OFFSET);
 
             if self
                 .lock
@@ -290,7 +290,7 @@ impl<T> RwSpinLock<T> {
             // It must not be locked for reading
             assert_eq!(lock & Self::NUM_READERS_MASK, 0);
 
-            let new_lock = lock - 1 << Self::NUM_READERS_OFFSET;
+            let new_lock = lock & !Self::WRITE_LOCK_FLAG;
 
             if self
                 .lock
