@@ -104,8 +104,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "cortex-a"
-version = "7.1.0"
-source = "git+https://github.com/Javier-varez/cortex-a.git?branch=master#52badd6a37ec5ebb59010a7984d1118c399fdc53"
+version = "7.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27bd91f65ccd348bb2d043d98c5b34af141ecef7f102147f59bf5898f6e734ad"
 dependencies = [
  "tock-registers",
 ]
