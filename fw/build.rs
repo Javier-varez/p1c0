@@ -13,18 +13,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(not(feature = "binary"))]
     File::create(out_dir.join("custom_p1c0.ld"))?.write_all(include_bytes!("p1c0.ld"))?;
 
-    let host = env::var("HOST").unwrap();
-
-    let compiler = if host == "aarch64-apple-darwin" {
-        "aarch64-none-elf-gcc"
-    } else {
-        "aarch64-linux-gnu-gcc"
-    };
-
     Build::new()
         .file("startup.S")
         .target("aarch64-unknown-none-softfloat")
-        .compiler(compiler)
+        .compiler("aarch64-none-elf-gcc")
         .compile("entry");
 
     println!("cargo:rerun-if-changed=startup.S");
