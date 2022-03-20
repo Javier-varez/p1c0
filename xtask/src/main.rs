@@ -1,4 +1,7 @@
-use xshell::cmd;
+use std::env::var;
+use std::io::Read;
+use std::process::exit;
+use xshell::{cmd, pushenv, Pushenv};
 
 use structopt::StructOpt;
 
@@ -36,7 +39,88 @@ enum Options {
     InstallRequirements,
 }
 
+fn build_rootfs() -> Result<(), anyhow::Error> {
+    // Before building anything let's make sure to build the userspace tests
+    cmd!("make -C userspace_test")
+        .env("CROSS_COMPILE", "aarch64-none-elf-")
+        .run()?;
+
+    Ok(())
+}
+
+struct Env(Vec<Pushenv>);
+
+fn configure_environment() -> Result<Env, anyhow::Error> {
+    let mut env_settings = Env(vec![]);
+
+    // load path from .env file
+    let mut env_file = match std::fs::File::open(".env") {
+        Ok(file) => file,
+        Err(_) => {
+            println!("No .env file found");
+            return Ok(env_settings);
+        }
+    };
+    let mut env_str = String::new();
+    env_file.read_to_string(&mut env_str)?;
+
+    for line in env_str.split('\n') {
+        let line = line.trim();
+        if line.len() == 0 {
+            // Ignore empty lines
+            continue;
+        }
+
+        let mut split = line.split_whitespace();
+        let var_name = match split.next() {
+            Some(val) => val,
+            None => {
+                println!(".env file is malformed. Missing variable name");
+                exit(1);
+            }
+        };
+
+        let operation = match split.next() {
+            Some(val) => val,
+            None => {
+                println!(".env file is malformed. Missing operation");
+                exit(1);
+            }
+        };
+
+        let argument = match split.next() {
+            Some(val) => val,
+            None => {
+                println!(".env file is malformed. Missing argument");
+                exit(1);
+            }
+        };
+
+        match operation {
+            "=" => {
+                env_settings.0.push(pushenv(var_name, argument));
+            }
+            "+=" => {
+                // Read var first
+                let old_value = std::env::var(var_name)?;
+                let mut new_value = argument.to_string();
+                new_value.push(':');
+                new_value.push_str(&old_value);
+                env_settings.0.push(pushenv(var_name, &new_value));
+            }
+            op => {
+                println!("Unknown env operation `{}`", op);
+                exit(1);
+            }
+        }
+    }
+
+    Ok(env_settings)
+}
+
 fn build(release: bool, emulator: bool, binary: bool) -> Result<(), anyhow::Error> {
+    build_rootfs()?;
+
     let _dir = xshell::pushd("fw")?;
     let release = if release { Some("--release") } else { None };
 
@@ -87,6 +171,8 @@ fn check_prerequisites() -> Result<(), anyhow::Error> {
 }
 
 fn run_tests() -> Result<(), anyhow::Error> {
+    build_rootfs()?;
+
     // Run host tests
     cmd!("cargo test").run()?;
 
@@ -98,6 +184,7 @@ fn run_tests() -> Result<(), anyhow::Error> {
 }
 
 fn run_clippy() -> Result<(), anyhow::Error> {
+    build_rootfs()?;
     cmd!("cargo clippy").run()?;
     let _dir = xshell::pushd("fw")?;
     cmd!("cargo clippy").run()?;
@@ -120,6 +207,8 @@ fn install_requirements() -> Result<(), anyhow::Error> {
 
 fn main() -> Result<(), anyhow::Error> {
     let opts = Options::from_args();
+
+    configure_environment();
 
     match opts {
         Options::Run { release } => run_qemu(release)?,
