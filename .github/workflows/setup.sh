@@ -1,32 +1,116 @@
 #!/bin/bash -xe
 
 TOOLS_DIR=.tools
-
-QEMU_VERSION=0.1.3
 QEMU_DIR=${PWD}/${TOOLS_DIR}/qemu
+GCC_DIR=${PWD}/${TOOLS_DIR}/gcc-aarch64-none-elf
+DOWNLOAD_DIR=${PWD}/${TOOLS_DIR}/downloads
+
+QEMU_VERSION="0.1.3"
+GCC_VERSION="11.2-2022.02"
 
 OS=$(uname | tr '[:upper:]' '[:lower:]')
-QEMU_ZIP=${QEMU_VERSION}_M1_Pro_${OS}.zip
-QEMU_URL=https://github.com/Javier-varez/qemu-apple-m1/releases/download/Apple_M1_Pro_${QEMU_VERSION}/${QEMU_ZIP}
 
-ZIP_DIR=${PWD}
-wget ${QEMU_URL}
-mkdir -p ${QEMU_DIR}
+download_tool() {
+    mkdir -p ${DOWNLOAD_DIR}
+    wget -P ${DOWNLOAD_DIR} $1
+}
 
-pushd ${QEMU_DIR}
-unzip ${ZIP_DIR}/${QEMU_ZIP}
-chmod +x ./bin/qemu-system-aarch64
-popd
+get_qemu_install_path() {
+    echo "${QEMU_DIR}/bin"
+}
 
-rm -r ${QEMU_ZIP}
+get_gcc_install_path() {
+    if [ "darwin" == $OS ]; then
+        OS_ADDEND="-darwin"
+    else
+        OS_ADDEND=""
+    fi
 
-# Make sure qemu binaries end up in the PATH environment variable
-echo "${QEMU_DIR}/bin" >> ${GITHUB_PATH}
+    echo "${GCC_DIR}/gcc-arm-${GCC_VERSION}${OS_ADDEND}-x86_64-aarch64-none-elf/bin"
+}
 
-# Install other dependencies
-sudo apt update
-sudo apt install -y \
-    gcc-aarch64-linux-gnu \
-    g++-aarch64-linux-gnu \
-    binutils-aarch64-linux-gnu
+download_qemu() {
+    ZIP=${QEMU_VERSION}_M1_Pro_${OS}.zip
+    URL=https://github.com/Javier-varez/qemu-apple-m1/releases/download/Apple_M1_Pro_${QEMU_VERSION}/${ZIP}
+
+    download_tool ${URL}
+
+    mkdir -p ${QEMU_DIR}
+    pushd ${QEMU_DIR}
+    unzip ${DOWNLOAD_DIR}/${ZIP}
+    chmod +x ./bin/qemu-system-aarch64
+    popd
+
+    # Cleanup
+    rm -rf ${DOWNLOAD_DIR}
+
+}
+
+download_gcc() {
+    if [ "darwin" == $OS ]; then
+        echo darwin
+        OS_ADDEND="-darwin"
+    else
+        OS_ADDEND=""
+        echo "not darwin"
+    fi
+
+    INSTALL_DIR=${TOOLS_DIR}/gcc-aarch64-none-elf/
+
+    TAR_NAME=gcc-arm-${GCC_VERSION}${OS_ADDEND}-x86_64-aarch64-none-elf.tar.xz
+    URL=https://developer.arm.com/-/media/Files/downloads/gnu/11.2-2022.02/binrel/${TAR_NAME}
+    download_tool ${URL}
+
+    mkdir -p ${GCC_DIR}
+    pushd ${GCC_DIR}
+    tar -xf ${DOWNLOAD_DIR}/${TAR_NAME}
+    popd
+
+    # Cleanup
+    rm -rf ${DOWNLOAD_DIR}
+
+}
+
+ensure_qemu() {
+    QEMU_INSTALL_PATH=$(get_qemu_install_path)
+    if [ -d "$(get_qemu_install_path)" ]; then
+        echo "qemu already installed"
+    else
+        download_qemu
+    fi
+
+    if [ -n "${GITHUB_PATH}" ]; then
+        echo "${QEMU_INSTALL_PATH}" >> ${GITHUB_PATH}
+    fi
+
+    export PATH="${QEMU_INSTALL_PATH}:${PATH}"
+}
+
+ensure_gcc() {
+    GCC_INSTALL_PATH=$(get_gcc_install_path)
+    if [ -d "${GCC_INSTALL_PATH}" ]; then
+        echo "gcc already installed"
+    else
+        download_gcc
+    fi
+
+    if [ -n "${GITHUB_PATH}" ]; then
+        echo "${GCC_INSTALL_PATH}" >> ${GITHUB_PATH}
+    fi
+
+    export PATH="${GCC_INSTALL_PATH}:${PATH}"
+}
+
+write_env() {
+    GCC_INSTALL_PATH=$(get_gcc_install_path)
+    QEMU_INSTALL_PATH=$(get_qemu_install_path)
+
+    echo "PATH += ${GCC_INSTALL_PATH}:${QEMU_INSTALL_PATH}" > .env
+}
+
+ensure_qemu
+ensure_gcc
+
+write_env
+
 cargo install cargo-binutils
