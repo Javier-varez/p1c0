@@ -27,16 +27,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         .compiler(compiler)
         .compile("entry");
 
-    let cross_compile = if host == "aarch64-apple-darwin" {
-        "aarch64-none-elf-"
-    } else {
-        "aarch64-linux-gnu-"
-    };
-    cmd!("make -C ../userspace_test")
-        .env("CROSS_COMPILE", cross_compile)
-        .run()
-        .unwrap();
-
     println!("cargo:rerun-if-changed=startup.S");
     println!("cargo:rerun-if-changed=../userspace_test");
 
