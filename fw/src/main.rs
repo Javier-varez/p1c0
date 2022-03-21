@@ -96,7 +96,9 @@ pub extern "C" fn kernel_main() -> ! {
     arm_semihosting::exit(0);
 
     #[cfg(not(feature = "emulator"))]
-    loop {}
+    loop {
+        cortex_a::asm::wfi();
+    }
 }
 
 #[panic_handler]
