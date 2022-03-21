@@ -56,23 +56,25 @@ pub fn initcall(input: TokenStream, annotated_item: TokenStream) -> TokenStream 
         let name_ident = function.sig.ident;
         let name = name_ident.to_string();
 
+        let mut static_name = name_ident.to_string().to_ascii_uppercase();
+        static_name.push_str("_STATIC");
+        let static_name_ident = syn::Ident::new(&static_name, name_ident.span());
+
         let func_block = function.block;
 
         let priority = priority.unwrap_or(DEFAULT_PRIORITY);
 
         TokenStream::from(quote! {
-            #[cfg(all(target_arch = "aarch64", target_os = "none"))]
-            core::arch::global_asm!(
-                core::concat!(".section .initcall.prio", #priority, ".", #name, ", \"a\""),
-                core::concat!(".quad ", #name),
-                ".previous"
-            );
-
-            #[cfg_attr(all(target_arch = "aarch64", target_os = "none"), link_section = core::concat!(".init.", #name))]
-            #[no_mangle]
-            extern "C" fn #name_ident() {
-                #func_block
-            }
+            #[cfg_attr(all(target_arch = "aarch64", target_os = "none"), link_section = core::concat!(".initcall.prio", #priority, ".", #name))]
+            #[used]
+            static #static_name_ident: extern "C" fn() = {
+                #[cfg_attr(all(target_arch = "aarch64", target_os = "none"), link_section = core::concat!(".init.", #name))]
+                #[no_mangle]
+                extern "C" fn #name_ident() {
+                    #func_block
+                }
+                #name_ident
+            };
         })
     } else {
         TokenStream::from(quote! {
