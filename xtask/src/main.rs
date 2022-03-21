@@ -1,7 +1,6 @@
-use std::env::var;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::process::exit;
-use xshell::{cmd, pushenv, Pushenv};
+use xshell::{cmd, mkdir_p, pushd, pushenv, rm_rf, Pushenv};
 
 use structopt::StructOpt;
 
@@ -37,13 +36,35 @@ enum Options {
     /// Installs requirements for the project
     /// These are m1_runner
     InstallRequirements,
+    /// Removes all target directories
+    Clean,
 }
 
+const FW_DIR: &str = "fw";
+const USERSPACE_DIR: &str = "userspace";
+const BUILD_DIR: &str = "build";
+const ROOTFS_DIR: &str = "build/rootfs";
+const ROOTFS_FILE: &str = "build/rootfs.cpio";
+
 fn build_rootfs() -> Result<(), anyhow::Error> {
-    // Before building anything let's make sure to build the userspace tests
-    cmd!("make -C userspace_test")
-        .env("CROSS_COMPILE", "aarch64-none-elf-")
-        .run()?;
+    mkdir_p(ROOTFS_DIR)?;
+
+    // Build userspace binaries
+    cmd!("cmake -S {USERSPACE_DIR} -B {BUILD_DIR}/{USERSPACE_DIR} -DCMAKE_TOOLCHAIN_FILE=toolchain/aarch64.cmake -DCMAKE_SYSTEM_NAME=Generic").run()?;
+    cmd!("cmake --build {BUILD_DIR}/{USERSPACE_DIR}").run()?;
+    cmd!("cmake --install {BUILD_DIR}/{USERSPACE_DIR} --prefix {ROOTFS_DIR}").run()?;
+
+    let rootfs_cpio_data = {
+        let _dir = pushd(ROOTFS_DIR);
+        let rootfs_files = cmd!("find . -depth -print ").output()?.stdout;
+        cmd!("cpio -o -H newc")
+            .stdin(&rootfs_files[..])
+            .output()?
+            .stdout
+    };
+
+    let mut file = std::fs::File::create(ROOTFS_FILE)?;
+    file.write(&rootfs_cpio_data[..])?;
 
     Ok(())
 }
@@ -118,10 +139,10 @@ fn configure_environment() -> Result<Env, anyhow::Error> {
     Ok(env_settings)
 }
 
-fn build(release: bool, emulator: bool, binary: bool) -> Result<(), anyhow::Error> {
+fn run_build(release: bool, emulator: bool, binary: bool) -> Result<(), anyhow::Error> {
     build_rootfs()?;
 
-    let _dir = xshell::pushd("fw")?;
+    let _dir = xshell::pushd(FW_DIR)?;
     let release = if release { Some("--release") } else { None };
 
     let mut build_features = vec![];
@@ -178,7 +199,7 @@ fn run_tests() -> Result<(), anyhow::Error> {
 
     // run FW tests
     check_prerequisites()?;
-    let _dir = xshell::pushd("fw")?;
+    let _dir = xshell::pushd(FW_DIR)?;
     cmd!("cargo test").run()?;
     Ok(())
 }
@@ -186,15 +207,23 @@ fn run_tests() -> Result<(), anyhow::Error> {
 fn run_clippy() -> Result<(), anyhow::Error> {
     build_rootfs()?;
     cmd!("cargo clippy").run()?;
-    let _dir = xshell::pushd("fw")?;
+    let _dir = xshell::pushd(FW_DIR)?;
     cmd!("cargo clippy").run()?;
     Ok(())
 }
 
 fn run_qemu(release: bool) -> Result<(), anyhow::Error> {
-    build(release, true, false)?;
+    run_build(release, true, false)?;
     cmd!("qemu-system-aarch64 -machine apple-m1 -bios fw/p1c0.macho -serial stdio --display none -semihosting")
         .run()?;
+    Ok(())
+}
+
+fn run_clean() -> Result<(), anyhow::Error> {
+    rm_rf(ROOTFS_DIR)?;
+    cmd!("cargo clean").run()?;
+    let _dir = pushd(FW_DIR);
+    cmd!("cargo clean").run()?;
     Ok(())
 }
 
@@ -208,7 +237,7 @@ fn install_requirements() -> Result<(), anyhow::Error> {
 fn main() -> Result<(), anyhow::Error> {
     let opts = Options::from_args();
 
-    configure_environment();
+    configure_environment()?;
 
     match opts {
         Options::Run { release } => run_qemu(release)?,
@@ -216,10 +245,11 @@ fn main() -> Result<(), anyhow::Error> {
             release,
             emulator,
             binary,
-        } => build(release, emulator, binary)?,
+        } => run_build(release, emulator, binary)?,
         Options::Test => run_tests()?,
         Options::Clippy => run_clippy()?,
         Options::InstallRequirements => install_requirements()?,
+        Options::Clean => run_clean()?,
     };
 
     Ok(())

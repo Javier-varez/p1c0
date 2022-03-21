@@ -24,7 +24,8 @@ impl From<elf::Error> for Error {
     }
 }
 
-const ELF: &[u8] = include_bytes!("../../userspace_test/build/userspace_test");
+// TODO(javier-varez): Read this from root filesystem
+const ELF: &[u8] = include_bytes!("../../build/rootfs/bin/basic_test");
 
 pub fn create_process(aslr: usize) -> Result<(), Error> {
     let elf = elf::ElfParser::from_slice(ELF)?;
