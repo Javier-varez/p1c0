@@ -1,6 +1,8 @@
 use p1c0_kernel::{
-    elf, log_debug, log_warning,
+    elf,
+    filesystem::{self, OpenMode, VirtualFileSystem},
     memory::{address::VirtualAddress, Permissions},
+    prelude::*,
     process,
 };
 
@@ -8,6 +10,7 @@ use p1c0_kernel::{
 pub enum Error {
     ProcessError(process::Error),
     ElfError(elf::Error),
+    FsError(filesystem::Error),
     FileNotExecutable,
     UnalignedVA(*const u8),
 }
@@ -24,11 +27,21 @@ impl From<elf::Error> for Error {
     }
 }
 
-// TODO(javier-varez): Read this from root filesystem
-const ELF: &[u8] = include_bytes!("../../build/rootfs/bin/basic_test");
+impl From<filesystem::Error> for Error {
+    fn from(err: filesystem::Error) -> Self {
+        Error::FsError(err)
+    }
+}
 
-pub fn create_process(aslr: usize) -> Result<(), Error> {
-    let elf = elf::ElfParser::from_slice(ELF)?;
+pub fn create_process(filename: &str, aslr: usize) -> Result<(), Error> {
+    let mut file = VirtualFileSystem::open(filename, OpenMode::Read)?;
+    let mut elf_data = vec![];
+    elf_data.resize(file.size, 0);
+
+    VirtualFileSystem::read(&mut file, &mut elf_data[..])?;
+    VirtualFileSystem::close(file);
+
+    let elf = elf::ElfParser::from_slice(&elf_data[..])?;
 
     if !matches!(
         elf.elf_type(),
