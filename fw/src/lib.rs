@@ -7,10 +7,7 @@
 
 pub mod userspace_proc;
 
-use p1c0_kernel::{boot_args::BootArgs, log_info};
-
-#[cfg(feature = "emulator")]
-use p1c0_kernel::log_debug;
+use p1c0_kernel::{boot_args::BootArgs, prelude::*};
 
 #[panic_handler]
 #[cfg(test)]
