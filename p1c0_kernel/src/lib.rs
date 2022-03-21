@@ -2,7 +2,11 @@
 #![feature(allocator_api)]
 #![feature(maybe_uninit_as_bytes)]
 #![feature(maybe_uninit_slice)]
+#![feature(const_btree_new)]
+#![feature(const_fn_trait_bound)]
 #![cfg_attr(test, feature(scoped_threads))]
+
+extern crate alloc;
 
 pub mod adt;
 pub mod arch;
@@ -12,6 +16,7 @@ mod collections;
 pub mod crc;
 pub mod drivers;
 pub mod elf;
+pub mod filesystem;
 mod font;
 pub mod init;
 pub mod log;
