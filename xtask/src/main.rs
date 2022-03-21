@@ -139,11 +139,8 @@ fn configure_environment() -> Result<Env, anyhow::Error> {
     Ok(env_settings)
 }
 
-fn run_build(release: bool, emulator: bool, binary: bool) -> Result<(), anyhow::Error> {
-    build_rootfs()?;
-
-    let _dir = xshell::pushd(FW_DIR)?;
-    let release = if release { Some("--release") } else { None };
+fn get_cargo_args(release: bool, emulator: bool, binary: bool) -> Result<(Option<String>, Option<String>), anyhow::Error> {
+    let release = if release { Some("--release".to_string()) } else { None };
 
     let mut build_features = vec![];
     if emulator {
@@ -167,10 +164,18 @@ fn run_build(release: bool, emulator: bool, binary: bool) -> Result<(), anyhow::
         Some(feature_string)
     };
 
-    let output_name = if binary { "p1c0.bin" } else { "p1c0.macho" };
+    Ok((release, features))
+}
 
+fn run_build(release: bool, emulator: bool, binary: bool) -> Result<(), anyhow::Error> {
+    build_rootfs()?;
+
+    let _dir = xshell::pushd(FW_DIR)?;
+    let (release, features) = get_cargo_args(release, emulator, binary)?;
+
+    let output_name = if binary { "p1c0.bin" } else { "p1c0.macho" };
     cmd!("cargo build")
-        .args(release)
+        .args(release.clone())
         .args(features.clone())
         .run()?;
     cmd!("cargo objcopy")
@@ -213,8 +218,15 @@ fn run_clippy() -> Result<(), anyhow::Error> {
 }
 
 fn run_qemu(release: bool) -> Result<(), anyhow::Error> {
-    run_build(release, true, false)?;
-    cmd!("qemu-system-aarch64 -machine apple-m1 -bios fw/p1c0.macho -serial stdio --display none -semihosting")
+    let _dir = xshell::pushd(FW_DIR)?;
+    let (release, features) = get_cargo_args(release, true, false)?;
+
+    cmd!("cargo run")
+        .args(release)
+        .args(features.clone())
+        .arg("--")
+        .arg("--show-stdio")
+        .arg("--show-display")
         .run()?;
     Ok(())
 }

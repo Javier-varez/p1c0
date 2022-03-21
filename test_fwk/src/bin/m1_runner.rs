@@ -12,6 +12,12 @@ use xshell::{cmd, rm_rf};
 )]
 struct Opts {
     fw_elf: String,
+
+    #[structopt(long, short)]
+    show_display: bool,
+
+    #[structopt(long, short)]
+    show_stdio: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -29,7 +35,7 @@ impl Default for Config {
     }
 }
 
-fn parse_config(manifest_path: &Path) -> anyhow::Result<Config> {
+fn parse_config(config: &mut Config, manifest_path: &Path) -> anyhow::Result<()> {
     let cargo_toml: Value = {
         let mut content = String::new();
         File::open(manifest_path)
@@ -41,14 +47,12 @@ fn parse_config(manifest_path: &Path) -> anyhow::Result<Config> {
             .context("Failed to parse Cargo.toml")?
     };
 
-    let mut config = Config::default();
-
     let config_toml = match cargo_toml.get("m1_runner") {
         Some(config_toml) => config_toml
             .as_table()
             .ok_or_else(|| anyhow!("invalid m1_runner config found: {:?}", config_toml))?,
         None => {
-            return Ok(config);
+            return Ok(());
         }
     };
 
@@ -72,17 +76,21 @@ fn parse_config(manifest_path: &Path) -> anyhow::Result<Config> {
         }
     }
 
-    Ok(config)
+    Ok(())
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::from_args();
 
+    let mut config = Config::default();
+    config.show_stdio = opts.show_stdio;
+    config.show_display = opts.show_display;
+
     let manifest_path = std::env::var("CARGO_MANIFEST_DIR")
         .ok()
         .map(|dir| Path::new(&dir).join("Cargo.toml"))
         .expect("WARNING: `CARGO_MANIFEST_DIR` env variable not set");
-    let config = parse_config(&manifest_path)?;
+    parse_config(&mut config, &manifest_path)?;
 
     cmd!("rust-objcopy")
         .arg("-O")
