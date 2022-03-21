@@ -131,13 +131,13 @@ SECTIONS {
         /* Function pointers should be naturally aligned */
         . = ALIGN(8);
         _initcall_start = .;
-        *(.initcall)
-        *(.initcall.prio4.*)
-        *(.initcall.prio3.*)
-        *(.initcall.prio2.*)
-        *(.initcall.prio1.*)
-        *(.initcall.prio0.*)
-        *(.initcall.*)
+        KEEP(*(.initcall));
+        KEEP(*(.initcall.prio4.*));
+        KEEP(*(.initcall.prio3.*));
+        KEEP(*(.initcall.prio2.*));
+        KEEP(*(.initcall.prio1.*));
+        KEEP(*(.initcall.prio0.*));
+        KEEP(*(.initcall.*));
         _initcall_end = .;
     } :text
     .text : ALIGN(0x4000) {
