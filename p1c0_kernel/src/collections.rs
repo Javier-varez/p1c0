@@ -30,6 +30,8 @@ impl<T> OwnedMutPtr<T> {
         }
     }
 
+    /// # Safety
+    /// Ensure that the raw pointer is uniquely owned and is valid
     pub unsafe fn new_from_raw(ptr: *mut T) -> Self {
         Self { inner: ptr }
     }
@@ -55,6 +57,8 @@ impl<T> OwnedPtr<T> {
         }
     }
 
+    /// # Safety
+    /// Ensure that the raw pointer is uniquely owned and is valid
     pub unsafe fn new_from_raw(ptr: *mut T) -> Self {
         Self { inner: ptr }
     }
