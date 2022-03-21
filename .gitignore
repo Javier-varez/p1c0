@@ -8,3 +8,4 @@
 **/.idea
 .tools
 .env
+rootfs
