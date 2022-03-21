@@ -82,8 +82,8 @@ fn kernel_entry() {
         Syscall::sleep_us(1_000_000);
     });
 
-    p1c0::userspace_proc::create_process(0x3000000).unwrap();
-    p1c0::userspace_proc::create_process(0x0000000).unwrap();
+    p1c0::userspace_proc::create_process("/bin/basic_test", 0x3000000).unwrap();
+    p1c0::userspace_proc::create_process("/bin/basic_test", 0x0000000).unwrap();
 
     thread::initialize();
 }
