@@ -9,6 +9,7 @@ QEMU_VERSION="0.1.3"
 GCC_VERSION="11.2-2022.02"
 
 OS=$(uname | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m| tr '[:upper:]' '[:lower:]')
 
 download_tool() {
     mkdir -p ${DOWNLOAD_DIR}
@@ -26,11 +27,11 @@ get_gcc_install_path() {
         OS_ADDEND=""
     fi
 
-    echo "${GCC_DIR}/gcc-arm-${GCC_VERSION}${OS_ADDEND}-x86_64-aarch64-none-elf/bin"
+    echo "${GCC_DIR}/gcc-arm-${GCC_VERSION}${OS_ADDEND}-${ARCH}-aarch64-none-elf/bin"
 }
 
 download_qemu() {
-    ZIP=${QEMU_VERSION}_M1_Pro_${OS}.zip
+    ZIP=${QEMU_VERSION}_M1_Pro_${OS}_${ARCH}.zip
     URL=https://github.com/Javier-varez/qemu-apple-m1/releases/download/Apple_M1_Pro_${QEMU_VERSION}/${ZIP}
 
     download_tool ${URL}
@@ -57,7 +58,7 @@ download_gcc() {
 
     INSTALL_DIR=${TOOLS_DIR}/gcc-aarch64-none-elf/
 
-    TAR_NAME=gcc-arm-${GCC_VERSION}${OS_ADDEND}-x86_64-aarch64-none-elf.tar.xz
+    TAR_NAME=gcc-arm-${GCC_VERSION}${OS_ADDEND}-${ARCH}-aarch64-none-elf.tar.xz
     URL=https://developer.arm.com/-/media/Files/downloads/gnu/11.2-2022.02/binrel/${TAR_NAME}
     download_tool ${URL}
 
