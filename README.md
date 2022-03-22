@@ -34,9 +34,10 @@ release [here](https://github.com/Javier-varez/qemu-apple-m1/releases/tag/Apple_
 
 ```bash
 INSTALL_DIR=${YOUR_DESIRED_INSTALL_PATH}
-CURRENT_OS=$(uname | tr '[:upper:]' '[:lower:]')
-curl -OL https://github.com/Javier-varez/qemu-apple-m1/releases/download/Apple_M1_Pro_0.1.3/0.1.3_M1_Pro_${CURRENT_OS}.zip
-unzip -d ${INSTALL_DIR}/qemu-apple-m1 0.1.3_M1_Pro_${CURRENT_OS}.zip
+OS=$(uname | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+curl -OL https://github.com/Javier-varez/qemu-apple-m1/releases/download/Apple_M1_Pro_0.1.3/0.1.3_M1_Pro_${OS}_${ARCH}.zip
+unzip -d ${INSTALL_DIR}/qemu-apple-m1 0.1.3_M1_Pro_${OS}_${ARCH}.zip
 
 # And finally make it available in your path. You can add this to your .bashrc or .bash_profile
 export PATH=${INSTALL_DIR}/qemu-apple-m1/bin:$PATH
