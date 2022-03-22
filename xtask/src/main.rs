@@ -56,11 +56,20 @@ fn build_rootfs() -> Result<(), anyhow::Error> {
 
     let rootfs_cpio_data = {
         let _dir = pushd(ROOTFS_DIR);
-        let rootfs_files = cmd!("find . -depth -print ").output()?.stdout;
-        cmd!("cpio -o -H newc")
-            .stdin(&rootfs_files[..])
-            .output()?
-            .stdout
+        let output = cmd!("find . -depth -print ").output()?;
+        if !output.status.success() {
+            println!("Error finding rootfs data");
+            exit(1);
+        }
+
+        let rootfs_files = output.stdout;
+        let output = cmd!("cpio -o -H newc").stdin(&rootfs_files[..]).output()?;
+
+        if !output.status.success() {
+            println!("Error creating rootfs cpio archive");
+            exit(1);
+        }
+        output.stdout
     };
 
     let mut file = std::fs::File::create(ROOTFS_FILE)?;
@@ -139,8 +148,16 @@ fn configure_environment() -> Result<Env, anyhow::Error> {
     Ok(env_settings)
 }
 
-fn get_cargo_args(release: bool, emulator: bool, binary: bool) -> Result<(Option<String>, Option<String>), anyhow::Error> {
-    let release = if release { Some("--release".to_string()) } else { None };
+fn get_cargo_args(
+    release: bool,
+    emulator: bool,
+    binary: bool,
+) -> Result<(Option<String>, Option<String>), anyhow::Error> {
+    let release = if release {
+        Some("--release".to_string())
+    } else {
+        None
+    };
 
     let mut build_features = vec![];
     if emulator {
@@ -203,7 +220,6 @@ fn run_tests() -> Result<(), anyhow::Error> {
     cmd!("cargo test").run()?;
 
     // run FW tests
-    check_prerequisites()?;
     let _dir = xshell::pushd(FW_DIR)?;
     cmd!("cargo test").run()?;
     Ok(())
@@ -218,6 +234,8 @@ fn run_clippy() -> Result<(), anyhow::Error> {
 }
 
 fn run_qemu(release: bool) -> Result<(), anyhow::Error> {
+    build_rootfs()?;
+
     let _dir = xshell::pushd(FW_DIR)?;
     let (release, features) = get_cargo_args(release, true, false)?;
 
@@ -249,7 +267,10 @@ fn install_requirements() -> Result<(), anyhow::Error> {
 fn main() -> Result<(), anyhow::Error> {
     let opts = Options::from_args();
 
-    configure_environment()?;
+    let _env = configure_environment()?;
+
+    // Install any missing tools
+    check_prerequisites()?;
 
     match opts {
         Options::Run { release } => run_qemu(release)?,
