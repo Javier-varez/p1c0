@@ -204,6 +204,63 @@ impl VirtualFileSystem {
     }
 }
 
+pub struct Path<'a> {
+    path: &'a str,
+}
+
+impl<'a> TryFrom<&'a str> for Path<'a> {
+    type Error = ();
+    fn try_from(string: &'a str) -> ::core::result::Result<Self, ()> {
+        let string = string.trim();
+
+        // This must be an absolute string, since we don't have enough context to know the cwd here.
+        if !string.starts_with('/') {
+            return Err(());
+        }
+
+        let path = string.trim_start_matches('/').trim_end_matches('/');
+        Ok(Self { path })
+    }
+}
+
+impl<'a> Path<'a> {
+    #[must_use]
+    pub fn iter(&self) -> PathIter {
+        PathIter { path: self.path }
+    }
+}
+
+pub struct PathIter<'a> {
+    path: &'a str,
+}
+
+impl<'a> Iterator for PathIter<'a> {
+    type Item = &'a str;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.path.is_empty() {
+            return None;
+        }
+
+        loop {
+            if let Some((component, path)) = self.path.split_once('/') {
+                self.path = path;
+                if component.is_empty() {
+                    // Ignore repeated /
+                    continue;
+                }
+                return Some(component);
+            } else {
+                if !self.path.is_empty() {
+                    let component = self.path;
+                    self.path = "";
+                    return Some(component);
+                }
+                return None;
+            }
+        }
+    }
+}
+
 pub fn register_driver(name: &str, driver: Box<dyn FilesystemDriver>) {
     log_debug!("Registering FS driver with name {}", name);
     FS_DRIVERS.lock_write().insert(name.to_string(), driver);
@@ -221,4 +278,46 @@ pub fn register_filesystems() {
 #[initcall]
 pub fn mount_rootfs() {
     VFS.lock_write().mount_rootfs(CPIO_ARCHIVE).unwrap();
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn can_construct_path() {
+        let path = Path::try_from("/some/path").unwrap();
+
+        let components: Vec<String> = path.iter().map(|c| c.to_string()).collect();
+        assert_eq!(components, vec!["some", "path"]);
+    }
+
+    #[test]
+    fn cannot_construct_relative_path_from_str() {
+        assert!(Path::try_from("some/path").is_err());
+    }
+
+    #[test]
+    fn path_ignores_duplicated_slash() {
+        let path = Path::try_from("//some//path").unwrap();
+
+        let components: Vec<String> = path.iter().map(|c| c.to_string()).collect();
+        assert_eq!(components, vec!["some", "path"]);
+    }
+
+    #[test]
+    fn path_removes_trailing_slash() {
+        let path = Path::try_from("/some/path/").unwrap();
+
+        let components: Vec<String> = path.iter().map(|c| c.to_string()).collect();
+        assert_eq!(components, vec!["some", "path"]);
+    }
+
+    #[test]
+    fn path_can_contain_symbols() {
+        let path = Path::try_from("/some/path/file.txt").unwrap();
+
+        let components: Vec<String> = path.iter().map(|c| c.to_string()).collect();
+        assert_eq!(components, vec!["some", "path", "file.txt"]);
+    }
 }
