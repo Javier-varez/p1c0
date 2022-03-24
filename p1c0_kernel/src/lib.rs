@@ -18,6 +18,7 @@ pub mod drivers;
 pub mod elf;
 pub mod filesystem;
 mod font;
+pub mod hash;
 pub mod init;
 pub mod log;
 pub mod macros;
