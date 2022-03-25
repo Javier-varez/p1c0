@@ -409,6 +409,55 @@ where
     pub fn len(&self) -> usize {
         self.num_elements
     }
+
+    pub fn iter(&self) -> FlatMapIter<'_, K, V, H> {
+        FlatMapIter {
+            map: self,
+            current_index: 0,
+        }
+    }
+}
+
+pub struct FlatMapIter<'a, K, V, H>
+where
+    K: Hash + Eq + PartialEq,
+    H: BuildHasher,
+{
+    map: &'a FlatMap<K, V, H>,
+    current_index: usize,
+}
+
+impl<'a, K, V, H> Iterator for FlatMapIter<'a, K, V, H>
+where
+    K: Hash + Eq + PartialEq,
+    H: BuildHasher,
+{
+    type Item = &'a (K, V);
+    fn next(&mut self) -> Option<Self::Item> {
+        /*
+         * TODO(javier-varez): We could probably make this faster by keeping a bitmap of used buckets
+         * then use compiler intrinsics to find the first bit set (trailing zeroes or ctz).
+         */
+        let mut option = None;
+        loop {
+            if self.current_index >= self.map.capacity() {
+                break;
+            }
+
+            match self.map.metadata_buckets[self.current_index].get_bucket_state() {
+                BucketState::InUse(_) => {
+                    option = Some(self.current_index);
+                    self.current_index += 1;
+                    break;
+                }
+                BucketState::Empty | BucketState::Deleted => {
+                    self.current_index += 1;
+                }
+            }
+        }
+
+        option.map(|index| unsafe { self.map.buckets[index].assume_init_ref() })
+    }
 }
 
 #[cfg(test)]
@@ -503,6 +552,31 @@ mod tests {
             let key = format!("key {}", i);
             let value = format!("value {}", i);
             assert_eq!(*map.lookup(&key).unwrap(), value);
+        }
+    }
+
+    #[test]
+    fn test_iter() {
+        let mut map = FlatMap::new();
+
+        for i in 0..8 {
+            let key = format!("key {}", i);
+            let value = format!("value {}", i);
+            map.insert_with_strategy(key, value, InsertStrategy::ErrorOnDuplicate)
+                .unwrap();
+        }
+
+        let collected: Vec<_> = map
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+
+        assert_eq!(collected.len(), 8);
+
+        for i in 0..8 {
+            let key = format!("key {}", i);
+            let value = format!("value {}", i);
+            assert!(collected.iter().any(|(k, v)| (*k == key) && (*v == value)));
         }
     }
 }
