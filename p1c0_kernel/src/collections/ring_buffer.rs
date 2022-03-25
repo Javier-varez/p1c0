@@ -334,14 +334,14 @@ mod test {
         let (mut writer, mut reader) = ring_buffer.split().unwrap();
 
         std::thread::scope(|s| {
-            s.spawn(|_| {
+            s.spawn(|| {
                 for i in 0..16 {
                     writer.push(i).unwrap();
                     std::thread::sleep(std::time::Duration::from_millis(1));
                 }
             });
 
-            s.spawn(|_| {
+            s.spawn(|| {
                 for i in 0..16 {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                     assert_eq!(reader.pop().unwrap(), i);
