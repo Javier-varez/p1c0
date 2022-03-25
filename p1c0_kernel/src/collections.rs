@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 pub mod aligned_vec;
+pub mod flat_map;
 pub mod intrusive_list;
 pub mod ring_buffer;
 
