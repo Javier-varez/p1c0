@@ -3,7 +3,6 @@
 #![feature(maybe_uninit_as_bytes)]
 #![feature(maybe_uninit_slice)]
 #![feature(const_btree_new)]
-#![feature(const_fn_trait_bound)]
 #![cfg_attr(test, feature(scoped_threads))]
 
 extern crate alloc;
