@@ -10,6 +10,9 @@ GCC_VERSION="11.2-2022.02"
 
 OS=$(uname | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m| tr '[:upper:]' '[:lower:]')
+if [ "$ARCH" == "arm64" ]; then
+ARCH=aarch64
+fi
 
 download_tool() {
     mkdir -p ${DOWNLOAD_DIR}
@@ -49,16 +52,16 @@ download_qemu() {
 
 download_gcc() {
     if [ "darwin" == $OS ]; then
-        echo darwin
         OS_ADDEND="-darwin"
+        GCC_ARCH=x86_64
     else
         OS_ADDEND=""
-        echo "not darwin"
+        GCC_ARCH=${ARCH}
     fi
 
     INSTALL_DIR=${TOOLS_DIR}/gcc-aarch64-none-elf/
 
-    TAR_NAME=gcc-arm-${GCC_VERSION}${OS_ADDEND}-${ARCH}-aarch64-none-elf.tar.xz
+    TAR_NAME=gcc-arm-${GCC_VERSION}${OS_ADDEND}-${GCC_ARCH}-aarch64-none-elf.tar.xz
     URL=https://developer.arm.com/-/media/Files/downloads/gnu/11.2-2022.02/binrel/${TAR_NAME}
     download_tool ${URL}
 
