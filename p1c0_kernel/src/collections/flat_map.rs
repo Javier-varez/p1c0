@@ -9,15 +9,19 @@ pub type FlatMapHasherBuilder = BuildHasherDefault<crate::hash::CrcHasher>;
 
 type Result<T> = core::result::Result<T, Error>;
 
+#[derive(Eq, PartialEq)]
 pub enum InsertStrategy {
-    Replace,
-    ErrorOnDuplicate,
+    ReplaceResize,
+    NoReplaceResize,
+    NoReplaceNoResize,
 }
 
 #[derive(Debug)]
 pub enum Error {
     KeyAlreadyPresentInMap,
     KeyNotFound,
+    RequiresResizing,
+    ResizeToSmallerCapacity,
 }
 
 enum BucketState {
@@ -216,7 +220,13 @@ where
         (self.num_elements * 100) / self.capacity
     }
 
-    fn resize(&mut self, new_capacity: usize) {
+    pub fn resize(&mut self, new_capacity: usize) -> Result<()> {
+        if new_capacity < self.capacity {
+            return Err(Error::ResizeToSmallerCapacity);
+        }
+        if new_capacity == self.capacity {
+            return Ok(());
+        }
         let mut old_map = core::mem::replace(
             self,
             Self::with_capacity_and_hasher(new_capacity, core::marker::PhantomData),
@@ -230,13 +240,14 @@ where
                         .assume_init()
                 };
 
-                self.insert_without_resize(key, val, InsertStrategy::ErrorOnDuplicate)
+                self.insert_without_resize(key, val, InsertStrategy::NoReplaceNoResize)
                     .expect(concat!(
                     "Could not insert element when resizing! ",
                     "This must be a bug since the entry must fit and there cannot be a repeated key"
                     ));
             }
         }
+        return Ok(());
     }
 
     fn insert_without_resize(&mut self, key: K, value: V, strategy: InsertStrategy) -> Result<()> {
@@ -277,10 +288,10 @@ where
                     }
 
                     match strategy {
-                        InsertStrategy::ErrorOnDuplicate => {
+                        InsertStrategy::NoReplaceResize | InsertStrategy::NoReplaceNoResize => {
                             return Err(Error::KeyAlreadyPresentInMap);
                         }
-                        InsertStrategy::Replace => {
+                        InsertStrategy::ReplaceResize => {
                             // Replace the old value
                             *value_in_map = value;
                             return Ok(());
@@ -370,7 +381,7 @@ where
 
     pub fn insert(&mut self, key: K, value: V) {
         // This cannot error out because the insert strategy is replace
-        self.insert_with_strategy(key, value, InsertStrategy::Replace)
+        self.insert_with_strategy(key, value, InsertStrategy::ReplaceResize)
             .unwrap()
     }
 
@@ -381,8 +392,11 @@ where
         strategy: InsertStrategy,
     ) -> Result<()> {
         if self.load_factor() > Self::MAX_LOAD_FACTOR {
+            if strategy == InsertStrategy::NoReplaceNoResize {
+                return Err(Error::RequiresResizing);
+            }
             let new_capacity = self.capacity * Self::RESIZE_FACTOR;
-            self.resize(new_capacity);
+            self.resize(new_capacity)?;
         }
         self.insert_without_resize(key, value, strategy)
     }
@@ -523,6 +537,34 @@ mod tests {
     }
 
     #[test]
+    fn test_errors_on_resize() {
+        type StrFlatMap = FlatMap<String, String, FlatMapHasherBuilder>;
+        let mut map = FlatMap::new();
+
+        assert_eq!(map.capacity(), StrFlatMap::DEFAULT_CAPACITY);
+
+        // The max factor must be over MAX_LOAD_FACTOR on entry, so we need to round up here
+        const CAPACITY_BEFORE_RESIZE: usize =
+            (StrFlatMap::DEFAULT_CAPACITY * StrFlatMap::MAX_LOAD_FACTOR + 99) / 100;
+
+        for i in 0..CAPACITY_BEFORE_RESIZE {
+            let key = format!("key {}", i);
+            let value = format!("value {}", i);
+            map.insert_with_strategy(key, value, InsertStrategy::NoReplaceNoResize)
+                .unwrap();
+        }
+
+        assert!(matches!(
+            map.insert_with_strategy(
+                "fail".to_string(),
+                "fail".to_string(),
+                InsertStrategy::NoReplaceNoResize
+            ),
+            Err(Error::RequiresResizing)
+        ));
+    }
+
+    #[test]
     fn test_automatically_resizes() {
         type StrFlatMap = FlatMap<String, String, FlatMapHasherBuilder>;
         let mut map = FlatMap::new();
@@ -532,7 +574,7 @@ mod tests {
         for i in 0..StrFlatMap::DEFAULT_CAPACITY {
             let key = format!("key {}", i);
             let value = format!("value {}", i);
-            map.insert_with_strategy(key, value, InsertStrategy::ErrorOnDuplicate)
+            map.insert_with_strategy(key, value, InsertStrategy::NoReplaceResize)
                 .unwrap();
         }
 
@@ -544,7 +586,7 @@ mod tests {
         for i in 0..StrFlatMap::DEFAULT_CAPACITY {
             let key = format!("key {}", StrFlatMap::DEFAULT_CAPACITY + i);
             let value = format!("value {}", StrFlatMap::DEFAULT_CAPACITY + i);
-            map.insert_with_strategy(key, value, InsertStrategy::ErrorOnDuplicate)
+            map.insert_with_strategy(key, value, InsertStrategy::NoReplaceResize)
                 .unwrap();
         }
 
@@ -562,7 +604,7 @@ mod tests {
         for i in 0..8 {
             let key = format!("key {}", i);
             let value = format!("value {}", i);
-            map.insert_with_strategy(key, value, InsertStrategy::ErrorOnDuplicate)
+            map.insert_with_strategy(key, value, InsertStrategy::NoReplaceResize)
                 .unwrap();
         }
 
