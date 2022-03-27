@@ -2,6 +2,7 @@ use crate::prelude::*;
 use core::borrow::Borrow;
 
 use core::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
+use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
 // This is the default hasher. Currently uses a Crc32C hash
@@ -9,6 +10,7 @@ pub type FlatMapHasherBuilder = BuildHasherDefault<crate::hash::CrcHasher>;
 
 type Result<T> = core::result::Result<T, Error>;
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Eq, PartialEq)]
 pub enum InsertStrategy {
     ReplaceResize,
@@ -130,7 +132,7 @@ where
     buckets: Vec<MaybeUninit<(K, V)>>,
     num_elements: usize,
     capacity: usize,
-    _hasher_builder: core::marker::PhantomData<H>,
+    _hasher_builder: PhantomData<H>,
 }
 
 impl<K, V> Default for FlatMap<K, V, FlatMapHasherBuilder>
@@ -147,12 +149,12 @@ where
     K: Hash + Eq + PartialEq,
 {
     pub fn new() -> Self {
-        Self::new_with_hasher(core::marker::PhantomData)
+        Self::new_with_hasher(PhantomData)
     }
 
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
-        Self::with_capacity_and_hasher(capacity, core::marker::PhantomData)
+        Self::with_capacity_and_hasher(capacity, PhantomData)
     }
 }
 
@@ -173,15 +175,12 @@ where
     const DEFAULT_CAPACITY: usize = 8;
 
     #[must_use]
-    pub fn new_with_hasher(hasher_builder: core::marker::PhantomData<H>) -> Self {
+    pub fn new_with_hasher(hasher_builder: PhantomData<H>) -> Self {
         Self::with_capacity_and_hasher(Self::DEFAULT_CAPACITY, hasher_builder)
     }
 
     #[must_use]
-    pub fn with_capacity_and_hasher(
-        capacity: usize,
-        hasher_builder: core::marker::PhantomData<H>,
-    ) -> Self {
+    pub fn with_capacity_and_hasher(capacity: usize, hasher_builder: PhantomData<H>) -> Self {
         let mut instance = Self {
             metadata_buckets: Vec::with_capacity(capacity),
             buckets: Vec::with_capacity(capacity),
@@ -229,7 +228,7 @@ where
         }
         let mut old_map = core::mem::replace(
             self,
-            Self::with_capacity_and_hasher(new_capacity, core::marker::PhantomData),
+            Self::with_capacity_and_hasher(new_capacity, PhantomData),
         );
 
         for index in 0..old_map.capacity {
@@ -247,7 +246,7 @@ where
                     ));
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     fn insert_without_resize(&mut self, key: K, value: V, strategy: InsertStrategy) -> Result<()> {
@@ -430,6 +429,14 @@ where
             current_index: 0,
         }
     }
+
+    pub fn iter_mut(&mut self) -> FlatMapIterMut<'_, K, V, H> {
+        FlatMapIterMut {
+            map: self as *mut _,
+            current_index: 0,
+            _pd: PhantomData,
+        }
+    }
 }
 
 pub struct FlatMapIter<'a, K, V, H>
@@ -471,6 +478,71 @@ where
         }
 
         option.map(|index| unsafe { self.map.buckets[index].assume_init_ref() })
+    }
+}
+
+pub struct FlatMapIterMut<'a, K, V, H>
+where
+    K: Hash + Eq + PartialEq + 'a,
+    V: 'a,
+    H: BuildHasher,
+{
+    map: *mut FlatMap<K, V, H>,
+    current_index: usize,
+    _pd: PhantomData<&'a mut FlatMap<K, V, H>>,
+}
+
+unsafe impl<'a, K, V, H> Sync for FlatMapIterMut<'a, K, V, H>
+where
+    K: Hash + Eq + PartialEq + Sync + 'a,
+    V: Sync + 'a,
+    H: BuildHasher,
+{
+}
+
+unsafe impl<'a, K, V, H> Send for FlatMapIterMut<'a, K, V, H>
+where
+    K: Hash + Eq + PartialEq + Send + 'a,
+    V: Send + 'a,
+    H: BuildHasher,
+{
+}
+
+impl<'a, K, V, H> Iterator for FlatMapIterMut<'a, K, V, H>
+where
+    K: Hash + Eq + PartialEq + 'a,
+    V: 'a,
+    H: BuildHasher,
+{
+    type Item = (&'a K, &'a mut V);
+    fn next(&mut self) -> Option<Self::Item> {
+        let map = unsafe { &mut *self.map };
+        /*
+         * TODO(javier-varez): We could probably make this faster by keeping a bitmap of used buckets
+         * then use compiler intrinsics to find the first bit set (trailing zeroes or ctz).
+         */
+        let mut option = None;
+        loop {
+            if self.current_index >= map.capacity() {
+                break;
+            }
+
+            match map.metadata_buckets[self.current_index].get_bucket_state() {
+                BucketState::InUse(_) => {
+                    option = Some(self.current_index);
+                    self.current_index += 1;
+                    break;
+                }
+                BucketState::Empty | BucketState::Deleted => {
+                    self.current_index += 1;
+                }
+            }
+        }
+
+        option.map(|index| {
+            let (k, v) = unsafe { map.buckets[index].assume_init_mut() };
+            (&*k, v)
+        })
     }
 }
 
@@ -619,6 +691,24 @@ mod tests {
             let key = format!("key {}", i);
             let value = format!("value {}", i);
             assert!(collected.iter().any(|(k, v)| (*k == key) && (*v == value)));
+        }
+    }
+
+    #[test]
+    fn test_iter_mut() {
+        let mut map = FlatMap::new();
+
+        for i in 0..8 {
+            let key = format!("key {}", i);
+            map.insert_with_strategy(key, i, InsertStrategy::NoReplaceResize)
+                .unwrap();
+        }
+
+        map.iter_mut().for_each(|(_k, v)| *v += 1);
+
+        for i in 0..8 {
+            let key = format!("key {}", i);
+            assert_eq!(*map.lookup(&key).unwrap(), i + 1);
         }
     }
 }
