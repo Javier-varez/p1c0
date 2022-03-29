@@ -341,6 +341,7 @@ macro_rules! define_syscalls {
                     }
                 )*
                 Err(Error::UnknownSyscall(id)) => {
+                    // TODO(Javier-varez): We should kill the process here or panic if this was the kernel
                     panic!("BUG: Received unknown syscall from user process: {}", id);
                 }
             };
@@ -370,6 +371,11 @@ fn handle_noop(_e: &mut ExceptionContext) {
 
 fn handle_reboot(_e: &mut ExceptionContext) {
     log_warning!("Syscall Reboot - Rebooting computer");
+    unsafe {
+        crate::print::force_flush();
+    }
+
+    // In case it hasn't been probed yet
     wdt::service();
 
     // We hang here never servicing the WDT again, causing a reboot
