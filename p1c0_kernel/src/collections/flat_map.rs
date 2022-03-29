@@ -152,6 +152,10 @@ where
         Self::new_with_hasher(PhantomData)
     }
 
+    pub const fn new_no_capacity() -> Self {
+        Self::new_no_capacity_with_hasher(PhantomData)
+    }
+
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self::with_capacity_and_hasher(capacity, PhantomData)
@@ -173,6 +177,16 @@ where
 
     // Default capacity of the map when instantiated with ::new()
     const DEFAULT_CAPACITY: usize = 8;
+
+    pub const fn new_no_capacity_with_hasher(hasher_builder: PhantomData<H>) -> Self {
+        Self {
+            metadata_buckets: vec![],
+            buckets: vec![],
+            num_elements: 0,
+            capacity: 0,
+            _hasher_builder: hasher_builder,
+        }
+    }
 
     #[must_use]
     pub fn new_with_hasher(hasher_builder: PhantomData<H>) -> Self {
@@ -390,6 +404,11 @@ where
         value: V,
         strategy: InsertStrategy,
     ) -> Result<()> {
+        if self.capacity == 0 {
+            // First time use, needs allocation
+            self.resize(Self::DEFAULT_CAPACITY)?;
+        }
+
         if self.load_factor() > Self::MAX_LOAD_FACTOR {
             if strategy == InsertStrategy::NoReplaceNoResize {
                 return Err(Error::RequiresResizing);

@@ -1,9 +1,9 @@
 use crate::log_debug;
 use crate::sync::spinlock::RwSpinLock;
-use alloc::collections::BTreeMap;
 
 use crate::prelude::*;
 
+use crate::collections::flat_map::{self, FlatMap, InsertStrategy};
 use p1c0_macros::initcall;
 
 mod cpio;
@@ -107,13 +107,13 @@ pub trait FilesystemDriver {
 }
 
 // Registered filesystem drivers. To be filled during init via register_driver
-static FS_DRIVERS: RwSpinLock<BTreeMap<String, Box<dyn FilesystemDriver>>> =
-    RwSpinLock::new(BTreeMap::new());
+static FS_DRIVERS: RwSpinLock<FlatMap<String, Box<dyn FilesystemDriver>>> =
+    RwSpinLock::new(FlatMap::new_no_capacity());
 
 // Registered filesystem drivers. To be filled during init via register_driver
 static VFS: RwSpinLock<VirtualFileSystem> = RwSpinLock::new(VirtualFileSystem::new());
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum OpenMode {
     Read,
     Write,
@@ -122,7 +122,7 @@ pub enum OpenMode {
     ReadAppend,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FileType {
     Directory,
     RegularFile,
@@ -167,7 +167,7 @@ impl VirtualFileSystem {
     }
 
     fn mount_rootfs(&mut self, data: &'static [u8]) -> Result<()> {
-        if let Some(fs_driver) = FS_DRIVERS.lock_read().get("initfs") {
+        if let Some(fs_driver) = FS_DRIVERS.lock_read().lookup("initfs") {
             let device = fs_driver.mount_from_static_data(data)?;
             self.rootfs.replace(device);
             Ok(())
@@ -263,7 +263,19 @@ impl<'a> Iterator for PathIter<'a> {
 
 pub fn register_driver(name: &str, driver: Box<dyn FilesystemDriver>) {
     log_debug!("Registering FS driver with name {}", name);
-    FS_DRIVERS.lock_write().insert(name.to_string(), driver);
+    match FS_DRIVERS.lock_write().insert_with_strategy(
+        name.to_string(),
+        driver,
+        InsertStrategy::NoReplaceResize,
+    ) {
+        Err(flat_map::Error::KeyAlreadyPresentInMap) => {
+            panic!(
+                "Tried to register two fs drivers with the same key `{}`",
+                name
+            );
+        }
+        _ => {}
+    }
 }
 
 /// This is the static CPIO archive for the Root FS. It is built with the build process and packaged
