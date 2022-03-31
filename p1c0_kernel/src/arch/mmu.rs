@@ -621,7 +621,7 @@ pub fn flush_tlb_page(addr: VirtualAddress) {
 
     #[cfg(all(not(test), target_arch = "aarch64"))]
     unsafe {
-        core::arch::asm!("dsb ishst\n", "tlbi vaae1, x0\n", "dsb ish\n", "isb\n", in("x0") addr.as_u64());
+        core::arch::asm!("dsb ishst\n", "tlbi vaae1, x0\n", "dsb ish\n", "isb\n", in("x0") addr.page_number());
     }
 }
 
