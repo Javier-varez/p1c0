@@ -1,5 +1,5 @@
 use crate::{
-    arch::mmu::PAGE_SIZE,
+    arch::mmu::{PAGE_BITS, PAGE_SIZE},
     memory::map::{KERNEL_LOGICAL_BASE, KERNEL_LOGICAL_SIZE},
 };
 
@@ -16,6 +16,10 @@ pub trait Address {
 
     fn is_page_aligned(&self) -> bool {
         (self.as_usize() & (PAGE_SIZE - 1)) == 0
+    }
+
+    fn page_number(&self) -> u64 {
+        self.as_u64() >> PAGE_BITS
     }
 
     fn as_mut_ptr(&self) -> *mut u8 {
