@@ -189,3 +189,8 @@ mod sys_impl_apl_acc_cfg {
     );
 }
 pub use sys_impl_apl_acc_cfg::SYS_IMPL_APL_ACC_CFG;
+
+mod sys_impl_apl_pmcr0 {
+    crate::define_register!(SYS_IMPL_APL_PMCR0, (), 3, 1, 15, 0, 0);
+}
+pub use sys_impl_apl_pmcr0::SYS_IMPL_APL_PMCR0;

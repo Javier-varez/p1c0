@@ -83,6 +83,21 @@ fn handle_fiq(e: &mut ExceptionContext) {
 
         // Run scheduler and maybe do context switch
         thread::run_scheduler(e);
+
+        // FIXME(javier-varez): This is a workaround for m1n1 HV. m1n1 triggers a Virtual FIQ that
+        // p1c0 handles when the timer expires, but it doesn't get notified by writes to TVAL or CTL
+        // timer registers.
+        //
+        // Since it doesn't listen to those register accesses it simply checks when to disable the FIQ
+        // by polling when the HV happens to run again.
+        //
+        // The problem is that it might take a while until it checks again and then the FIQ remains
+        // active for no good reason. Since p1c0 doesn't know what caused the FIQ, it calls the
+        // default handler and ends up crashing.
+        //
+        // PMCR0 is trapped by the HV, so this causes m1n1 HV to check again and synchronously
+        // disable the Virtual FIQ.
+        crate::registers::SYS_IMPL_APL_PMCR0.get();
         return;
     }
 
