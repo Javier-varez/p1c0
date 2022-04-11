@@ -6,6 +6,7 @@ use super::OwnedMutPtr;
 pub struct IntrusiveList<T> {
     head: *mut IntrusiveItem<T>,
     tail: *mut IntrusiveItem<T>,
+    length: usize,
 }
 
 unsafe impl<T> Send for IntrusiveList<T> {}
@@ -15,6 +16,7 @@ impl<T> IntrusiveList<T> {
         Self {
             head: core::ptr::null_mut(),
             tail: core::ptr::null_mut(),
+            length: 0,
         }
     }
 
@@ -23,6 +25,7 @@ impl<T> IntrusiveList<T> {
         if self.head.is_null() {
             self.head = item.leak();
             self.tail = self.head;
+            self.length = 1;
         } else {
             let new_item = item.leak();
             unsafe {
@@ -30,6 +33,7 @@ impl<T> IntrusiveList<T> {
                 (*new_item).prev = self.tail;
 
                 self.tail = new_item;
+                self.length += 1;
             }
         }
     }
@@ -50,6 +54,7 @@ impl<T> IntrusiveList<T> {
             unsafe { (*self.head).prev = core::ptr::null_mut() };
         }
 
+        self.length -= 1;
         let item = unsafe { OwnedMutPtr::new_from_raw(item) };
         Some(item)
     }
@@ -113,6 +118,7 @@ impl<T> IntrusiveList<T> {
         let mut element = unsafe { OwnedMutPtr::new_from_raw(element) };
         element.next = core::ptr::null_mut();
         element.prev = core::ptr::null_mut();
+        self.length -= 1;
         Some(element)
     }
 
@@ -157,6 +163,10 @@ impl<T> IntrusiveList<T> {
 
     pub fn is_empty(&self) -> bool {
         self.head.is_null()
+    }
+
+    pub fn len(&self) -> usize {
+        self.length
     }
 
     /// Consumes the list and calls the given callable to free/return each element
