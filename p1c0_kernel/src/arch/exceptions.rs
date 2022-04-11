@@ -14,7 +14,9 @@ use core::arch::global_asm;
 #[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
-use crate::{drivers::generic_timer, log_debug, log_info, syscall::syscall_handler, thread};
+use crate::{
+    drivers::generic_timer, log_debug, log_error, log_info, syscall::syscall_handler, thread,
+};
 
 /// Wrapper structs for memory copies of registers.
 #[repr(transparent)]
@@ -127,16 +129,29 @@ unsafe fn handle_synchronous(e: &mut ExceptionContext, origin: ExceptionOrigin) 
             match origin {
                 ExceptionOrigin::SameELStackFromEL0 => {
                     log_info!("Synchronous exception from EL1 with EL0 stack");
+                    default_exception_handler(e);
                 }
                 ExceptionOrigin::SameELAndStack => {
                     log_info!("Synchronous exception from EL1");
+                    default_exception_handler(e);
                 }
                 ExceptionOrigin::LowerAarch64EL => {
                     log_info!("Synchronous exception from EL0");
+                    // Get userspace process and kill it.
+                    // Some exceptions should be handled in the future (like accesses to
+                    // unmapped memory regions)
+                    log_error!(
+                        "\n\nCPU Exception!\n\
+                        Exc level {:?}\n\
+                        {}",
+                        crate::arch::get_exception_level(),
+                        e
+                    );
+
+                    crate::process::kill_current_process(e).unwrap();
+                    return;
                 }
             }
-
-            default_exception_handler(e);
         }
     }
 }
@@ -320,6 +335,8 @@ impl fmt::Display for EsrEL1 {
         let ec_translation = match self.exception_class() {
             Some(ESR_EL1::EC::Value::DataAbortCurrentEL) => "Data Abort, current EL",
             Some(ESR_EL1::EC::Value::InstrAbortCurrentEL) => "Instruction Abort, current EL",
+            Some(ESR_EL1::EC::Value::DataAbortLowerEL) => "Data Abort, lower EL",
+            Some(ESR_EL1::EC::Value::InstrAbortLowerEL) => "Instruction Abort, lower EL",
             Some(ESR_EL1::EC::Value::SVC64) => "SVC Call",
             Some(ESR_EL1::EC::Value::SVC32) => "SVC Call (32-bit)",
             _ => "N/A",

@@ -14,7 +14,7 @@ use crate::{
         OwnedMutPtr,
     },
     drivers::interfaces::{timer::Timer, Ticks},
-    log_info,
+    log_debug, log_info,
     sync::spinlock::SpinLock,
 };
 
@@ -26,6 +26,11 @@ use crate::syscall::Syscall;
 use core::ops::Add;
 use core::sync::atomic::{AtomicU64, Ordering};
 use core::time::Duration;
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Error {
+    ThreadNotFound,
+}
 
 enum Stack {
     KernelThread(Vec<u64>),
@@ -336,13 +341,7 @@ pub fn sleep_current_thread(cx: &mut ExceptionContext, duration: Duration) {
     current_thread.replace(thread);
 }
 
-pub fn exit_current_thread(cx: &mut ExceptionContext) {
-    let mut current_thread = CURRENT_THREAD.lock();
-
-    let thread = current_thread
-        .take()
-        .expect("There is no current thread calling sleep!");
-
+fn exit_thread(thread: Tcb) {
     let tid = thread.tid;
 
     // Drop the thread
@@ -356,6 +355,17 @@ pub fn exit_current_thread(cx: &mut ExceptionContext) {
         false
     });
     ACTIVE_THREADS.lock().join(unblocked_threads);
+}
+
+pub fn exit_current_thread(cx: &mut ExceptionContext) {
+    let mut current_thread = CURRENT_THREAD.lock();
+
+    let thread = current_thread
+        .take()
+        .expect("There is no current thread calling sleep!");
+
+    // Exit the thread
+    exit_thread(thread);
 
     let thread = schedule_next_thread();
     restore_thread_context(cx, &thread);
@@ -437,4 +447,57 @@ pub fn current_pid() -> Option<ProcessHandle> {
         .lock()
         .as_ref()
         .and_then(|thread| thread.process.clone())
+}
+
+fn find_thread(handle: ThreadHandle) -> Option<Tcb> {
+    let mut current_thread = CURRENT_THREAD.lock();
+    let matches_current_thread = if let Some(thread) = current_thread.as_ref() {
+        thread.tid == handle.0
+    } else {
+        false
+    };
+
+    if matches_current_thread {
+        return Some(current_thread.take().unwrap());
+    }
+
+    if let Some(thread) = ACTIVE_THREADS
+        .lock()
+        .drain_filter(|thread| thread.tid == handle.0)
+        .pop()
+    {
+        return Some(thread);
+    }
+
+    if let Some(thread) = BLOCKED_THREADS
+        .lock()
+        .drain_filter(|thread| thread.tid == handle.0)
+        .pop()
+    {
+        return Some(thread);
+    }
+
+    None
+}
+
+pub(crate) fn exit_matching_threads(
+    handles: &mut Vec<ThreadHandle>,
+    cx: &mut ExceptionContext,
+) -> Result<(), Error> {
+    while let Some(handle) = handles.pop() {
+        match find_thread(handle) {
+            Some(thread) => {
+                exit_thread(thread);
+            }
+            None => {
+                return Err(Error::ThreadNotFound);
+            }
+        }
+    }
+
+    let thread = schedule_next_thread();
+    restore_thread_context(cx, &thread);
+    CURRENT_THREAD.lock().replace(thread);
+
+    Ok(())
 }
