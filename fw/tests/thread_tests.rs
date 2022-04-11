@@ -121,5 +121,5 @@ fn test_join_thread() {
     t1.join();
     assert!(*NUM_THREADS.lock() > 0);
     t2.join();
-    assert!(*NUM_THREADS.lock() == 2);
+    assert_eq!(*NUM_THREADS.lock(), 2);
 }
