@@ -2,18 +2,20 @@ extern crate alloc;
 
 use crate::memory::address::{Address, VirtualAddress};
 use crate::memory::{GlobalPermissions, MemoryManager, Permissions};
+use crate::prelude::*;
 use crate::{
     collections::{
         intrusive_list::{IntrusiveItem, IntrusiveList},
         OwnedMutPtr,
     },
-    log_debug, memory,
+    memory,
     memory::address_space::{self, ProcessAddressSpace},
     sync::spinlock::SpinLock,
     thread::{self, ThreadHandle},
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 
+use crate::arch::exceptions::ExceptionContext;
 use crate::arch::mmu::PAGE_SIZE;
 use crate::memory::physical_page_allocator::PhysicalMemoryRegion;
 use core::sync::atomic::{AtomicU64, Ordering};
@@ -22,6 +24,8 @@ use core::sync::atomic::{AtomicU64, Ordering};
 pub enum Error {
     AddressSpaceError(address_space::Error),
     MemoryError(memory::Error),
+    ThreadError(thread::Error),
+    NoCurrentProcess,
     InvalidBase,
 }
 
@@ -34,6 +38,12 @@ impl From<address_space::Error> for Error {
 impl From<memory::Error> for Error {
     fn from(e: memory::Error) -> Self {
         Error::MemoryError(e)
+    }
+}
+
+impl From<thread::Error> for Error {
+    fn from(e: thread::Error) -> Self {
+        Error::ThreadError(e)
     }
 }
 
@@ -162,7 +172,7 @@ impl Builder {
 
         let process = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(Process {
             address_space: self.address_space,
-            _thread_list: vec![thread_id],
+            thread_list: vec![thread_id],
             _state: State::Running,
             pid,
         })));
@@ -175,7 +185,7 @@ impl Builder {
 pub struct Process {
     address_space: ProcessAddressSpace,
     // List of thread IDs of our threads
-    _thread_list: Vec<ThreadHandle>,
+    thread_list: Vec<ThreadHandle>,
     _state: State,
     pid: u64,
 }
@@ -192,4 +202,25 @@ pub(crate) fn do_with_process(handle: &ProcessHandle, mut f: impl FnMut(&mut Pro
             f(process);
         }
     }
+}
+
+pub(crate) fn kill_current_process(cx: &mut ExceptionContext) -> Result<(), Error> {
+    let pid = match thread::current_pid() {
+        Some(pid) => pid,
+        None => {
+            log_error!("Cannot kill current process. No process is currently running");
+            return Err(Error::NoCurrentProcess);
+        }
+    };
+    let mut removed_process = PROCESSES.lock().drain_filter(|p| p.pid == pid.0);
+
+    // Only one process must match
+    assert_eq!(removed_process.len(), 1);
+
+    // # Safety: into_box is safe because processes are allocated with box
+    let mut process = unsafe { removed_process.pop().unwrap().into_box() };
+    log_info!("Killing process with PID {}", process.pid);
+
+    crate::thread::exit_matching_threads(&mut process.thread_list, cx)?;
+    Ok(())
 }
