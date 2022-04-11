@@ -16,9 +16,15 @@ CLINKAGE [[noreturn]] void _start(u64 base_addr) {
 
   apply_relocations(base_addr, relocations, rela_len_bytes);
 
-  u64 i = (u64) &_start;
+  u64 i = (u64) & _start;
   // And now we can start doing work
   while (true) {
+    if (i == 0x3000005) {
+      // Crash the hell out of this process
+      volatile int *ptr = nullptr;
+      *ptr = 123;
+    }
+
     puts("Hi there!");
     puthex(i);
     i++;
