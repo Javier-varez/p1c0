@@ -5,7 +5,7 @@
 use embedded_graphics::pixelcolor::Rgb888;
 use tinybmp::Bmp;
 
-use p1c0_kernel::{log_debug, log_error, log_info};
+use p1c0_kernel::prelude::*;
 
 use p1c0::print_boot_args;
 

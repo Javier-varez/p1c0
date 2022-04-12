@@ -14,7 +14,7 @@ use crate::{
         OwnedMutPtr,
     },
     drivers::interfaces::{timer::Timer, Ticks},
-    log_debug, log_info,
+    prelude::*,
     sync::spinlock::SpinLock,
 };
 

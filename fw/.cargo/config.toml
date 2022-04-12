@@ -9,7 +9,8 @@ rustflags = [
     "-C", "link-arg=--no-apply-dynamic-relocs",
     "-C", "link-arg=-pie",
     "-C", "link-args=-z nocopyreloc",
-    "-C", "link-args=-z notext"
+    "-C", "link-args=-z notext",
+    "-C", "force-frame-pointers=yes"
 ]
 
 [target.'cfg(target_os = "none")']

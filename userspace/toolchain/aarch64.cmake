@@ -10,8 +10,10 @@ set(CMAKE_)
 set(CMAKE_CXX_COMPILER aarch64-none-elf-g++)
 set(CMAKE_CXX_COMPILER_TARGET ${triple})
 
-set(CMAKE_CXX_FLAGS "")
-set(CMAKE_C_FLAGS "")
+# We need to make sure to not omit frame pointer to make debugging easier.
+# Otherwise we might not be able to get backtraces
+set(CMAKE_CXX_FLAGS "-fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS "-fno-omit-frame-pointer")
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
