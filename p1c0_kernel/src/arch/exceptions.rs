@@ -397,7 +397,13 @@ impl fmt::Display for ExceptionContext {
         for (i, reg) in self.gpr.iter().enumerate() {
             write!(f, "      x{: <2}: {: >#018x}{}", i, reg, alternating(i))?;
         }
-        write!(f, "")
+        write!(f, "\n\n")?;
+
+        // Stack trace
+        let fp = self.gpr[29] as *const crate::backtrace::Frame;
+        // # Safety: Frame pointer for the process should be valid
+        let stack_iter = unsafe { crate::backtrace::stack_frame_iter(fp) };
+        write!(f, "{}", stack_iter)
     }
 }
 
