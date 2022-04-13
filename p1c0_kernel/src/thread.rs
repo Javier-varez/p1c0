@@ -14,6 +14,7 @@ use crate::{
         OwnedMutPtr,
     },
     drivers::interfaces::{timer::Timer, Ticks},
+    memory::address,
     prelude::*,
     sync::spinlock::SpinLock,
 };
@@ -34,7 +35,7 @@ pub enum Error {
 
 enum Stack {
     KernelThread(Vec<u64>),
-    ProcessThread(VirtualAddress),
+    ProcessThread(VirtualAddress, usize /* num_pages */),
 }
 
 impl Stack {
@@ -50,8 +51,45 @@ impl Stack {
     fn top(&self) -> u64 {
         match &self {
             Stack::KernelThread(stack) => &stack[stack.len() - 1] as *const _ as u64,
-            Stack::ProcessThread(va) => va.as_u64() - 8,
+            Stack::ProcessThread(va, size) => va.as_u64() + *size as u64,
         }
+    }
+
+    fn base(&self) -> VirtualAddress {
+        match &self {
+            Stack::KernelThread(stack) => VirtualAddress::new_unaligned(stack.as_ptr() as *const _),
+            Stack::ProcessThread(stack, _) => *stack,
+        }
+    }
+
+    fn len(&self) -> usize {
+        match &self {
+            Stack::KernelThread(stack) => stack.len(),
+            Stack::ProcessThread(_, size) => *size,
+        }
+    }
+
+    fn validator(&self) -> StackValidator {
+        StackValidator {
+            range_base: self.base(),
+            range_len: self.len(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct StackValidator {
+    range_base: VirtualAddress,
+    range_len: usize,
+}
+
+impl address::Validator for StackValidator {
+    fn is_valid(&self, ptr: address::VirtualAddress) -> bool {
+        let range_base = self.range_base.as_usize();
+        let range_len = self.range_len;
+
+        let ptr = ptr.as_usize();
+        (ptr >= range_base) || (ptr < (range_base + range_len))
     }
 }
 
@@ -65,7 +103,7 @@ pub struct ThreadControlBlock {
     name: String<32>,
     process: Option<crate::process::ProcessHandle>,
     entry: Option<Box<dyn FnOnce()>>,
-    _stack: Stack,
+    stack: Stack,
 
     // Blocking conditions
     block_reason: Option<BlockReason>,
@@ -171,7 +209,7 @@ impl Builder {
             tid,
             name,
             entry: Some(thread_wrapper),
-            _stack: stack,
+            stack,
             process: None,
             block_reason: None,
             regs,
@@ -197,11 +235,12 @@ where
 pub(crate) fn new_for_process(
     process: ProcessHandle,
     stack_va: VirtualAddress,
+    stack_size: usize,
     entry_point: VirtualAddress,
     base_address: VirtualAddress,
 ) -> ThreadHandle {
     let name = String::new();
-    let stack = Stack::ProcessThread(stack_va);
+    let stack = Stack::ProcessThread(stack_va, stack_size);
     let stack_ptr = stack.top();
     let elr = entry_point.as_ptr();
     let mut spsr = SPSR_EL1.extract();
@@ -213,7 +252,7 @@ pub(crate) fn new_for_process(
         tid,
         name,
         entry: None,
-        _stack: stack,
+        stack,
         process: Some(process),
         block_reason: None,
         regs,
@@ -500,4 +539,11 @@ pub(crate) fn exit_matching_threads(
     CURRENT_THREAD.lock().replace(thread);
 
     Ok(())
+}
+
+pub(crate) fn current_stack_validator() -> Option<StackValidator> {
+    CURRENT_THREAD
+        .lock()
+        .as_ref()
+        .map(|proc| proc.stack.validator())
 }
