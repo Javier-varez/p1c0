@@ -150,6 +150,8 @@ impl Builder {
         // Allocate stack
         let pmr = MemoryManager::instance().request_any_pages(1, memory::AllocPolicy::ZeroFill)?;
 
+        const STACK_SIZE: usize = 4096;
+
         let stack_va =
             VirtualAddress::try_from_ptr((0xF00000000000 + base_address.as_u64()) as *const _)
                 .map_err(|_e| Error::InvalidBase)?;
@@ -157,7 +159,7 @@ impl Builder {
             ".stack",
             stack_va,
             pmr,
-            4096,
+            STACK_SIZE,
             GlobalPermissions::new_for_process(Permissions::RW),
         )?;
 
@@ -165,7 +167,8 @@ impl Builder {
 
         let thread_id = thread::new_for_process(
             ProcessHandle(pid),
-            unsafe { stack_va.offset(4096) },
+            stack_va,
+            STACK_SIZE,
             entry_point,
             base_address,
         );

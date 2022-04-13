@@ -3,6 +3,11 @@ use crate::{
     memory::map::{KERNEL_LOGICAL_BASE, KERNEL_LOGICAL_SIZE},
 };
 
+pub trait Validator {
+    /// Validates virtual addresses are within a valid address range.
+    fn is_valid(&self, va: VirtualAddress) -> bool;
+}
+
 pub trait Address {
     fn as_ptr(&self) -> *const u8;
 
@@ -215,5 +220,7 @@ impl core::fmt::Display for LogicalAddress {
 
 // All memory addresses can be shared freely between threads,
 unsafe impl Send for VirtualAddress {}
+
 unsafe impl Send for PhysicalAddress {}
+
 unsafe impl Send for LogicalAddress {}
