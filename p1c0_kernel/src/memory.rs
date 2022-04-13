@@ -467,4 +467,8 @@ impl MemoryManager {
 
         self.kernel_address_space.fast_page_unmap().unwrap();
     }
+
+    pub fn map_kernel_low_pages(&mut self) {
+        arch::mmu::switch_process_translation_table(self.kernel_address_space.low_table());
+    }
 }

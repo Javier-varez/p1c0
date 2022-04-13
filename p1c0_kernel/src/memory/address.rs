@@ -9,26 +9,37 @@ pub trait Validator {
 }
 
 pub trait Address {
+    #[must_use]
     fn as_ptr(&self) -> *const u8;
 
+    #[must_use]
     fn as_usize(&self) -> usize {
         self.as_ptr() as usize
     }
 
+    #[must_use]
     fn as_u64(&self) -> u64 {
         self.as_ptr() as u64
     }
 
+    #[must_use]
     fn is_page_aligned(&self) -> bool {
         (self.as_usize() & (PAGE_SIZE - 1)) == 0
     }
 
+    #[must_use]
     fn page_number(&self) -> u64 {
         self.as_u64() >> PAGE_BITS
     }
 
+    #[must_use]
     fn as_mut_ptr(&self) -> *mut u8 {
         self.as_ptr() as *mut _
+    }
+
+    #[must_use]
+    fn is_null(&self) -> bool {
+        self.as_ptr().is_null()
     }
 }
 
