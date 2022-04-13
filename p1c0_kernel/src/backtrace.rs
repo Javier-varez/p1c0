@@ -1,42 +1,61 @@
+use crate::memory::address::{Address, Validator, VirtualAddress};
 use core::fmt::Formatter;
 
 #[repr(C)]
 pub struct Frame {
     next: *const Frame,
-    lr: *const (),
+    lr: *const u8,
 }
 
 #[derive(Clone)]
-pub struct StackFrameIter(*const Frame);
+pub struct StackFrameIter<V: Validator> {
+    frame_ptr: VirtualAddress,
+    validator: V,
+}
 
-impl Iterator for StackFrameIter {
-    type Item = *const ();
+impl<V: Validator> Iterator for StackFrameIter<V> {
+    type Item = VirtualAddress;
+
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.0.is_null() {
-            let item = unsafe { (*self.0).lr };
-            unsafe { self.0 = (*self.0).next };
-            if item.is_null() {
-                return None;
-            }
-            return Some(item);
+        if !self.validator.is_valid(self.frame_ptr) {
+            return None;
         }
-        None
+
+        let frame_ptr = self.frame_ptr.as_ptr() as *const Frame;
+
+        // # Safety: This should be safe because it is within the validated range
+        let item = VirtualAddress::new_unaligned(unsafe { (*frame_ptr).lr });
+
+        self.frame_ptr = VirtualAddress::new_unaligned(unsafe { (*frame_ptr).next } as *const _);
+
+        // We hit the end on nullptr
+        if item.as_ptr().is_null() {
+            return None;
+        }
+
+        Some(item)
     }
 }
 
-impl core::fmt::Display for StackFrameIter {
+impl<V: Validator + Clone> core::fmt::Display for StackFrameIter<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let mut iter_clone = self.clone();
+        let mut iter_clone = (*self).clone();
         let mut level = 0;
         write!(f, "Stack trace:\n")?;
         while let Some(frame) = iter_clone.next() {
-            write!(f, "\t[{}] = {:?}\n", level, frame)?;
+            write!(f, "\t[{}] = {}\n", level, frame)?;
             level += 1;
         }
         Ok(())
     }
 }
 
-pub unsafe fn stack_frame_iter(fp: *const Frame) -> StackFrameIter {
-    StackFrameIter(fp)
+pub fn stack_frame_iter(
+    frame_ptr: VirtualAddress,
+    validator: impl Validator + Clone,
+) -> StackFrameIter<impl Validator + Clone> {
+    StackFrameIter {
+        frame_ptr,
+        validator,
+    }
 }

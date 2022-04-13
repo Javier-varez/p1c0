@@ -14,6 +14,7 @@ use core::arch::global_asm;
 #[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
+use crate::memory::address::VirtualAddress;
 use crate::{
     drivers::generic_timer, log_debug, log_error, log_info, syscall::syscall_handler, thread,
 };
@@ -399,11 +400,15 @@ impl fmt::Display for ExceptionContext {
         }
         write!(f, "\n\n")?;
 
-        // Stack trace
-        let fp = self.gpr[29] as *const crate::backtrace::Frame;
-        // # Safety: Frame pointer for the process should be valid
-        let stack_iter = unsafe { crate::backtrace::stack_frame_iter(fp) };
-        write!(f, "{}", stack_iter)
+        if let Some(validator) = crate::thread::current_stack_validator() {
+            // Stack trace
+            let fp = VirtualAddress::new_unaligned(self.gpr[29] as *const _);
+
+            let stack_iter = crate::backtrace::stack_frame_iter(fp, validator);
+            write!(f, "{}", stack_iter)?;
+        }
+
+        Ok(())
     }
 }
 
