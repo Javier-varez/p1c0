@@ -403,7 +403,6 @@ impl fmt::Display for ExceptionContext {
         if let Some(validator) = crate::thread::current_stack_validator() {
             // Stack trace
             let fp = VirtualAddress::new_unaligned(self.gpr[29] as *const _);
-
             let stack_iter = crate::backtrace::stack_frame_iter(fp, validator);
             write!(f, "{}", stack_iter)?;
         }

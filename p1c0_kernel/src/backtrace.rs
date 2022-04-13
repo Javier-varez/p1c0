@@ -2,7 +2,7 @@ use crate::memory::address::{Address, Validator, VirtualAddress};
 use core::fmt::Formatter;
 
 #[repr(C)]
-pub struct Frame {
+struct Frame {
     next: *const Frame,
     lr: *const u8,
 }
