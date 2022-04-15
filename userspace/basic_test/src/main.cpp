@@ -2,9 +2,11 @@
 #include "relocations.h"
 #include "syscalls.h"
 
-[[gnu::noinline]] void oh_my_bug(u64 i);
+namespace {
+    [[gnu::noinline]] void oh_my_bug(u64 i);
 
-[[gnu::noinline]] void print_message(u64 i);
+    [[gnu::noinline]] void print_message(u64 i);
+}
 
 // base_addr is passed to us via the OS so that we know where the binary was loaded. This can be used for ASLR.
 CLINKAGE [[noreturn]] void _start(u64 base_addr) {
@@ -29,16 +31,18 @@ CLINKAGE [[noreturn]] void _start(u64 base_addr) {
   }
 }
 
-[[gnu::noinline]] void oh_my_bug(u64 i) {
-  if (i == 0x3000005) {
-    // Crash the hell out of this process
-    volatile int *ptr = nullptr;
-    *ptr = 123;
-  }
-}
+namespace {
+    [[gnu::noinline]] void oh_my_bug(u64 i) {
+      if (i == 0x3000005) {
+        // Crash the hell out of this process
+        volatile int *ptr = nullptr;
+        *ptr = 123;
+      }
+    }
 
-[[gnu::noinline]] void print_message(u64 i) {
-  puts("Hi there!");
-  puthex(i);
-  oh_my_bug(i);
+    [[gnu::noinline]] void print_message(u64 i) {
+      puts("Hi there!");
+      puthex(i);
+      oh_my_bug(i);
+    }
 }
