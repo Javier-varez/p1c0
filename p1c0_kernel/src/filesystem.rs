@@ -263,18 +263,14 @@ impl<'a> Iterator for PathIter<'a> {
 
 pub fn register_driver(name: &str, driver: Box<dyn FilesystemDriver>) {
     log_debug!("Registering FS driver with name {}", name);
-    match FS_DRIVERS.lock_write().insert_with_strategy(
-        name.to_string(),
-        driver,
-        InsertStrategy::NoReplaceResize,
-    ) {
-        Err(flat_map::Error::KeyAlreadyPresentInMap) => {
-            panic!(
-                "Tried to register two fs drivers with the same key `{}`",
-                name
-            );
-        }
-        _ => {}
+    if let Err(flat_map::Error::KeyAlreadyPresentInMap) = FS_DRIVERS
+        .lock_write()
+        .insert_with_strategy(name.to_string(), driver, InsertStrategy::NoReplaceResize)
+    {
+        panic!(
+            "Tried to register two fs drivers with the same key `{}`",
+            name
+        );
     }
 }
 

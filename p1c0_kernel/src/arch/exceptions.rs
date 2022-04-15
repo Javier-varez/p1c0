@@ -150,7 +150,6 @@ unsafe fn handle_synchronous(e: &mut ExceptionContext, origin: ExceptionOrigin) 
                     );
 
                     crate::process::kill_current_process(e).unwrap();
-                    return;
                 }
             }
         }
