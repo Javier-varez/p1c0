@@ -39,12 +39,10 @@ impl<V: Validator> Iterator for StackFrameIter<V> {
 
 impl<V: Validator + Clone> core::fmt::Display for StackFrameIter<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let mut iter_clone = (*self).clone();
-        let mut level = 0;
-        write!(f, "Stack trace:\n")?;
-        while let Some(frame) = iter_clone.next() {
-            write!(f, "\t[{}] = {}\n", level, frame)?;
-            level += 1;
+        let iter_clone = (*self).clone();
+        writeln!(f, "Stack trace:")?;
+        for (level, frame) in iter_clone.enumerate() {
+            writeln!(f, "\t[{}] = {}", level, frame)?;
         }
         Ok(())
     }
