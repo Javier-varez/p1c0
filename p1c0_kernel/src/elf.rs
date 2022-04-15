@@ -1,4 +1,4 @@
-use crate::{log_error, log_verbose, log_warning};
+use crate::prelude::*;
 
 macro_rules! read_elf64_half {
     ($buffer: expr, $offset: ident) => {
@@ -64,6 +64,7 @@ pub enum Error {
     InvalidElfMachine(Elf64_Half),
     InvalidPType(Elf64_Word),
     InvalidShType(Elf64_Word),
+    InvalidSymbolType(u8),
     UnsupportedElfClass(EClass),
     UnsupportedElfEndianness(EData),
     NoMatchingSection,
@@ -266,6 +267,40 @@ impl<'a> ElfParser<'a> {
 
         Err(Error::NoMatchingSection)
     }
+
+    pub fn symbol_table_iter(&self) -> Option<SymbolTableIter> {
+        if let Some(symtab) = self
+            .section_header_iter()
+            .find(|section| matches!(section.ty(), Ok(ShType::SymTab)))
+        {
+            let symbol_table_offset = symtab.offset() as usize;
+            let symbol_table_size = symtab.size() as usize;
+
+            if let Some(strtab) = self.section_header_iter().nth(symtab.link() as usize) {
+                let symbol_strtable_offset = strtab.offset() as usize;
+                let symbol_strtable_size = strtab.size() as usize;
+
+                // This is data with symbol entries
+                let symbol_table_data =
+                    &self.elf_data[symbol_table_offset..symbol_table_offset + symbol_table_size];
+
+                let symbol_strtable_data = &self.elf_data
+                    [symbol_strtable_offset..symbol_strtable_offset + symbol_strtable_size];
+
+                let iter = SymbolTableIter {
+                    data: symbol_table_data,
+                    strdata: symbol_strtable_data,
+                    num_entries: symtab.size() as usize / symtab.entry_size() as usize,
+                    entry_size: symtab.entry_size() as usize,
+                    index: 0,
+                };
+
+                return Some(iter);
+            }
+        }
+
+        None
+    }
 }
 
 pub struct ProgramHeader<'a> {
@@ -332,6 +367,18 @@ impl<'a> SectionHeader<'a> {
     pub fn offset(&self) -> Elf64_Off {
         read_elf64_off!(self.section_header_data, SH_OFFSET)
     }
+
+    pub fn size(&self) -> Elf64_Xword {
+        read_elf64_xword!(self.section_header_data, SH_SIZE)
+    }
+
+    pub fn link(&self) -> Elf64_Word {
+        read_elf64_word!(self.section_header_data, SH_LINK)
+    }
+
+    pub fn entry_size(&self) -> Elf64_Xword {
+        read_elf64_xword!(self.section_header_data, SH_ENTSIZE)
+    }
 }
 
 pub struct ProgramHeaderIter<'a> {
@@ -378,6 +425,60 @@ impl<'a> Iterator for SectionHeaderIter<'a> {
     }
 }
 
+pub struct SymbolEntry<'a> {
+    data: &'a [u8],
+    strdata: &'a [u8],
+}
+
+impl<'a> SymbolEntry<'a> {
+    pub fn ty(&self) -> Result<SymbolType, Error> {
+        self.data[file_offsets::elf64::ST_INFO].try_into()
+    }
+
+    pub fn value(&self) -> Elf64_Addr {
+        read_elf64_addr!(self.data, ST_VALUE)
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        let name_idx = read_elf64_word!(self.data, ST_NAME) as usize;
+
+        // Now get the string from the index
+        let strdata = &self.strdata[name_idx..];
+        let mut length = 0;
+        while strdata[length] != b'\0' {
+            length += 1;
+        }
+
+        let strdata = &strdata[..length];
+        core::str::from_utf8(strdata).ok()
+    }
+}
+
+pub struct SymbolTableIter<'a> {
+    data: &'a [u8],
+    strdata: &'a [u8],
+    entry_size: usize,
+    num_entries: usize,
+    index: usize,
+}
+
+impl<'a> Iterator for SymbolTableIter<'a> {
+    type Item = SymbolEntry<'a>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.num_entries {
+            return None;
+        }
+
+        let symbol_entry_data =
+            &self.data[self.index * self.entry_size..(self.index + 1) * self.entry_size];
+        self.index += 1;
+        Some(SymbolEntry {
+            data: symbol_entry_data,
+            strdata: self.strdata,
+        })
+    }
+}
+
 const SHN_UNDEF: usize = 0;
 
 mod file_offsets {
@@ -414,6 +515,14 @@ mod file_offsets {
         pub const SH_TYPE: usize = 0x04;
         pub const SH_ADDR: usize = 0x10;
         pub const SH_OFFSET: usize = 0x18;
+        pub const SH_SIZE: usize = 0x20;
+        pub const SH_LINK: usize = 0x28;
+        pub const SH_ENTSIZE: usize = 0x38;
+
+        // Symbol table entry
+        pub const ST_NAME: usize = 0x00;
+        pub const ST_INFO: usize = 0x04;
+        pub const ST_VALUE: usize = 0x08;
     }
 }
 
@@ -521,6 +630,42 @@ define_enum! {
         Rel = 9
     ],
     InvalidShType
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum SymbolType {
+    NoType = 0,
+    Object = 1,
+    Function = 2,
+    Section = 3,
+    File = 4,
+    Common = 5,
+    Tls = 6,
+    LoOS = 10,
+    HiOS = 12,
+    LoProc = 13,
+    HiProc = 15,
+}
+
+impl TryFrom<u8> for SymbolType {
+    type Error = Error;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        let symbol_type = value & 0xf;
+        match symbol_type {
+            0 => Ok(SymbolType::NoType),
+            1 => Ok(SymbolType::Object),
+            2 => Ok(SymbolType::Function),
+            3 => Ok(SymbolType::Section),
+            4 => Ok(SymbolType::File),
+            5 => Ok(SymbolType::Common),
+            6 => Ok(SymbolType::Tls),
+            10 => Ok(SymbolType::LoOS),
+            12 => Ok(SymbolType::HiOS),
+            13 => Ok(SymbolType::LoProc),
+            15 => Ok(SymbolType::HiProc),
+            _ => Err(Error::InvalidSymbolType(symbol_type)),
+        }
+    }
 }
 
 pub struct Permissions {

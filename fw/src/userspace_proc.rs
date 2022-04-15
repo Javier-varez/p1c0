@@ -118,5 +118,14 @@ pub fn create_process(filename: &str, aslr: usize) -> Result<(), Error> {
     let base_address = VirtualAddress::new_unaligned(aslr as *const _);
     process_builder.start(entry_point, base_address)?;
 
+    for symbol in elf.symbol_table_iter().unwrap() {
+        log_debug!(
+            "Found symbol `{}`, with value 0x{:x} and type `{:?}`",
+            symbol.name().unwrap_or(""),
+            symbol.value(),
+            symbol.ty()
+        );
+    }
+
     Ok(())
 }
