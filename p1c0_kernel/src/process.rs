@@ -241,12 +241,16 @@ impl<'a> crate::backtrace::Symbolicator for ProcessSymbolicator<'a> {
     }
 }
 
-pub(crate) fn do_with_process(handle: &ProcessHandle, mut f: impl FnMut(&mut Process)) {
-    for process in PROCESSES.lock().iter_mut() {
-        if process.pid == handle.0 {
-            f(process);
-        }
-    }
+pub(crate) fn do_with_process<T>(
+    handle: &ProcessHandle,
+    mut f: impl FnMut(&mut Process) -> T,
+) -> T {
+    let mut processes = PROCESSES.lock();
+    let proc = processes
+        .iter_mut()
+        .find(|proc| proc.pid == handle.0)
+        .expect("There isn't a matching process");
+    f(proc)
 }
 
 pub(crate) fn kill_current_process(cx: &mut ExceptionContext) -> Result<(), Error> {
