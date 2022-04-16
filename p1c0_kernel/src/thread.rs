@@ -104,6 +104,7 @@ pub struct ThreadControlBlock {
     process: Option<crate::process::ProcessHandle>,
     entry: Option<Box<dyn FnOnce()>>,
     stack: Stack,
+    is_idle_thread: bool,
 
     // Blocking conditions
     block_reason: Option<BlockReason>,
@@ -134,6 +135,7 @@ static BLOCKED_THREADS: SpinLock<IntrusiveList<ThreadControlBlock>> =
     SpinLock::new(IntrusiveList::new());
 
 static CURRENT_THREAD: SpinLock<Option<Tcb>> = SpinLock::new(None);
+static IDLE_THREAD: SpinLock<Option<Tcb>> = SpinLock::new(None);
 
 static NUM_THREADS: AtomicU64 = AtomicU64::new(0);
 
@@ -183,7 +185,7 @@ impl Builder {
         self
     }
 
-    pub fn spawn<F>(self, thread: F) -> ThreadHandle
+    fn create<F>(self, thread: F) -> Tcb
     where
         F: FnOnce() + Send + 'static,
     {
@@ -216,11 +218,20 @@ impl Builder {
             elr: elr as u64,
             spsr: spsr.get(),
             stack_ptr,
+            is_idle_thread: false,
         })));
         tcb.regs[0] = (&mut **tcb) as *mut ThreadControlBlock as u64;
 
-        ACTIVE_THREADS.lock().push(tcb);
+        tcb
+    }
 
+    pub fn spawn<F>(self, thread: F) -> ThreadHandle
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let tcb = self.create(thread);
+        let tid = tcb.tid;
+        ACTIVE_THREADS.lock().push(tcb);
         ThreadHandle(tid)
     }
 }
@@ -259,6 +270,7 @@ pub(crate) fn new_for_process(
         elr: elr as u64,
         spsr: spsr.get(),
         stack_ptr,
+        is_idle_thread: false,
     })));
     tcb.regs[0] = base_address.as_u64();
 
@@ -272,9 +284,11 @@ pub fn initialize() -> ! {
     assert!(current_thread.is_none());
 
     // Spawn idle thread
-    Builder::new().name("Idle").stack_size(128).spawn(|| loop {
+    let mut idle = Builder::new().name("Idle").stack_size(128).create(|| loop {
         wfi();
     });
+    idle.is_idle_thread = true;
+    IDLE_THREAD.lock().replace(idle);
 
     // Let's take the first element in the thread list and run that
     let thread = ACTIVE_THREADS.lock().pop().expect("No threads found!");
@@ -330,7 +344,10 @@ fn schedule_next_thread() -> Tcb {
 
     // This is the actual round-robin scheduling algo... For now it works, but it is obviously not
     // optimal
-    ACTIVE_THREADS.lock().pop().unwrap()
+    ACTIVE_THREADS
+        .lock()
+        .pop()
+        .unwrap_or_else(|| IDLE_THREAD.lock().take().unwrap())
 }
 
 pub fn run_scheduler(cx: &mut ExceptionContext) {
@@ -349,8 +366,12 @@ pub fn run_scheduler(cx: &mut ExceptionContext) {
 
     save_thread_context(&mut thread, cx);
 
-    // Store the thread in the list again
-    ACTIVE_THREADS.lock().push(thread);
+    if thread.is_idle_thread {
+        IDLE_THREAD.lock().replace(thread);
+    } else {
+        // Store the thread in the list again
+        ACTIVE_THREADS.lock().push(thread);
+    }
 
     let thread = schedule_next_thread();
     restore_thread_context(cx, &thread);
@@ -363,6 +384,7 @@ pub fn sleep_current_thread(cx: &mut ExceptionContext, duration: Duration) {
     let mut thread = current_thread
         .take()
         .expect("There is no current thread calling sleep!");
+    assert!(!thread.is_idle_thread);
 
     save_thread_context(&mut thread, cx);
 
@@ -405,6 +427,7 @@ pub fn exit_current_thread(cx: &mut ExceptionContext) {
     let thread = current_thread
         .take()
         .expect("There is no current thread calling sleep!");
+    assert!(!thread.is_idle_thread);
 
     // Exit the thread
     exit_thread(thread);
@@ -443,6 +466,8 @@ pub fn join_thread(cx: &mut ExceptionContext, tid: u64) {
     let mut thread = current_thread
         .take()
         .expect("There is no current thread calling sleep!");
+    assert!(!thread.is_idle_thread);
+
     save_thread_context(&mut thread, cx);
 
     thread.block_reason = Some(BlockReason::Join(ThreadHandle(tid)));
