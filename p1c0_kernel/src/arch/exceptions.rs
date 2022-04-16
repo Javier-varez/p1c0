@@ -14,10 +14,13 @@ use core::arch::global_asm;
 #[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
+use crate::backtrace::Symbolicator;
 use crate::memory::address::VirtualAddress;
 use crate::process::ProcessSymbolicator;
 use crate::thread::StackValidator;
-use crate::{backtrace, drivers::generic_timer, prelude::*, syscall::syscall_handler, thread};
+use crate::{
+    backtrace, drivers::generic_timer, prelude::*, process, syscall::syscall_handler, thread,
+};
 
 /// Wrapper structs for memory copies of registers.
 #[repr(transparent)]
@@ -384,7 +387,20 @@ impl fmt::Display for ExceptionContext {
         }
 
         writeln!(f, "{}", self.spsr_el1)?;
-        writeln!(f, "ELR_EL1: {:#018x}", self.elr_el1)?;
+        if let Some((symbol, offset)) = crate::thread::current_pid().and_then(|pid| {
+            process::do_with_process(&pid, |proc| {
+                let symbolicator = proc.symbolicator();
+                symbolicator.symbolicate(VirtualAddress::new_unaligned(self.elr_el1 as *const _))
+            })
+        }) {
+            writeln!(
+                f,
+                "ELR_EL1: {:#018x} - {} (+0x{:x})",
+                self.elr_el1, symbol, offset
+            )?;
+        } else {
+            writeln!(f, "ELR_EL1: {:#018x}", self.elr_el1)?;
+        }
         writeln!(f)?;
         writeln!(f, "General purpose register:")?;
 
@@ -399,19 +415,18 @@ impl fmt::Display for ExceptionContext {
         }
         write!(f, "\n\n")?;
 
-        if let Some(validator) = crate::thread::current_stack_validator() {
+        if let Some(validator) = thread::current_stack_validator() {
             // Stack trace
             let fp = VirtualAddress::new_unaligned(self.gpr[29] as *const _);
 
-            if let Some(pid) = crate::thread::current_pid() {
-                crate::process::do_with_process(&pid, |proc| {
+            if let Some(pid) = thread::current_pid() {
+                process::do_with_process(&pid, |proc| {
                     let symbolicator = proc.symbolicator();
                     let stack_iter =
                         backtrace::stack_frame_iter(fp, validator.clone(), Some(symbolicator));
                     write!(f, "{}", stack_iter).unwrap();
                 });
             } else {
-                // Stack trace
                 let stack_iter = backtrace::stack_frame_iter::<StackValidator, ProcessSymbolicator>(
                     fp, validator, None,
                 );
