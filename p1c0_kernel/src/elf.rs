@@ -70,6 +70,7 @@ pub enum Error {
     NoMatchingSection,
 }
 
+#[derive(Clone)]
 pub struct ElfParser<'a> {
     elf_data: &'a [u8],
     class: EClass,
@@ -439,6 +440,10 @@ impl<'a> SymbolEntry<'a> {
         read_elf64_addr!(self.data, ST_VALUE)
     }
 
+    pub fn size(&self) -> Elf64_Xword {
+        read_elf64_xword!(self.data, ST_SIZE)
+    }
+
     pub fn name(&self) -> Option<&str> {
         let name_idx = read_elf64_word!(self.data, ST_NAME) as usize;
 
@@ -523,6 +528,7 @@ mod file_offsets {
         pub const ST_NAME: usize = 0x00;
         pub const ST_INFO: usize = 0x04;
         pub const ST_VALUE: usize = 0x08;
+        pub const ST_SIZE: usize = 0x10;
     }
 }
 

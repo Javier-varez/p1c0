@@ -15,9 +15,9 @@ use core::arch::global_asm;
 global_asm!(include_str!("exceptions.s"));
 
 use crate::memory::address::VirtualAddress;
-use crate::{
-    drivers::generic_timer, log_debug, log_error, log_info, syscall::syscall_handler, thread,
-};
+use crate::process::ProcessSymbolicator;
+use crate::thread::StackValidator;
+use crate::{backtrace, drivers::generic_timer, prelude::*, syscall::syscall_handler, thread};
 
 /// Wrapper structs for memory copies of registers.
 #[repr(transparent)]
@@ -402,8 +402,21 @@ impl fmt::Display for ExceptionContext {
         if let Some(validator) = crate::thread::current_stack_validator() {
             // Stack trace
             let fp = VirtualAddress::new_unaligned(self.gpr[29] as *const _);
-            let stack_iter = crate::backtrace::stack_frame_iter(fp, validator);
-            write!(f, "{}", stack_iter)?;
+
+            if let Some(pid) = crate::thread::current_pid() {
+                crate::process::do_with_process(&pid, |proc| {
+                    let symbolicator = proc.symbolicator();
+                    let stack_iter =
+                        backtrace::stack_frame_iter(fp, validator.clone(), Some(symbolicator));
+                    write!(f, "{}", stack_iter).unwrap();
+                });
+            } else {
+                // Stack trace
+                let stack_iter = backtrace::stack_frame_iter::<StackValidator, ProcessSymbolicator>(
+                    fp, validator, None,
+                );
+                write!(f, "{}", stack_iter)?;
+            }
         }
 
         Ok(())

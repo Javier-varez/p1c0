@@ -13,10 +13,12 @@ use crate::{
     sync::spinlock::SpinLock,
     thread::{self, ThreadHandle},
 };
+use alloc::borrow::ToOwned;
 use alloc::{boxed::Box, vec, vec::Vec};
 
 use crate::arch::exceptions::ExceptionContext;
 use crate::arch::mmu::PAGE_SIZE;
+use crate::elf::{self, ElfParser};
 use crate::memory::physical_page_allocator::PhysicalMemoryRegion;
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -146,6 +148,7 @@ impl Builder {
         mut self,
         entry_point: VirtualAddress,
         base_address: VirtualAddress,
+        elf_data: Vec<u8>,
     ) -> Result<(), Error> {
         // Allocate stack
         let pmr = MemoryManager::instance().request_any_pages(1, memory::AllocPolicy::ZeroFill)?;
@@ -178,6 +181,8 @@ impl Builder {
             thread_list: vec![thread_id],
             _state: State::Running,
             pid,
+            base_address,
+            elf_data,
         })));
 
         PROCESSES.lock().push(process);
@@ -191,11 +196,48 @@ pub struct Process {
     thread_list: Vec<ThreadHandle>,
     _state: State,
     pid: u64,
+    base_address: VirtualAddress,
+    elf_data: Vec<u8>,
 }
 
 impl Process {
     pub fn address_space(&mut self) -> &mut ProcessAddressSpace {
         &mut self.address_space
+    }
+
+    pub fn symbolicator(&self) -> ProcessSymbolicator<'_> {
+        let elf_parser = ElfParser::from_slice(&self.elf_data[..]).unwrap();
+        ProcessSymbolicator {
+            elf_parser,
+            base_address: self.base_address,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ProcessSymbolicator<'a> {
+    elf_parser: ElfParser<'a>,
+    base_address: VirtualAddress,
+}
+
+impl<'a> crate::backtrace::Symbolicator for ProcessSymbolicator<'a> {
+    fn symbolicate(&self, addr: VirtualAddress) -> Option<(String, usize)> {
+        let addr = addr.remove_base(self.base_address).as_usize();
+
+        self.elf_parser
+            .symbol_table_iter()?
+            .filter(|symbol| matches!(symbol.ty(), Ok(elf::SymbolType::Function)))
+            .find_map(|symbol| {
+                let symbol_start = symbol.value() as usize;
+                let symbol_size = symbol.size() as usize;
+                if (addr >= symbol_start) && (addr < (symbol_start + symbol_size)) {
+                    symbol
+                        .name()
+                        .map(|string| (string.to_owned(), addr - symbol_start))
+                } else {
+                    None
+                }
+            })
     }
 }
 

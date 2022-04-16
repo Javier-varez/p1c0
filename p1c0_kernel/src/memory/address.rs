@@ -79,6 +79,13 @@ impl VirtualAddress {
         Self(self.0.add(offset))
     }
 
+    #[must_use]
+    pub fn remove_base(&self, other: VirtualAddress) -> Self {
+        let val = unsafe { self.0.offset_from(other.0) };
+        assert!(val > 0);
+        Self(val as *const _)
+    }
+
     pub fn is_high_address(&self) -> bool {
         let high_bits = self.0 as usize >> 48;
         if high_bits == 0xFFFF {
