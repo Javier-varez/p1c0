@@ -40,6 +40,8 @@ pub fn symbols_from_elf_file(
                     panic!("Symbol has invalid name!");
                 }
             });
+        // Sort symbols by address
+        symbols.sort_by(|a, b| a.address.cmp(&b.address));
     }
 
     const MAGIC_BYTES: [u8; 4] = *b"Smbl";

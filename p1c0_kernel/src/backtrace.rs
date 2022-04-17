@@ -147,7 +147,6 @@ pub mod ksyms {
     #[derive(Clone)]
     pub struct KSyms {
         base_address: VirtualAddress,
-        num_symbols: usize,
         symbol_table_data: &'static [u8],
         string_table_data: &'static [u8],
     }
@@ -175,7 +174,6 @@ pub mod ksyms {
 
         let ksyms = KSyms {
             base_address: init::get_base(),
-            num_symbols,
             symbol_table_data,
             string_table_data,
         };
@@ -186,36 +184,74 @@ pub mod ksyms {
         Ok(filesize)
     }
 
+    enum EntryMatch {
+        Previous,
+        Match(Option<(String, usize)>),
+        Next,
+    }
+
     impl KSyms {
         fn get_name(&self, name_offset: usize, name_length: usize) -> Option<&str> {
             let data = &self.string_table_data[name_offset..name_offset + name_length];
             core::str::from_utf8(data).ok()
         }
 
-        fn symbolicate(&self, addr: VirtualAddress) -> Option<(String, usize)> {
-            let addr = addr.remove_base(self.base_address).as_usize();
+        fn matches_entry(&self, entry_data: &[u8], addr: usize) -> EntryMatch {
+            let symbol_start = read_u64!(entry_data, entry::ENTRY_ADDRESS_OFFSET) as usize;
+            let symbol_size = read_u64!(entry_data, entry::ENTRY_SIZE_OFFSET) as usize;
 
-            for i in 0..self.num_symbols {
-                let data = &self.symbol_table_data[i * entry::SIZE..(i + 1) * entry::SIZE];
-                let symbol_start = read_u64!(data, entry::ENTRY_ADDRESS_OFFSET) as usize;
-                let symbol_size = read_u64!(data, entry::ENTRY_SIZE_OFFSET) as usize;
+            if addr < symbol_start {
+                EntryMatch::Previous
+            } else if addr >= (symbol_start + symbol_size) {
+                EntryMatch::Next
+            } else {
+                let name_offset = read_u32!(entry_data, entry::ENTRY_NAME_OFFSET_OFFSET) as usize;
+                let name_length = read_u32!(entry_data, entry::ENTRY_NAME_LENGTH_OFFSET) as usize;
 
-                if (addr >= symbol_start) && (addr < (symbol_start + symbol_size)) {
-                    let name_offset = read_u32!(data, entry::ENTRY_NAME_OFFSET_OFFSET) as usize;
-                    let name_length = read_u32!(data, entry::ENTRY_NAME_LENGTH_OFFSET) as usize;
-
-                    return self
-                        .get_name(name_offset, name_length)
-                        .map(|name| (name.to_owned(), addr - symbol_start));
-                }
+                EntryMatch::Match(
+                    self.get_name(name_offset, name_length)
+                        .map(|name| (name.to_owned(), addr - symbol_start)),
+                )
             }
-            None
         }
     }
 
     impl Symbolicator for KSyms {
         fn symbolicate(&self, addr: VirtualAddress) -> Option<(String, usize)> {
-            Self::symbolicate(self, addr)
+            let addr = addr.remove_base(self.base_address).as_usize();
+
+            let mut symbol_table_data = self.symbol_table_data;
+            loop {
+                let num_entries = symbol_table_data.len() / entry::SIZE;
+
+                // For small N just do a linear search
+                if num_entries < 5 {
+                    // Just do linear search for small num of entries
+                    for i in 0..num_entries {
+                        let entry_data = &symbol_table_data[i * entry::SIZE..(i + 1) * entry::SIZE];
+
+                        if let EntryMatch::Match(result) = self.matches_entry(entry_data, addr) {
+                            return result;
+                        }
+                    }
+                    return None;
+                }
+
+                let middle_index = num_entries / 2;
+
+                let entry_data = &symbol_table_data
+                    [middle_index * entry::SIZE..(middle_index + 1) * entry::SIZE];
+
+                match self.matches_entry(entry_data, addr) {
+                    EntryMatch::Previous => {
+                        symbol_table_data = &symbol_table_data[..middle_index * entry::SIZE]
+                    }
+                    EntryMatch::Next => {
+                        symbol_table_data = &symbol_table_data[(middle_index + 1) * entry::SIZE..]
+                    }
+                    EntryMatch::Match(result) => return result,
+                };
+            }
         }
     }
 
