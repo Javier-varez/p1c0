@@ -4,18 +4,22 @@ use cortex_a::{
     asm,
     registers::{CurrentEL, CNTHCTL_EL2, CNTVOFF_EL2, ELR_EL2, HCR_EL2, SPSR_EL2, SP_EL1},
 };
+use p1c0_macros::initcall;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
+use crate::memory::address::VirtualAddress;
 use crate::{
     arch::{apply_rela_from_existing, exceptions, jump_to_addr, read_pc, RelaEntry},
+    backtrace,
     boot_args::BootArgs,
     chickens,
     drivers::{aic, generic_timer, interfaces::timer::Timer, uart, wdt},
-    log_info,
     memory::{
         self,
         address::{Address, PhysicalAddress},
+        map,
     },
+    prelude::*,
 };
 
 /// This is the original base passed by iBoot into the kernel. Does NOT change after kernel
@@ -199,5 +203,29 @@ unsafe fn run_initcalls() {
 
     for initcall in initcalls {
         initcall();
+    }
+}
+
+pub(crate) fn get_base() -> VirtualAddress {
+    VirtualAddress::new_unaligned(unsafe { BASE })
+}
+
+// This might contain multiple payloads appended to the binary after it has been generated
+#[initcall(priority = 4)]
+fn parse_payload() {
+    let section = map::KernelSection::from_id(map::KernelSectionId::Payload);
+    let payload_slice =
+        unsafe { core::slice::from_raw_parts(section.la().as_ptr(), section.size_bytes()) };
+
+    let mut offset = 0;
+    loop {
+        // Try to identify payload at current offset
+        if let Ok(size) = backtrace::ksyms::parse(&payload_slice[offset..]) {
+            offset += size;
+            continue;
+        }
+
+        // No valid payload found, stopping now
+        break;
     }
 }

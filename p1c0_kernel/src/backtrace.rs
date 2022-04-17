@@ -1,5 +1,8 @@
-use crate::memory::address::{Address, Validator, VirtualAddress};
-use crate::prelude::*;
+use crate::{
+    memory::address::{Address, Validator, VirtualAddress},
+    prelude::*,
+};
+
 use core::fmt::Formatter;
 
 #[repr(C)]
@@ -81,5 +84,142 @@ where
         frame_ptr,
         validator,
         symbolicator,
+    }
+}
+
+pub mod ksyms {
+    use super::Symbolicator;
+    use alloc::borrow::ToOwned;
+
+    use crate::{
+        init,
+        memory::address::{Address, VirtualAddress},
+        sync::spinlock::RwSpinLock,
+    };
+
+    use alloc::string::String;
+
+    static KSYMS: RwSpinLock<Option<KSyms>> = RwSpinLock::new(None);
+
+    mod header {
+        pub const MAGIC: [u8; 4] = *b"Smbl";
+
+        pub const MAGIC_OFFSET: usize = 0x00;
+        pub const FILESIZE_OFFSET: usize = 0x04;
+        pub const NUM_SYMBOLS_OFFSET: usize = 0x08;
+        pub const SYMBOL_TABLE_OFFSET_OFFSET: usize = 0x0C;
+        pub const STRING_TABLE_OFFSET_OFFSET: usize = 0x10;
+
+        pub const SIZE: usize = 0x14;
+    }
+
+    mod entry {
+        pub const ENTRY_NAME_OFFSET_OFFSET: usize = 0x00;
+        pub const ENTRY_NAME_LENGTH_OFFSET: usize = 0x04;
+        pub const ENTRY_ADDRESS_OFFSET: usize = 0x08;
+        pub const ENTRY_SIZE_OFFSET: usize = 0x10;
+
+        pub const SIZE: usize = 24;
+    }
+
+    macro_rules! read_u32 {
+        ($buffer: expr, $offset: expr) => {
+            $buffer[$offset] as u32
+                | ($buffer[$offset + 1] as u32) << 8
+                | ($buffer[$offset + 2] as u32) << 16
+                | ($buffer[$offset + 3] as u32) << 24
+        };
+    }
+
+    macro_rules! read_u64 {
+        ($buffer: expr, $offset: expr) => {
+            $buffer[$offset] as u64
+                | ($buffer[$offset + 1] as u64) << 8
+                | ($buffer[$offset + 2] as u64) << 16
+                | ($buffer[$offset + 3] as u64) << 24
+                | ($buffer[$offset + 4] as u64) << 32
+                | ($buffer[$offset + 5] as u64) << 40
+                | ($buffer[$offset + 6] as u64) << 48
+                | ($buffer[$offset + 7] as u64) << 56
+        };
+    }
+
+    #[derive(Clone)]
+    pub struct KSyms {
+        base_address: VirtualAddress,
+        num_symbols: usize,
+        symbol_table_data: &'static [u8],
+        string_table_data: &'static [u8],
+    }
+
+    pub(crate) fn parse(data: &'static [u8]) -> Result<usize, ()> {
+        if data[header::MAGIC_OFFSET..header::MAGIC_OFFSET + core::mem::size_of_val(&header::MAGIC)]
+            != header::MAGIC
+        {
+            return Err(());
+        }
+
+        let header = &data[..header::SIZE];
+
+        let filesize = read_u32!(header, header::FILESIZE_OFFSET) as usize;
+        let data = &data[..filesize];
+
+        let symbol_table_offset = read_u32!(header, header::SYMBOL_TABLE_OFFSET_OFFSET) as usize;
+        let num_symbols = read_u32!(header, header::NUM_SYMBOLS_OFFSET) as usize;
+        let string_table_offset = read_u32!(header, header::STRING_TABLE_OFFSET_OFFSET) as usize;
+
+        let symbol_table_data =
+            &data[symbol_table_offset..symbol_table_offset + num_symbols * entry::SIZE];
+
+        let string_table_data = &data[string_table_offset..];
+
+        let ksyms = KSyms {
+            base_address: init::get_base(),
+            num_symbols,
+            symbol_table_data,
+            string_table_data,
+        };
+
+        let prev_syms = KSYMS.lock_write().replace(ksyms);
+        assert!(prev_syms.is_none(), "KSyms are duplicated in payload!");
+
+        Ok(filesize)
+    }
+
+    impl KSyms {
+        fn get_name(&self, name_offset: usize, name_length: usize) -> Option<&str> {
+            let data = &self.string_table_data[name_offset..name_offset + name_length];
+            core::str::from_utf8(data).ok()
+        }
+
+        fn symbolicate(&self, addr: VirtualAddress) -> Option<(String, usize)> {
+            let addr = addr.remove_base(self.base_address).as_usize();
+
+            for i in 0..self.num_symbols {
+                let data = &self.symbol_table_data[i * entry::SIZE..(i + 1) * entry::SIZE];
+                let symbol_start = read_u64!(data, entry::ENTRY_ADDRESS_OFFSET) as usize;
+                let symbol_size = read_u64!(data, entry::ENTRY_SIZE_OFFSET) as usize;
+
+                if (addr >= symbol_start) && (addr < (symbol_start + symbol_size)) {
+                    let name_offset = read_u32!(data, entry::ENTRY_NAME_OFFSET_OFFSET) as usize;
+                    let name_length = read_u32!(data, entry::ENTRY_NAME_LENGTH_OFFSET) as usize;
+
+                    return self
+                        .get_name(name_offset, name_length)
+                        .map(|name| (name.to_owned(), addr - symbol_start));
+                }
+            }
+            None
+        }
+    }
+
+    impl Symbolicator for KSyms {
+        fn symbolicate(&self, addr: VirtualAddress) -> Option<(String, usize)> {
+            Self::symbolicate(self, addr)
+        }
+    }
+
+    pub fn symbolicator() -> Option<KSyms> {
+        KSYMS.lock_read().as_ref().cloned()
     }
 }
