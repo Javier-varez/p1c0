@@ -387,12 +387,21 @@ impl fmt::Display for ExceptionContext {
         }
 
         writeln!(f, "{}", self.spsr_el1)?;
-        if let Some((symbol, offset)) = crate::thread::current_pid().and_then(|pid| {
-            process::do_with_process(&pid, |proc| {
-                let symbolicator = proc.symbolicator();
-                symbolicator.symbolicate(VirtualAddress::new_unaligned(self.elr_el1 as *const _))
+        if let Some((symbol, offset)) = crate::thread::current_pid()
+            .and_then(|pid| {
+                process::do_with_process(&pid, |proc| {
+                    let symbolicator = proc.symbolicator();
+                    symbolicator
+                        .symbolicate(VirtualAddress::new_unaligned(self.elr_el1 as *const _))
+                })
             })
-        }) {
+            .or_else(|| {
+                backtrace::ksyms::symbolicator().and_then(|symbolicator| {
+                    symbolicator
+                        .symbolicate(VirtualAddress::new_unaligned(self.elr_el1 as *const _))
+                })
+            })
+        {
             writeln!(
                 f,
                 "ELR_EL1: {:#018x} - {} (+0x{:x})",
@@ -426,6 +435,9 @@ impl fmt::Display for ExceptionContext {
                         backtrace::stack_frame_iter(fp, validator.clone(), Some(symbolicator));
                     write!(f, "{}", stack_iter).unwrap();
                 });
+            } else if let Some(symbolicator) = backtrace::ksyms::symbolicator() {
+                let stack_iter = backtrace::stack_frame_iter(fp, validator, Some(symbolicator));
+                write!(f, "{}", stack_iter)?;
             } else {
                 let stack_iter = backtrace::stack_frame_iter::<StackValidator, ProcessSymbolicator>(
                     fp, validator, None,
