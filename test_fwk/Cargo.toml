@@ -9,7 +9,7 @@ required-features = ["m1_runner"]
 
 [features]
 default = []
-m1_runner = ["xshell", "structopt", "toml", "anyhow"]
+m1_runner = ["xshell", "structopt", "toml", "anyhow", "object", "stripper", "ctrlc"]
 
 [dependencies]
 arm-semihosting = "0.1.0"
@@ -18,3 +18,6 @@ xshell = { version = "0.1.17", optional = true }
 structopt = { version = "0.3.25", optional = true }
 toml = { version = "0.5.8", optional = true }
 anyhow = { version = "1.0.53", optional = true }
+object = { version = "0.28", optional = true }
+stripper = { path = "../stripper", optional = true }
+ctrlc = { version = "3.2.1", optional = true }

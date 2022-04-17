@@ -1,6 +1,8 @@
 use anyhow::anyhow;
 use anyhow::Context;
+use object::read::elf::ElfFile;
 use std::{error::Error, fs::File, io::Read, path::Path};
+use std::{fs, io::Write};
 use structopt::StructOpt;
 use toml::Value;
 use xshell::{cmd, rm_rf};
@@ -11,7 +13,7 @@ use xshell::{cmd, rm_rf};
     about = "Run m1 emulator with the given ELF executable"
 )]
 struct Opts {
-    fw_elf: String,
+    fw_elf: std::path::PathBuf,
 
     #[structopt(long, short)]
     show_display: bool,
@@ -79,6 +81,37 @@ fn parse_config(config: &mut Config, manifest_path: &Path) -> anyhow::Result<()>
     Ok(())
 }
 
+fn build_macho_executable_with_payload(
+    elf: &std::path::Path,
+    macho_exec: &std::path::Path,
+) -> anyhow::Result<()> {
+    let objcopy_output = cmd!("rust-objcopy")
+        .arg("-O")
+        .arg("binary")
+        .arg(&elf)
+        .arg("-")
+        .output()?;
+
+    let mut macho_exec = std::fs::File::create(&macho_exec)?;
+    macho_exec.write_all(&objcopy_output.stdout[..])?;
+
+    // Now symbolicate and append that as well
+    let elf_file = fs::read(&elf)?;
+    let elf_file = ElfFile::parse(&elf_file[..]).map_err(|err| {
+        anyhow::Error::msg(format!(
+            "Input file is not in ELF64 Little endian format: {}",
+            err
+        ))
+    })?;
+
+    // Append symbols to file
+    stripper::symbols_from_elf_file(&elf_file, &mut macho_exec)?;
+
+    // Flush the mach-o file
+    macho_exec.flush()?;
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::from_args();
 
@@ -92,13 +125,28 @@ fn main() -> Result<(), Box<dyn Error>> {
         .expect("WARNING: `CARGO_MANIFEST_DIR` env variable not set");
     parse_config(&mut config, &manifest_path)?;
 
-    cmd!("rust-objcopy")
-        .arg("-O")
-        .arg("binary")
-        .arg(opts.fw_elf)
-        .arg("_test_fw.macho")
-        .run()?;
-    let qemu_cmd = cmd!("qemu-system-aarch64 -machine apple-m1 -bios _test_fw.macho -semihosting");
+    let temp_file_name = opts
+        .fw_elf
+        .parent()
+        .map(|parent| {
+            let mut parent = parent.to_owned();
+            parent.push("_tmp_fw.macho");
+            parent
+        })
+        .ok_or(anyhow::Error::msg("fw_elf path does not have a parent"))?;
+
+    // This makes sure the file is deleted before exiting
+    {
+        let ctrlc_temp_filename = temp_file_name.clone();
+        ctrlc::set_handler(move || {
+            rm_rf(&ctrlc_temp_filename).unwrap();
+        })?;
+    }
+
+    build_macho_executable_with_payload(&opts.fw_elf, &temp_file_name)?;
+
+    let qemu_cmd =
+        cmd!("qemu-system-aarch64 -machine apple-m1 -bios {temp_file_name} -semihosting");
 
     let mut additional_args = vec![];
     if !config.show_display {
@@ -115,6 +163,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     qemu_cmd.args(additional_args.iter()).run()?;
-    rm_rf("_test_fw.macho")?;
+
+    rm_rf(temp_file_name)?;
     Ok(())
 }
