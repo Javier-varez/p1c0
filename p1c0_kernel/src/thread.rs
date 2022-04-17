@@ -573,5 +573,5 @@ pub(crate) fn current_stack_validator() -> Option<StackValidator> {
     CURRENT_THREAD
         .lock()
         .as_ref()
-        .map(|proc| proc.stack.validator())
+        .map(|thread| thread.stack.validator())
 }

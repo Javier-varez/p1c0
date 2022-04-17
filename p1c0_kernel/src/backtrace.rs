@@ -15,6 +15,23 @@ pub trait Symbolicator {
     fn symbolicate(&self, addr: VirtualAddress) -> Option<(String, usize)>;
 }
 
+pub struct Backtracer<V: Validator, S: Symbolicator> {
+    link_register: VirtualAddress,
+    frame_ptr: VirtualAddress,
+    validator: V,
+    symbolicator: Option<S>,
+}
+
+impl<V: Validator + Clone, S: Symbolicator + Clone> Backtracer<V, S> {
+    fn stack_frame_iter(&self) -> StackFrameIter<V, S> {
+        StackFrameIter {
+            frame_ptr: self.frame_ptr,
+            validator: self.validator.clone(),
+            symbolicator: self.symbolicator.clone(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct StackFrameIter<V: Validator, S: Symbolicator> {
     frame_ptr: VirtualAddress,
@@ -52,11 +69,28 @@ impl<V: Validator, S: Symbolicator> Iterator for StackFrameIter<V, S> {
     }
 }
 
-impl<V: Validator + Clone, S: Symbolicator + Clone> core::fmt::Display for StackFrameIter<V, S> {
+impl<V: Validator + Clone, S: Symbolicator + Clone> core::fmt::Display for Backtracer<V, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let iter_clone = (*self).clone();
+        let iter = self.stack_frame_iter();
+
         writeln!(f, "Stack trace:")?;
-        for (level, (frame, symbol)) in iter_clone.enumerate() {
+
+        if let Some((symbol_name, symbol_offset)) = self
+            .symbolicator
+            .as_ref()
+            .and_then(|symbolicator| symbolicator.symbolicate(self.link_register))
+        {
+            writeln!(
+                f,
+                "\t[0] = {} - {} (+0x{:x})",
+                self.link_register, symbol_name, symbol_offset
+            )?;
+        } else {
+            writeln!(f, "\t[0] = {}", self.link_register)?;
+        }
+
+        for (level, (frame, symbol)) in iter.enumerate() {
+            let level = -(level as isize + 1);
             if let Some((symbol_name, symbol_offset)) = symbol {
                 writeln!(
                     f,
@@ -71,16 +105,18 @@ impl<V: Validator + Clone, S: Symbolicator + Clone> core::fmt::Display for Stack
     }
 }
 
-pub fn stack_frame_iter<V, S>(
+pub fn backtracer<V, S>(
+    link_register: VirtualAddress,
     frame_ptr: VirtualAddress,
     validator: V,
     symbolicator: Option<S>,
-) -> StackFrameIter<V, S>
+) -> Backtracer<V, S>
 where
-    V: Validator + Clone,
-    S: Symbolicator + Clone,
+    V: Validator,
+    S: Symbolicator,
 {
-    StackFrameIter {
+    Backtracer {
+        link_register,
         frame_ptr,
         validator,
         symbolicator,
