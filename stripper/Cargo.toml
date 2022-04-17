@@ -1,0 +1,12 @@
+[package]
+name = "stripper"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+structopt = "0.3.26"
+anyhow = "1.0.56"
+object = "0.28"
+rustc-demangle = "0.1.21"
