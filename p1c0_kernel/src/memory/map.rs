@@ -31,6 +31,8 @@ extern "C" {
     static _data_end: u8;
     static _arena_start: u8;
     static _arena_end: u8;
+    static _payload_start: u8;
+    static _payload_end: u8;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -39,13 +41,15 @@ pub enum KernelSectionId {
     RoData,
     Data,
     Arena,
+    Payload,
 }
 
-pub const ALL_SECTIONS: [KernelSectionId; 4] = [
+pub const ALL_SECTIONS: [KernelSectionId; 5] = [
     KernelSectionId::Text,
     KernelSectionId::RoData,
     KernelSectionId::Data,
     KernelSectionId::Arena,
+    KernelSectionId::Payload,
 ];
 
 pub struct KernelSection {
@@ -82,6 +86,12 @@ impl KernelSection {
                     &_arena_start as *const _,
                     &_arena_end as *const _,
                     GlobalPermissions::new_only_privileged(Permissions::RW),
+                ),
+                KernelSectionId::Payload => (
+                    ".payload",
+                    &_payload_start as *const _,
+                    &_payload_end as *const _,
+                    GlobalPermissions::new_only_privileged(Permissions::RO),
                 ),
             }
         };
