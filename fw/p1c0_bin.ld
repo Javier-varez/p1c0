@@ -91,11 +91,17 @@ SECTIONS {
     } :data
     _data_end = .;
     _data_size = . - _data_start;
-    _end = .;
-    _arena_start = .;
-    . += _arena_size;
+
+    .arena : ALIGN(0x4000) {
+        _arena_start = .;
+        . += _arena_size;
+    } :data
     _arena_end = .;
-    . = ALIGN(0x4000);
+    _end = .;
+
+    _payload_start = .;
+    . += _max_payload_size;
+    _payload_end = .;
 
     .symtab 0 : { *(.symtab) }
     .strtab 0 : { *(.strtab) }
