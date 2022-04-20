@@ -1,7 +1,10 @@
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::parse::{Parse, ParseStream};
+use syn::spanned::Spanned;
 use syn::{
-    parse_macro_input, AttributeArgs, Item, Lit, Meta, MetaNameValue, NestedMeta, PathSegment,
+    braced, parse_macro_input, AttributeArgs, Ident, Item, Lit, Meta, MetaNameValue, NestedMeta,
+    PathSegment,
 };
 
 fn make_error(error_message: &str) -> TokenStream {
@@ -80,5 +83,83 @@ pub fn initcall(input: TokenStream, annotated_item: TokenStream) -> TokenStream 
         TokenStream::from(quote! {
             compile_error!("initcall must be applied to a function")
         })
+    }
+}
+
+struct Register {
+    name: Option<syn::Ident>,
+    ty: syn::Type,
+}
+
+impl Parse for Register {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name: Option<syn::Ident> = input.parse().ok();
+        if name.is_none() {
+            let _: syn::Token![_] = input.parse()?;
+        }
+
+        let _: syn::Token![:] = input.parse()?;
+        let ty = input.parse()?;
+
+        Ok(Register { name, ty })
+    }
+}
+
+struct RegisterBank {
+    name: Ident,
+    registers: syn::punctuated::Punctuated<Register, syn::Token![,]>,
+}
+
+impl Parse for RegisterBank {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let name: syn::Ident = input.parse()?;
+        let content;
+        let _brace = braced!(content in input);
+
+        let registers = content.parse_terminated(Register::parse)?;
+
+        Ok(RegisterBank { name, registers })
+    }
+}
+
+impl TryInto<proc_macro::TokenStream> for RegisterBank {
+    type Error = syn::Error;
+
+    fn try_into(self) -> Result<TokenStream, Self::Error> {
+        let mut unused_fields = 0;
+
+        let regs = self.registers.iter().map(|register| {
+            let ty = &register.ty;
+            let name = match &register.name {
+                Some(name) => name.clone(),
+                None => {
+                    let name = format!("_unused{}", unused_fields);
+                    unused_fields += 1;
+                    syn::Ident::new(&name, register.ty.span())
+                }
+            };
+            quote! {
+                #name: #ty,
+            }
+        });
+        let name = self.name;
+        let code = quote! {
+            #[repr(C)]
+            struct #name {
+                #(#regs)*
+            }
+        };
+
+        Ok(code.into())
+    }
+}
+
+#[proc_macro]
+pub fn define_register_bank(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as RegisterBank);
+
+    match ast.try_into() {
+        Ok(stream) => stream,
+        Err(error) => error.to_compile_error().into(),
     }
 }
