@@ -1,7 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::spanned::Spanned;
 use syn::{
     braced, parse_macro_input, AttributeArgs, Ident, Item, Lit, Meta, MetaNameValue, NestedMeta,
     PathSegment,
@@ -87,38 +86,81 @@ pub fn initcall(input: TokenStream, annotated_item: TokenStream) -> TokenStream 
 }
 
 struct Register {
-    name: Option<syn::Ident>,
+    offset: syn::LitInt,
+    name: syn::Ident,
     ty: syn::Type,
 }
 
 impl Parse for Register {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let name: Option<syn::Ident> = input.parse().ok();
-        if name.is_none() {
-            let _: syn::Token![_] = input.parse()?;
-        }
+        let _: syn::Token![<] = input.parse()?;
+        let offset: syn::LitInt = input.parse()?;
+        let _: syn::Token![>] = input.parse()?;
 
+        let _: syn::Token![=>] = input.parse()?;
+
+        let name: syn::Ident = input.parse()?;
         let _: syn::Token![:] = input.parse()?;
         let ty = input.parse()?;
 
-        Ok(Register { name, ty })
+        Ok(Register { offset, name, ty })
     }
 }
 
 struct RegisterBank {
     name: Ident,
+    reg_size: syn::LitInt,
     registers: syn::punctuated::Punctuated<Register, syn::Token![,]>,
 }
 
 impl Parse for RegisterBank {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let name: syn::Ident = input.parse()?;
+        let _: syn::Token![<] = input.parse()?;
+        let reg_size: syn::LitInt = input.parse()?;
+        let _: syn::Token![>] = input.parse()?;
         let content;
         let _brace = braced!(content in input);
 
         let registers = content.parse_terminated(Register::parse)?;
 
-        Ok(RegisterBank { name, registers })
+        Ok(RegisterBank {
+            name,
+            reg_size,
+            registers,
+        })
+    }
+}
+
+impl RegisterBank {
+    fn validate(&self) -> Result<(), syn::Error> {
+        let reg_size: usize = self.reg_size.base10_parse()?;
+        let mut regs: Vec<_> = self.registers.iter().collect();
+
+        // Sort by offset
+        regs.sort_by(|a, b| {
+            let a: usize = a.offset.base10_parse().unwrap();
+            let b: usize = b.offset.base10_parse().unwrap();
+            a.cmp(&b)
+        });
+
+        let mut current_offset = 0;
+        for register in regs {
+            let offset: usize = register.offset.base10_parse().unwrap();
+            if (offset % reg_size) != 0 {
+                let error_message = format!("Register `{}` is unaligned", register.name);
+                return Err(syn::Error::new(register.offset.span(), &error_message));
+            }
+
+            if offset < current_offset {
+                let error_message = format!("Register `{}` overlaps with another", register.name);
+                return Err(syn::Error::new(register.offset.span(), &error_message));
+            }
+
+            current_offset = offset + reg_size;
+        }
+
+        Ok(())
     }
 }
 
@@ -126,27 +168,50 @@ impl TryInto<proc_macro::TokenStream> for RegisterBank {
     type Error = syn::Error;
 
     fn try_into(self) -> Result<TokenStream, Self::Error> {
-        let mut unused_fields = 0;
+        let bank_name = self.name;
+        let reg_size: usize = self.reg_size.base10_parse()?;
 
-        let regs = self.registers.iter().map(|register| {
-            let ty = &register.ty;
-            let name = match &register.name {
-                Some(name) => name.clone(),
-                None => {
-                    let name = format!("_unused{}", unused_fields);
-                    unused_fields += 1;
-                    syn::Ident::new(&name, register.ty.span())
-                }
-            };
-            quote! {
-                #name: #ty,
-            }
+        let mut regs: Vec<_> = self.registers.iter().collect();
+        // Sort by offset
+        regs.sort_by(|a, b| {
+            let a: usize = a.offset.base10_parse().unwrap();
+            let b: usize = b.offset.base10_parse().unwrap();
+            a.cmp(&b)
         });
-        let name = self.name;
+
+        let mut unused_fields = 0;
+        let mut current_offset = 0;
+        let mut fields = vec![];
+        for register in regs {
+            let offset: usize = register.offset.base10_parse().unwrap();
+
+            if offset > current_offset {
+                // Must insert unused field here
+                let name = format!("_unused{}", unused_fields);
+                let name = syn::Ident::new(&name, register.name.span());
+                let size = offset - current_offset;
+                fields.push(quote! {
+                    #name: [u8; #size],
+                });
+                unused_fields += 1;
+            }
+
+            let name = &register.name;
+            let ty = &register.ty;
+            fields.push(quote! {
+                pub #name: #ty,
+            });
+
+            current_offset = offset + reg_size;
+        }
+
         let code = quote! {
-            #[repr(C)]
-            struct #name {
-                #(#regs)*
+            mod #bank_name {
+                use super::*;
+                #[repr(C)]
+                pub struct Bank {
+                    #(#fields)*
+                }
             }
         };
 
@@ -157,6 +222,13 @@ impl TryInto<proc_macro::TokenStream> for RegisterBank {
 #[proc_macro]
 pub fn define_register_bank(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as RegisterBank);
+
+    match ast.validate() {
+        Ok(()) => {}
+        Err(error) => {
+            return error.to_compile_error().into();
+        }
+    }
 
     match ast.try_into() {
         Ok(stream) => stream,
