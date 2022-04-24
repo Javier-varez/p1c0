@@ -51,7 +51,7 @@ static bool format_hex(u64 number, char *str, u32 max_length) {
     number <<= 4;
   }
 
-  str[NIBBLES_IN_U32 + 1] = '\0';
+  str[NIBBLES_IN_U32] = '\0';
   return true;
 }
 
