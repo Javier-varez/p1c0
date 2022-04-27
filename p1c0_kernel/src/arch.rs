@@ -1,4 +1,9 @@
-use cortex_a::{asm, registers::CurrentEL};
+use crate::log_debug;
+use crate::memory::address::VirtualAddress;
+use cortex_a::{
+    asm,
+    registers::{CurrentEL, SPSel},
+};
 use tock_registers::interfaces::Readable;
 
 pub mod exceptions;
@@ -111,5 +116,20 @@ pub unsafe fn jump_to_addr(_addr: usize, _stack_ptr: *const u8) -> ! {
 
     loop {
         asm::wfi();
+    }
+}
+
+pub enum StackType {
+    KernelStack,
+    ProcessStack,
+}
+
+impl StackType {
+    #[must_use]
+    pub fn current() -> Self {
+        match SPSel.read_as_enum(SPSel::SP).unwrap() {
+            SPSel::SP::Value::EL0 => Self::ProcessStack,
+            SPSel::SP::Value::ELx => Self::KernelStack,
+        }
     }
 }

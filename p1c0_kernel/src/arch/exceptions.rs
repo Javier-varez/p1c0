@@ -14,6 +14,7 @@ use core::arch::global_asm;
 #[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
 
+use crate::arch::StackType;
 use crate::memory::address::VirtualAddress;
 use crate::process::ProcessSymbolicator;
 use crate::thread::StackValidator;
@@ -35,6 +36,13 @@ impl SpsrEL1 {
 
     pub fn from_raw(&mut self, value: u64) {
         self.0.set(value);
+    }
+
+    fn stack_type(&self) -> StackType {
+        match self.0.read_as_enum(SPSR_EL1::M).unwrap() {
+            SPSR_EL1::M::Value::EL1t | SPSR_EL1::M::Value::EL0t => StackType::ProcessStack,
+            SPSR_EL1::M::Value::EL1h => StackType::KernelStack,
+        }
     }
 }
 
@@ -401,7 +409,7 @@ impl fmt::Display for ExceptionContext {
         }
         write!(f, "\n\n")?;
 
-        if let Some(validator) = thread::current_stack_validator() {
+        if let Some(validator) = thread::stack_validator(self.spsr_el1.stack_type()) {
             // Stack trace
             let fp = VirtualAddress::new_unaligned(self.gpr[29] as *const _);
 
