@@ -111,6 +111,9 @@ fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     }
 
     log_error!("Panicked with message: {:?}", panic_info);
+    if let Some(bt) = p1c0_kernel::backtrace::kernel_backtracer() {
+        log_error!("{}", bt);
+    }
 
     unsafe {
         p1c0_kernel::print::force_flush();
