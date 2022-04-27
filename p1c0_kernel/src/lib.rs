@@ -9,7 +9,7 @@ extern crate alloc;
 
 pub mod adt;
 pub mod arch;
-mod backtrace;
+pub mod backtrace;
 pub mod boot_args;
 pub mod chickens;
 mod collections;

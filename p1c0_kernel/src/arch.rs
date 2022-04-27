@@ -87,6 +87,16 @@ pub fn get_exception_level() -> ExceptionLevel {
 }
 
 #[inline(always)]
+pub fn read_frame_pointer() -> VirtualAddress {
+    let fp: usize;
+    unsafe {
+        core::arch::asm!("mov {}, x29", out(reg) fp);
+    }
+    log_debug!("fp is 0x{:x}", fp);
+    VirtualAddress::new_unaligned(fp as *const _)
+}
+
+#[inline(always)]
 #[cfg(target_arch = "aarch64")]
 pub fn read_pc() -> *const () {
     let mut pc: *const ();

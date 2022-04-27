@@ -3,6 +3,8 @@ use crate::{
     prelude::*,
 };
 
+use crate::arch::{read_frame_pointer, read_pc};
+use crate::backtrace::ksyms::KSyms;
 use core::fmt::Formatter;
 
 #[repr(C)]
@@ -293,5 +295,20 @@ pub mod ksyms {
 
     pub fn symbolicator() -> Option<KSyms> {
         KSYMS.lock_read().as_ref().cloned()
+    }
+}
+
+#[inline(always)]
+pub fn kernel_backtracer() -> Option<Backtracer<crate::thread::StackValidator, KSyms>> {
+    if let Some(validator) = crate::thread::stack_validator(crate::arch::StackType::current()) {
+        let symbolicator = ksyms::symbolicator();
+        Some(backtracer(
+            VirtualAddress::new_unaligned(read_pc() as *const _),
+            read_frame_pointer(),
+            validator,
+            symbolicator,
+        ))
+    } else {
+        None
     }
 }
