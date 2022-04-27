@@ -2,6 +2,7 @@ extern crate alloc;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
+use arch::StackType;
 use cortex_a::{asm::wfi, registers::SPSR_EL1};
 use heapless::String;
 use tock_registers::interfaces::Readable;
@@ -569,9 +570,19 @@ pub(crate) fn exit_matching_threads(
     Ok(())
 }
 
-pub(crate) fn current_stack_validator() -> Option<StackValidator> {
-    CURRENT_THREAD
-        .lock()
-        .as_ref()
-        .map(|thread| thread.stack.validator())
+pub(crate) fn stack_validator(stack_type: StackType) -> Option<StackValidator> {
+    match stack_type {
+        StackType::KernelStack => {
+            let (range_base, range_len) = crate::memory::map::stack_range();
+            let range_base = range_base.try_into_logical().unwrap().into_virtual();
+            Some(StackValidator {
+                range_base,
+                range_len,
+            })
+        }
+        StackType::ProcessStack => CURRENT_THREAD
+            .lock()
+            .as_ref()
+            .map(|thread| thread.stack.validator()),
+    }
 }

@@ -33,6 +33,8 @@ extern "C" {
     static _arena_end: u8;
     static _payload_start: u8;
     static _payload_end: u8;
+    static _stack_top: u8;
+    static _stack_size: u8;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -135,4 +137,18 @@ impl KernelSection {
     pub fn permissions(&self) -> GlobalPermissions {
         self.permissions
     }
+}
+
+pub fn stack_range() -> (PhysicalAddress, usize) {
+    let stack_base = unsafe { &_stack_top as *const _ };
+    let size_bytes = unsafe { &_stack_size as *const _ as usize };
+    let start = if crate::arch::mmu::is_initialized() {
+        // After relocation this is a logical address.
+        LogicalAddress::try_from_ptr(stack_base)
+            .expect("KernelSection should be logical after reloc")
+            .into_physical()
+    } else {
+        PhysicalAddress::try_from_ptr(stack_base).expect("KernelSection should be aligned")
+    };
+    (start, size_bytes)
 }
