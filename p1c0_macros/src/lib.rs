@@ -206,6 +206,7 @@ impl TryInto<proc_macro::TokenStream> for RegisterBank {
         }
 
         let code = quote! {
+            #[allow(non_snake_case)]
             mod #bank_name {
                 use super::*;
                 #[repr(C)]

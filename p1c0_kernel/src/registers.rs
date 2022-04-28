@@ -1,6 +1,3 @@
-#[repr(transparent)]
-pub struct Inaccessible<T>(T);
-
 mod sys_impl_apl_ehid4 {
     tock_registers::register_bitfields! { u64,
         pub SYS_IMPL_APL_EHID4 [
