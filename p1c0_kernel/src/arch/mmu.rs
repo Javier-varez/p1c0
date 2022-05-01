@@ -1,9 +1,5 @@
-extern crate alloc;
-
 mod early_alloc;
 
-use alloc::boxed::Box;
-use core::alloc::Allocator;
 use core::ops::{Deref, DerefMut};
 use cortex_a::{
     asm::barrier,
@@ -11,14 +7,15 @@ use cortex_a::{
 };
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-use crate::{log_debug, log_error, log_info};
-use core::mem::MaybeUninit;
-use early_alloc::{AllocRef, EarlyAllocator};
-
-use crate::memory::{
-    address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress},
-    Attributes, GlobalPermissions, Permissions,
+use crate::{
+    memory::{
+        address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress},
+        Attributes, GlobalPermissions, Permissions,
+    },
+    prelude::*,
 };
+
+use early_alloc::{AllocRef, EarlyAllocator};
 
 pub const VA_MASK: u64 = (1 << 48) - (1 << 14);
 pub const PA_MASK: u64 = (1 << 48) - (1 << 14);
@@ -170,16 +167,10 @@ impl DescriptorEntry {
     fn new_table_desc() -> Self {
         let early = !is_initialized();
         let table_addr = if early {
-            // FIXME: I'd love to use box here, but it seems to be triggering a compiler failure at
-            // the time this code was written (Rust 1.59.0 nightly). Hopefully this gets fixed soon
-            // and then we could use Box::new_in.
-            let layout = core::alloc::Layout::new::<LevelTable>();
-            let table = AllocRef::new(&EARLY_ALLOCATOR)
-                .allocate(layout)
-                .expect("We have enough early memory")
-                .as_ptr() as *mut MaybeUninit<LevelTable>;
-            unsafe { (*table).write(LevelTable::new()) };
-            table as *mut LevelTable
+            Box::leak(Box::new_in(
+                LevelTable::new(),
+                AllocRef::new(&EARLY_ALLOCATOR),
+            ))
         } else {
             // This gives a logical memory address, we need to translate it to its physical
             // address for the table
