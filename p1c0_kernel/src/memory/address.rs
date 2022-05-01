@@ -41,6 +41,16 @@ pub trait Address {
     fn is_null(&self) -> bool {
         self.as_ptr().is_null()
     }
+
+    #[must_use]
+    fn high_u32(&self) -> u32 {
+        (self.as_u64() >> 32) as u32
+    }
+
+    #[must_use]
+    fn low_u32(&self) -> u32 {
+        (self.as_u64() & 0xFFFFFFFF) as u32
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +105,22 @@ impl VirtualAddress {
         } else {
             panic!("Virtual address is invalid");
         }
+    }
+
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    pub fn try_into_logical(&self) -> Result<LogicalAddress, Error> {
+        let offset = unsafe { self.0.offset_from(KERNEL_LOGICAL_BASE.as_ptr()) };
+        // We don't check pointers in unittests because we cannot control where they get allocated
+        if !cfg!(test) && (offset < 0 || offset > KERNEL_LOGICAL_SIZE as isize) {
+            return Err(Error::AddressOutOfRange);
+        }
+        Ok(LogicalAddress(self.0))
+    }
+
+    pub fn offset_from(&self, other: VirtualAddress) -> isize {
+        let self_isize = self.as_usize() as isize;
+        let other_isize = other.as_usize() as isize;
+        self_isize.wrapping_sub(other_isize)
     }
 }
 
@@ -179,6 +205,11 @@ impl LogicalAddress {
         Self(ptr)
     }
 
+    #[must_use]
+    pub const fn new_unaligned(ptr: *const u8) -> Self {
+        Self(ptr)
+    }
+
     // This lint error seems to be triggering even though there is no pointer dereference here
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub fn try_from_ptr(ptr: *const u8) -> Result<Self, Error> {
@@ -209,6 +240,12 @@ impl LogicalAddress {
     #[must_use]
     pub fn into_virtual(&self) -> VirtualAddress {
         unsafe { VirtualAddress::new_unchecked(self.as_ptr()) }
+    }
+
+    pub fn offset_from(&self, other: LogicalAddress) -> isize {
+        let self_isize = self.as_usize() as isize;
+        let other_isize = other.as_usize() as isize;
+        self_isize.wrapping_sub(other_isize)
     }
 }
 
