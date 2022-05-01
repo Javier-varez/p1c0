@@ -210,6 +210,11 @@ pub(crate) fn get_base() -> VirtualAddress {
     VirtualAddress::new_unaligned(unsafe { BASE })
 }
 
+#[initcall(priority = 0)]
+fn init_virtio_dev() {
+    let _dev = crate::drivers::virtio::Virtio::probe("/arm-io/virtio").unwrap();
+}
+
 // This might contain multiple payloads appended to the binary after it has been generated
 #[initcall(priority = 4)]
 fn parse_payload() {

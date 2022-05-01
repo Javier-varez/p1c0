@@ -146,7 +146,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     build_macho_executable_with_payload(&opts.fw_elf, &temp_file_name)?;
 
     let qemu_cmd =
-        cmd!("qemu-system-aarch64 -machine apple-m1 -bios {temp_file_name} -semihosting");
+        cmd!("qemu-system-aarch64 -machine apple-m1 -bios {temp_file_name} -semihosting -device virtio-keyboard-device");
 
     let mut additional_args = vec![];
     if !config.show_display {
