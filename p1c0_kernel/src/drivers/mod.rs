@@ -7,4 +7,5 @@ pub mod gpio;
 pub mod hid;
 pub mod spi;
 pub mod uart;
+pub mod virtio;
 pub mod wdt;
