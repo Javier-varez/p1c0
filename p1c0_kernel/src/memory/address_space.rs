@@ -32,6 +32,7 @@ pub enum Error {
     MemoryRangeAlreadyExists(String<MAX_NAME_LENGTH>),
     MemoryRangeOverlaps(String<MAX_NAME_LENGTH>),
     NameTooLong,
+    InvalidAddresss,
 }
 
 impl From<mmu::Error> for Error {
@@ -61,6 +62,7 @@ pub(super) struct LogicalMemoryRange {
 
 pub(super) struct MMIORange {
     pub va: VirtualAddress,
+    pub pa: PhysicalAddress,
     pub size_bytes: usize,
     pub name: heapless::String<32>,
 }
@@ -252,6 +254,7 @@ impl KernelAddressSpace {
     pub fn allocate_io_range(
         &mut self,
         name: &str,
+        pa: PhysicalAddress,
         size_bytes: usize,
     ) -> Result<VirtualAddress, Error> {
         let num_pages = num_pages_from_bytes(size_bytes);
@@ -267,6 +270,7 @@ impl KernelAddressSpace {
 
         let range = MMIORange {
             va,
+            pa,
             name: String::from_str(name).map_err(|_| Error::NameTooLong)?,
             size_bytes,
         };
@@ -356,6 +360,27 @@ impl KernelAddressSpace {
 
     pub(super) fn tables(&mut self) -> (&mut LevelTable, &mut LevelTable) {
         (&mut self.high_address_table, &mut self.low_address_table)
+    }
+
+    pub(super) fn resolve_address(&self, va: VirtualAddress) -> Result<PhysicalAddress, Error> {
+        // Resolving a logical address is easy, so check if the VA is actually logical
+        if let Ok(la) = va.try_into_logical() {
+            return Ok(la.into_physical());
+        }
+
+        // Out of luck, we need to check the MMIO ranges now
+        for range in &self.mmio_ranges {
+            if range.overlaps(va, 1) {
+                // This range matches the address.
+                let offset = va.offset_from(range.va);
+                assert!(offset >= 0);
+
+                return Ok(unsafe { range.pa.offset(offset as usize) });
+            }
+        }
+
+        // This doesn't seem to match any ranges
+        Err(Error::InvalidAddresss)
     }
 }
 

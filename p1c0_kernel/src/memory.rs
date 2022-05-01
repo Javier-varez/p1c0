@@ -33,6 +33,7 @@ pub enum Error {
     ArchitectureSpecific(arch::mmu::Error),
     AddressSpaceError(address_space::Error),
     PageAllocationError(physical_page_allocator::Error),
+    TranslationError,
 }
 
 #[derive(Debug, PartialEq, PartialOrd)]
@@ -361,7 +362,7 @@ impl MemoryManager {
     ) -> Result<VirtualAddress, Error> {
         let va = self
             .kernel_address_space
-            .allocate_io_range(name, size_bytes)?;
+            .allocate_io_range(name, pa, size_bytes)?;
 
         self.kernel_address_space
             .high_table()
@@ -470,5 +471,13 @@ impl MemoryManager {
 
     pub fn map_kernel_low_pages(&mut self) {
         arch::mmu::switch_process_translation_table(self.kernel_address_space.low_table());
+    }
+
+    pub fn translate_kernel_address(&self, va: VirtualAddress) -> Result<PhysicalAddress, Error> {
+        if !va.is_high_address() {
+            return Err(Error::TranslationError);
+        }
+
+        Ok(self.kernel_address_space.resolve_address(va)?)
     }
 }
