@@ -122,6 +122,13 @@ impl VirtualAddress {
         let other_isize = other.as_usize() as isize;
         self_isize.wrapping_sub(other_isize)
     }
+
+    pub fn floor_to_alignment(&mut self, bytes: usize) -> Self {
+        assert!(bytes > 0);
+        let mut val = self.as_usize();
+        val -= val % bytes;
+        Self(val as *const _)
+    }
 }
 
 impl Address for VirtualAddress {
@@ -279,3 +286,17 @@ unsafe impl Send for VirtualAddress {}
 unsafe impl Send for PhysicalAddress {}
 
 unsafe impl Send for LogicalAddress {}
+
+#[cfg(test)]
+mod test {
+    use crate::memory::address::{Address, VirtualAddress};
+
+    #[test]
+    fn test_floor_va() {
+        let mut va = VirtualAddress::new_unaligned(0x1234 as *const _);
+        assert_eq!(va.floor_to_alignment(64).as_usize(), 0x1200);
+
+        let mut va = VirtualAddress::new_unaligned(0x1200 as *const _);
+        assert_eq!(va.floor_to_alignment(64).as_usize(), 0x1200);
+    }
+}
