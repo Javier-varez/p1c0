@@ -5,7 +5,7 @@ QEMU_DIR=${PWD}/${TOOLS_DIR}/qemu
 GCC_DIR=${PWD}/${TOOLS_DIR}/gcc-aarch64-none-elf
 DOWNLOAD_DIR=${PWD}/${TOOLS_DIR}/downloads
 
-QEMU_VERSION="0.1.3"
+QEMU_VERSION="0.1.4"
 GCC_VERSION="11.2-2022.02"
 
 OS=$(uname | tr '[:upper:]' '[:lower:]')
