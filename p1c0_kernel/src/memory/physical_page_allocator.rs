@@ -33,7 +33,7 @@ pub struct PhysicalMemoryRegion {
 }
 
 impl PhysicalMemoryRegion {
-    fn new(pa: PhysicalAddress, num_pages: usize) -> Self {
+    pub fn new(pa: PhysicalAddress, num_pages: usize) -> Self {
         Self { pa, num_pages }
     }
 
