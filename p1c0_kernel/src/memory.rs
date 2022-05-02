@@ -422,6 +422,15 @@ impl MemoryManager {
         Ok(pmr)
     }
 
+    pub fn release_pages(
+        &mut self,
+        physical_memory_region: PhysicalMemoryRegion,
+    ) -> Result<(), Error> {
+        self.physical_page_allocator
+            .release_pages(physical_memory_region)?;
+        Ok(())
+    }
+
     fn initialize_physical_page_allocator(
         &mut self,
         dram_base: PhysicalAddress,
