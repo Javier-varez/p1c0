@@ -6,6 +6,7 @@ use cortex_a::{
 };
 use tock_registers::interfaces::Readable;
 
+pub mod cache;
 pub mod exceptions;
 pub mod mmu;
 
