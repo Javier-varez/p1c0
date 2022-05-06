@@ -1,9 +1,6 @@
 use crate::log_debug;
 use crate::memory::address::VirtualAddress;
-use cortex_a::{
-    asm,
-    registers::{CurrentEL, SPSel},
-};
+use cortex_a::registers::{CurrentEL, SPSel};
 use tock_registers::interfaces::Readable;
 
 pub mod cache;
@@ -51,25 +48,6 @@ pub fn read_pc() -> *const () {
 #[cfg(not(target_arch = "aarch64"))]
 pub fn read_pc() -> *const () {
     core::ptr::null()
-}
-
-#[inline(always)]
-/// # Safety
-/// The stack pointer must be valid, as well as the jumping address. From this point onwards, the
-/// previous memory in the stack will no longer be accessible. Therefore references to the stack
-/// will not be valid anymore.
-pub unsafe fn jump_to_addr(_addr: usize, _stack_ptr: *const u8) -> ! {
-    #[cfg(target_arch = "aarch64")]
-    core::arch::asm!(
-        "mov sp, {}",
-        "dsb sy",
-        "blr {}",
-        in(reg) _stack_ptr,
-        in(reg) _addr);
-
-    loop {
-        asm::wfi();
-    }
 }
 
 pub enum StackType {

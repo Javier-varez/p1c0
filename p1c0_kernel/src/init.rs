@@ -9,7 +9,7 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::memory::address::VirtualAddress;
 use crate::{
-    arch::{exceptions, jump_to_addr, read_pc},
+    arch::{exceptions, read_pc},
     backtrace,
     boot_args::BootArgs,
     chickens,
@@ -66,13 +66,15 @@ extern "C" {
     static _rela_end: u8;
     static _stack_bot: u8;
 
-    // Relocates the binary
-    fn apply_rela(
+    // # SAFETY: This function assumes the new address is in high memory!
+    fn relocate_and_jump_to_relocated_kernel(
         old_base: usize,
         new_base: usize,
         rela_start: *const RelaEntry,
         rela_end: *const RelaEntry,
-    );
+        high_kernel_addr: usize,
+        high_stack_addr: usize,
+    ) -> !;
 }
 
 unsafe fn jump_to_high_kernel() -> ! {
@@ -100,24 +102,26 @@ unsafe fn jump_to_high_kernel() -> ! {
         .expect("The stack bottom does not have a high kernel address");
 
     // Relocate ourselves again to the correct location
-    apply_rela(BASE as usize, new_base.as_usize(), rela_start, rela_end);
-
-    log_info!(
-        "Jumping to relocated kernel at: {}, stack: {}, current PC {:?}",
-        high_kernel_addr,
-        high_stack,
-        read_pc()
+    // From this point onwards the execution is redirected to the new kernel_prelude entrypoint.
+    // We restore the initial stack using the new base address and.
+    relocate_and_jump_to_relocated_kernel(
+        BASE as usize,
+        new_base.as_usize(),
+        rela_start,
+        rela_end,
+        high_kernel_addr.as_usize(),
+        high_stack.as_usize(),
     );
+}
+
+unsafe fn kernel_prelude() {
+    let new_base = PhysicalAddress::try_from_ptr(BASE)
+        .and_then(|pa| pa.try_into_logical())
+        .expect("Base does not have a logical address");
 
     // Store the new base as logical address from now on, since it did change
     BASE = new_base.as_ptr();
 
-    // From this point onwards the execution is redirected to the new kernel_prelude entrypoint.
-    // We restore the initial stack using the new base address and.
-    jump_to_addr(high_kernel_addr.as_usize(), high_stack.as_ptr());
-}
-
-unsafe fn kernel_prelude() {
     // At this point the Kernel is relocated and the initial boot process is done.
     // We set this flag to let the kernel know that it can use regular memory management
     // from now onwards.

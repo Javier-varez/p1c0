@@ -181,3 +181,21 @@ apply_rela:
     ldr x19, [sp], #8
     ldr x30, [sp], #8
     ret
+
+// This function assumes the new address is in high memory!
+.globl relocate_and_jump_to_relocated_kernel
+.type relocate_and_jump_to_relocated_kernel, @function
+relocate_and_jump_to_relocated_kernel:
+    str x4, [sp, #-8]!
+    str x5, [sp, #-8]!
+
+    bl apply_rela
+
+    ldr x1, [sp], #8
+    ldr x0, [sp], #8
+
+    mov x30, x0
+    mov sp, x1
+
+    dsb sy
+    ret
