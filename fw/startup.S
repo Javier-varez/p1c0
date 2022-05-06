@@ -33,12 +33,12 @@ _configure_stack:
 
 _apply_relocations:
     adrp x0, _base
+    mov x1, x0
     mov x20, x0
-    adrp x1, _rela_start
-    add x1, x1, :lo12:_rela_start
-    adrp x2, _rela_end
-    add x2, x2, :lo12:_rela_end
-    sub x2, x2, x1
+    adrp x2, _rela_start
+    add x2, x2, :lo12:_rela_start
+    adrp x3, _rela_end
+    add x3, x3, :lo12:_rela_end
     bl apply_rela
 
 _jump_to_start_rust:
@@ -135,3 +135,49 @@ _uart_puthex:
 _uart_putendl:
     mov x0, '\n'
     b _uart_putc
+
+// Old Base x0
+// Base x1
+// rela Start x2
+// rela End x3
+.globl apply_rela
+.type apply_rela, @function
+apply_rela:
+    str x30, [sp, #-8]!
+    str x19, [sp, #-8]!
+    str x20, [sp, #-8]!
+
+1:
+    // If begin and end ptrs are equal we are at the end of the relocation list
+    cmp x2, x3
+    bhs 3f
+
+    // Load in x19 the rela.type
+    ldr x19, [x2, #8]
+
+    // Check if type is 1027
+    mov x30, #1027
+    cmp x19, x30
+    bne 2f
+
+    // It is a relative relocation, handle it
+    // ptr = Old base + rela.offset
+    ldr x19, [x2, #0]
+    add x19, x19, x0
+
+    // value = base + rela.addend
+    ldr x20, [x2, #16]
+    add x20, x20, x1
+
+    str x20, [x19]
+
+2:
+    // Goto next entry
+    add x2, x2, #24
+    b 1b
+
+3:
+    ldr x20, [sp], #8
+    ldr x19, [sp], #8
+    ldr x30, [sp], #8
+    ret

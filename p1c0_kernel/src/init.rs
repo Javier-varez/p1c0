@@ -9,7 +9,7 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::memory::address::VirtualAddress;
 use crate::{
-    arch::{apply_rela_from_existing, exceptions, jump_to_addr, read_pc, RelaEntry},
+    arch::{exceptions, jump_to_addr, read_pc},
     backtrace,
     boot_args::BootArgs,
     chickens,
@@ -21,6 +21,13 @@ use crate::{
     },
     prelude::*,
 };
+
+#[repr(C)]
+struct RelaEntry {
+    offset: usize,
+    ty: usize,
+    addend: usize,
+}
 
 /// This is the original base passed by iBoot into the kernel. Does NOT change after kernel
 /// relocation.
@@ -54,10 +61,18 @@ fn transition_to_el1(stack_bottom: *const ()) -> ! {
 }
 
 extern "C" {
-    pub fn kernel_main();
+    fn kernel_main();
     static _rela_start: u8;
     static _rela_end: u8;
     static _stack_bot: u8;
+
+    // Relocates the binary
+    fn apply_rela(
+        old_base: usize,
+        new_base: usize,
+        rela_start: *const RelaEntry,
+        rela_end: *const RelaEntry,
+    );
 }
 
 unsafe fn jump_to_high_kernel() -> ! {
@@ -85,7 +100,7 @@ unsafe fn jump_to_high_kernel() -> ! {
         .expect("The stack bottom does not have a high kernel address");
 
     // Relocate ourselves again to the correct location
-    apply_rela_from_existing(BASE as usize, new_base.as_usize(), rela_start, rela_size);
+    apply_rela(BASE as usize, new_base.as_usize(), rela_start, rela_end);
 
     log_info!(
         "Jumping to relocated kernel at: {}, stack: {}, current PC {:?}",
