@@ -118,3 +118,4 @@ ensure_gcc
 write_env
 
 cargo install cargo-binutils
+cargo install grcov
