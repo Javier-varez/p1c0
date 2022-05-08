@@ -89,6 +89,31 @@ SECTIONS {
         PROVIDE(_stack_bot = .);
         . = ALIGN(0x4000);
     } :data
+    __llvm_prf_cnts : {
+        /* Append the LLVM profiling sections */
+        . = ALIGN(4);
+        PROVIDE(__start___llvm_prf_cnts = .);
+        *(__llvm_prf_cnts)
+        PROVIDE(__stop___llvm_prf_cnts = .);
+    } :data
+    __llvm_prf_data : {
+        . = ALIGN(4);
+        PROVIDE(__start___llvm_prf_data = .);
+        *(__llvm_prf_data)
+        PROVIDE(__stop___llvm_prf_data = .);
+    } :data
+    __llvm_prf_names : {
+        . = ALIGN(4);
+        PROVIDE(__start___llvm_prf_names = .);
+        *(__llvm_prf_names)
+        PROVIDE(__stop___llvm_prf_names = .);
+    } :data
+    __llvm_prf_vnds : {
+        . = ALIGN(4);
+        PROVIDE(__start___llvm_prf_vnds = .);
+        *(__llvm_prf_vnds)
+        PROVIDE(__stop___llvm_prf_vnds = .);
+    } :data
     _data_end = .;
     _data_size = . - _data_start;
 
@@ -164,4 +189,7 @@ SECTIONS {
     .debug_rnglists 0 : { *(.debug_rnglists) }
     .debug_str_offsets 0 : { *(.debug_str_offsets) }
     .debug_sup      0 : { *(.debug_sup) }
+    .__llvm_covmap  0 : { *(.__llvm_covmap) }
+    .__llvm_covfun  0 : { *(.__llvm_covfun) }
+    .__llvm_orderfile  0 : { *(.__llvm_orderfile) }
 }
