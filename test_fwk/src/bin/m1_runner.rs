@@ -20,6 +20,9 @@ struct Opts {
 
     #[structopt(long, short)]
     show_stdio: bool,
+
+    #[structopt(long, short)]
+    debug: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +164,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         additional_args.push("stdio");
     };
+
+    if opts.debug {
+        additional_args.push("-s");
+        additional_args.push("-S");
+    }
 
     qemu_cmd.args(additional_args.iter()).run()?;
 
