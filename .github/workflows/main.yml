@@ -47,3 +47,19 @@ jobs:
       run: .github/workflows/setup.sh
     - name: Run cargo build
       run: cargo xtask build --release
+
+  cargo_coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - uses: hermitcore/toolchain@downstream
+    - name: Install dependencies
+      run: .github/workflows/setup.sh
+    - name: Run cargo xtask coverage
+      run: cargo xtask coverage
+    - uses: actions/upload-artifact@v3
+      with:
+        name: Coverage Report
+        path: fw/coverage_report

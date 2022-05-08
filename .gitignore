@@ -9,3 +9,4 @@
 .tools
 .env
 rootfs
+fw/coverage_report
