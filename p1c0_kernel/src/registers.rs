@@ -208,3 +208,18 @@ mod sys_impl_apl_pmcr0 {
 }
 
 pub use sys_impl_apl_pmcr0::SYS_IMPL_APL_PMCR0;
+
+mod cpacr {
+    tock_registers::register_bitfields! { u64,
+        pub CPACR [
+            FPEN OFFSET(20) NUMBITS(2) [
+                Trap = 0b00,
+                Enable = 0b11
+            ],
+        ]
+    }
+
+    crate::define_register!(CPACR, CPACR::Register, 3, 0, 1, 0, 2);
+}
+
+pub use cpacr::CPACR;
