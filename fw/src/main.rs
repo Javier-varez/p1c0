@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(default_alloc_error_handler)]
 
+use core::sync::atomic::{AtomicBool, Ordering};
 use embedded_graphics::pixelcolor::Rgb888;
 use tinybmp::Bmp;
 
@@ -101,10 +102,31 @@ pub extern "C" fn kernel_main() -> ! {
     }
 }
 
+fn finish() -> ! {
+    #[cfg(feature = "emulator")]
+    arm_semihosting::exit(1);
+
+    #[cfg(not(feature = "emulator"))]
+    loop {}
+}
+
 #[panic_handler]
 fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     // Mask interrupts.
     DAIF.write(DAIF::D::Masked + DAIF::A::Masked + DAIF::I::Masked + DAIF::F::Masked);
+
+    static ALREADY_PANICKED: AtomicBool = AtomicBool::new(false);
+    if ALREADY_PANICKED.load(Ordering::Relaxed) {
+        log_error!(
+            "Panicked while panicking! Reduced panic info: {:?}",
+            panic_info
+        );
+        unsafe {
+            p1c0_kernel::print::force_flush();
+        }
+        finish();
+    }
+    ALREADY_PANICKED.store(true, Ordering::Relaxed);
 
     unsafe {
         p1c0_kernel::print::force_flush();
