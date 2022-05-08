@@ -42,6 +42,7 @@ path = "tests/initcall_tests.rs"
 emulator = ["arm-semihosting"]
 # The binary feature builds a bin file instead of a macho file and uses a different ld script
 binary = []
+coverage = ["minicov", "test-fwk/coverage"]
 default = []
 
 [dependencies]
@@ -51,12 +52,13 @@ embedded-graphics = "0.7.1"
 tinybmp = "0.3.1"
 cortex-a = "7.2.0"
 tock-registers = "0.7.0"
-arm-semihosting = { version = "0.1.0", optional = true }
+arm-semihosting = { git = "https://github.com/javier-varez/arm_semihosting", optional = true }
 test-fwk = { path = "../test_fwk", optional = true }
+minicov = { version = "0.2.4", optional = true }
 
 # These dependencies are needed for testing
 [dev-dependencies]
-arm-semihosting = "0.1.0"
+arm-semihosting = { git = "https://github.com/javier-varez/arm_semihosting" }
 test-fwk = { path = "../test_fwk" }
 
 [build-dependencies]

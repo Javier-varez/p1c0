@@ -140,10 +140,5 @@ fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     unsafe {
         p1c0_kernel::print::force_flush();
     }
-
-    #[cfg(feature = "emulator")]
-    arm_semihosting::exit(1);
-
-    #[cfg(not(feature = "emulator"))]
-    loop {}
+    finish();
 }

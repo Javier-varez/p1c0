@@ -38,6 +38,8 @@ enum Options {
     InstallRequirements,
     /// Removes all target directories
     Clean,
+    /// Collects coverage information from integration tests and creates an HTML report
+    Coverage,
 }
 
 const FW_DIR: &str = "fw";
@@ -257,6 +259,56 @@ fn run_clean() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+fn run_coverage() -> Result<(), anyhow::Error> {
+    build_rootfs()?;
+
+    // run FW tests and trigger coverage
+    let _dir = xshell::pushd(FW_DIR)?;
+
+    let rustflags = vec![
+        "-C",
+        "link-arg=-Tcustom_p1c0.ld",
+        "-C",
+        "link-arg=-Map=p1c0.map",
+        "-C",
+        "relocation-model=pic",
+        "-C",
+        "link-arg=--no-apply-dynamic-relocs",
+        "-C",
+        "link-arg=-pie",
+        "-C",
+        "link-args=-znocopyreloc",
+        "-C",
+        "link-args=-znotext",
+        "-C",
+        "force-frame-pointers=yes",
+        "-C",
+        "instrument-coverage",
+        "-Z",
+        "no-profiler-runtime",
+    ];
+    let mut rustflags_str = String::new();
+    for flag in rustflags {
+        rustflags_str.push_str(flag);
+        rustflags_str.push(' ');
+    }
+
+    let _env = xshell::pushenv("RUSTFLAGS", rustflags_str);
+    cmd!("cargo test --features=coverage -- --profile").run()?;
+
+    let profraws = cmd!("find . -iname *.profraw").output()?.stdout;
+    let profraws = String::from_utf8(profraws)?;
+    let profraws: Vec<&str> = profraws.split_whitespace().collect();
+
+    rm_rf("coverage_report")?;
+
+    cmd!("grcov -o coverage_report -t html -s .. -b target/aarch64-unknown-none-softfloat/debug/deps")
+        .args(profraws)
+        .run()?;
+
+    Ok(())
+}
+
 fn install_requirements() -> Result<(), anyhow::Error> {
     println!("Installing requirements");
     println!("\tm1_runner:");
@@ -283,6 +335,7 @@ fn main() -> Result<(), anyhow::Error> {
         Options::Clippy => run_clippy()?,
         Options::InstallRequirements => install_requirements()?,
         Options::Clean => run_clean()?,
+        Options::Coverage => run_coverage()?,
     };
 
     Ok(())

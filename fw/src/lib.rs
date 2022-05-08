@@ -5,6 +5,13 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(default_alloc_error_handler)]
 
+#[cfg(feature = "coverage")]
+use minicov as _;
+
+#[cfg(feature = "coverage")]
+#[no_mangle]
+static __llvm_profile_runtime: i32 = 0;
+
 pub mod userspace_proc;
 
 use p1c0_kernel::{boot_args::BootArgs, prelude::*};

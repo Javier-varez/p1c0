@@ -23,6 +23,9 @@ struct Opts {
 
     #[structopt(long, short)]
     debug: bool,
+
+    #[structopt(long, short)]
+    profile: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -124,9 +127,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let manifest_path = std::env::var("CARGO_MANIFEST_DIR")
         .ok()
-        .map(|dir| Path::new(&dir).join("Cargo.toml"))
-        .expect("WARNING: `CARGO_MANIFEST_DIR` env variable not set");
-    parse_config(&mut config, &manifest_path)?;
+        .map(|dir| Path::new(&dir).join("Cargo.toml"));
+    if let Some(manifest_path) = manifest_path {
+        parse_config(&mut config, &manifest_path)?;
+    }
 
     let temp_file_name = opts
         .fw_elf
@@ -137,6 +141,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             parent
         })
         .ok_or(anyhow::Error::msg("fw_elf path does not have a parent"))?;
+
+    let mut coverage_file = opts.fw_elf.clone();
+    coverage_file.set_extension("profraw");
 
     // This makes sure the file is deleted before exiting
     {
@@ -151,23 +158,30 @@ fn main() -> Result<(), Box<dyn Error>> {
     let qemu_cmd =
         cmd!("qemu-system-aarch64 -machine apple-m1 -bios {temp_file_name} -semihosting -device virtio-keyboard-device");
 
-    let mut additional_args = vec![];
+    let mut additional_args: Vec<String> = vec![];
     if !config.show_display {
-        additional_args.push("--display");
-        additional_args.push("none");
+        additional_args.push("--display".to_string());
+        additional_args.push("none".to_string());
     };
 
-    additional_args.push("-serial");
+    additional_args.push("-serial".to_string());
 
     if !config.show_stdio {
-        additional_args.push("none");
+        additional_args.push("none".to_string());
     } else {
-        additional_args.push("stdio");
+        additional_args.push("stdio".to_string());
     };
 
     if opts.debug {
-        additional_args.push("-s");
-        additional_args.push("-S");
+        additional_args.push("-s".to_string());
+        additional_args.push("-S".to_string());
+    }
+
+    if opts.profile {
+        additional_args.push("-semihosting-config".to_string());
+        let mut semihosting_arg = String::from("arg=");
+        semihosting_arg.push_str(&coverage_file.to_string_lossy());
+        additional_args.push(semihosting_arg);
     }
 
     qemu_cmd.args(additional_args.iter()).run()?;

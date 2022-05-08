@@ -10,10 +10,12 @@ required-features = ["m1_runner"]
 [features]
 default = []
 m1_runner = ["xshell", "structopt", "toml", "anyhow", "object", "stripper", "ctrlc"]
+coverage = ["minicov"]
 
 [dependencies]
-arm-semihosting = "0.1.0"
+arm-semihosting = { git = "https://github.com/javier-varez/arm_semihosting" }
 ansi_rgb = "0.2.0"
+minicov = { version = "0.2.4", optional = true }
 xshell = { version = "0.1.17", optional = true }
 structopt = { version = "0.3.25", optional = true }
 toml = { version = "0.5.8", optional = true }
