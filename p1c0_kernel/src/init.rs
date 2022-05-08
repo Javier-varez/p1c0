@@ -20,6 +20,7 @@ use crate::{
         map,
     },
     prelude::*,
+    registers::CPACR,
 };
 
 #[repr(C)]
@@ -127,6 +128,9 @@ unsafe fn kernel_prelude() {
     // from now onwards.
     RELOCATION_DONE = true;
     log_info!("Entering kernel prelude with PC: {:?}", read_pc());
+
+    // Enable FPU usage both in EL1 and EL0
+    CPACR.modify(CPACR::FPEN::Enable);
 
     memory::MemoryManager::instance().late_init();
     uart::probe_late();

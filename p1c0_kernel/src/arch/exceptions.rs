@@ -349,6 +349,7 @@ impl fmt::Display for EsrEL1 {
             Some(ESR_EL1::EC::Value::InstrAbortLowerEL) => "Instruction Abort, lower EL",
             Some(ESR_EL1::EC::Value::SVC64) => "SVC Call",
             Some(ESR_EL1::EC::Value::SVC32) => "SVC Call (32-bit)",
+            Some(ESR_EL1::EC::Value::TrappedFP) => "Trapped SVE, SIMD or FP instruction",
             _ => "N/A",
         };
         writeln!(f, " - {}", ec_translation)?;
