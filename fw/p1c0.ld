@@ -306,3 +306,5 @@ PROT_WRITE = 0x02;
 PROT_EXECUTE = 0x04;
 
 _va_off = _va_base - _base;
+
+PROVIDE(__llvm_profile_runtime = 0);
