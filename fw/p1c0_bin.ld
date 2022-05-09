@@ -193,3 +193,5 @@ SECTIONS {
     .__llvm_covfun  0 : { *(.__llvm_covfun) }
     .__llvm_orderfile  0 : { *(.__llvm_orderfile) }
 }
+
+PROVIDE(__llvm_profile_runtime = 0);
