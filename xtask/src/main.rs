@@ -259,9 +259,7 @@ fn run_clean() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn run_coverage() -> Result<(), anyhow::Error> {
-    build_rootfs()?;
-
+fn run_fw_coverage() -> Result<(), anyhow::Error> {
     // run FW tests and trigger coverage
     let _dir = xshell::pushd(FW_DIR)?;
 
@@ -296,13 +294,25 @@ fn run_coverage() -> Result<(), anyhow::Error> {
     let _env = xshell::pushenv("RUSTFLAGS", rustflags_str);
     cmd!("cargo test --features=coverage -- --profile").run()?;
 
+    Ok(())
+}
+
+fn run_coverage() -> Result<(), anyhow::Error> {
+    build_rootfs()?;
+
+    run_fw_coverage()?;
+
+    let _rustflags_env = xshell::pushenv("RUSTFLAGS", "-Cinstrument-coverage");
+
+    cmd!("cargo test --tests").run()?;
+
     let profraws = cmd!("find . -iname *.profraw").output()?.stdout;
     let profraws = String::from_utf8(profraws)?;
     let profraws: Vec<&str> = profraws.split_whitespace().collect();
 
     rm_rf("coverage_report")?;
 
-    cmd!("grcov -o coverage_report -t html -s .. -b target/aarch64-unknown-none-softfloat/debug/deps")
+    cmd!("grcov -o coverage_report -t html -s . -b . --ignore test_fwk/* --ignore p1c0_macros/* --ignore stripper/*")
         .args(profraws)
         .run()?;
 

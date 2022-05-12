@@ -9,4 +9,5 @@
 .tools
 .env
 rootfs
-fw/coverage_report
+coverage_report
+**/*.profraw
