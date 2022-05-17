@@ -58,7 +58,7 @@ fn decrement_critical_nesting() {
     }
 }
 
-pub struct SpinLock<T> {
+pub struct SpinLock<T: ?Sized> {
     lock: atomic::AtomicBool,
     data: UnsafeCell<T>,
 }
@@ -70,7 +70,9 @@ impl<T> SpinLock<T> {
             data: UnsafeCell::new(data),
         }
     }
+}
 
+impl<T: ?Sized> SpinLock<T> {
     /// # Safety
     ///   In order for this to be safe you need to manually ensure that there is no other thread
     ///   that could be accessing the object inside the lock
@@ -118,50 +120,52 @@ impl<T> SpinLock<T> {
     }
 }
 
-unsafe impl<T> Send for SpinLock<T> {}
+unsafe impl<T: ?Sized> Send for SpinLock<T> {}
 
-unsafe impl<T> Sync for SpinLock<T> {}
+unsafe impl<T: ?Sized> Sync for SpinLock<T> {}
 
-pub struct SpinLockGuard<'a, T> {
+pub struct SpinLockGuard<'a, T: ?Sized> {
     lock: &'a SpinLock<T>,
     data: &'a mut T,
 }
 
-impl<'a, T> core::ops::Deref for SpinLockGuard<'a, T> {
+impl<'a, T: ?Sized> core::ops::Deref for SpinLockGuard<'a, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         self.data
     }
 }
 
-impl<'a, T> core::ops::DerefMut for SpinLockGuard<'a, T> {
+impl<'a, T: ?Sized> core::ops::DerefMut for SpinLockGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.data
     }
 }
 
-impl<'a, T> Drop for SpinLockGuard<'a, T> {
+impl<'a, T: ?Sized> Drop for SpinLockGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.unlock();
     }
 }
 
-pub struct RwSpinLock<T> {
+pub struct RwSpinLock<T: ?Sized> {
     lock: atomic::AtomicU32,
     data: UnsafeCell<T>,
 }
 
 impl<T> RwSpinLock<T> {
-    const WRITE_LOCK_FLAG: u32 = 1;
-    const NUM_READERS_OFFSET: u32 = 1;
-    const NUM_READERS_MASK: u32 = 0xFFFFFFFE;
-
     pub const fn new(data: T) -> Self {
         Self {
             lock: atomic::AtomicU32::new(0),
             data: UnsafeCell::new(data),
         }
     }
+}
+
+impl<T: ?Sized> RwSpinLock<T> {
+    const WRITE_LOCK_FLAG: u32 = 1;
+    const NUM_READERS_OFFSET: u32 = 1;
+    const NUM_READERS_MASK: u32 = 0xFFFFFFFE;
 
     /// # Safety
     ///   In order for this to be safe you need to manually ensure that there is no other thread
@@ -326,47 +330,47 @@ impl<T> RwSpinLock<T> {
     }
 }
 
-unsafe impl<T> Send for RwSpinLock<T> {}
+unsafe impl<T: ?Sized> Send for RwSpinLock<T> {}
 
-unsafe impl<T> Sync for RwSpinLock<T> {}
+unsafe impl<T: ?Sized> Sync for RwSpinLock<T> {}
 
-pub struct ReadGuard<'a, T> {
+pub struct ReadGuard<'a, T: ?Sized> {
     lock: &'a RwSpinLock<T>,
     data: &'a T,
 }
 
-impl<'a, T> core::ops::Deref for ReadGuard<'a, T> {
+impl<'a, T: ?Sized> core::ops::Deref for ReadGuard<'a, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         self.data
     }
 }
 
-impl<'a, T> Drop for ReadGuard<'a, T> {
+impl<'a, T: ?Sized> Drop for ReadGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.read_unlock();
     }
 }
 
-pub struct WriteGuard<'a, T> {
+pub struct WriteGuard<'a, T: ?Sized> {
     lock: &'a RwSpinLock<T>,
     data: &'a mut T,
 }
 
-impl<'a, T> core::ops::Deref for WriteGuard<'a, T> {
+impl<'a, T: ?Sized> core::ops::Deref for WriteGuard<'a, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
         self.data
     }
 }
 
-impl<'a, T> core::ops::DerefMut for WriteGuard<'a, T> {
+impl<'a, T: ?Sized> core::ops::DerefMut for WriteGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.data
     }
 }
 
-impl<'a, T> Drop for WriteGuard<'a, T> {
+impl<'a, T: ?Sized> Drop for WriteGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.write_unlock();
     }
