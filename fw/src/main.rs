@@ -13,7 +13,7 @@ use p1c0::print_boot_args;
 use p1c0_kernel::{
     arch::get_exception_level,
     boot_args::get_boot_args,
-    drivers::{display::Display, wdt},
+    drivers::display::Display,
     syscall::Syscall,
     thread::{self, print_thread_info},
 };
@@ -75,12 +75,6 @@ fn kernel_entry() {
             // Handle HID events
             hid_dev.process();
         }
-    });
-
-    thread::Builder::new().name("WDT").spawn(move || loop {
-        wdt::service();
-
-        Syscall::sleep_us(1_000_000);
     });
 
     p1c0::userspace_proc::create_process("/bin/basic_test", 0x3000000).unwrap();
