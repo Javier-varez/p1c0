@@ -9,10 +9,11 @@ use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 use crate::memory::address::VirtualAddress;
 use crate::{
+    adt,
     arch::{exceptions, read_pc},
     backtrace,
     boot_args::BootArgs,
-    chickens,
+    chickens, drivers,
     drivers::{aic, generic_timer, interfaces::timer::Timer, uart, wdt},
     memory::{
         self,
@@ -150,7 +151,31 @@ unsafe fn kernel_prelude() {
     // Invoke all initcalls functions
     run_initcalls();
 
+    probe_devices();
+
     kernel_main();
+}
+
+fn probe_subdevices<const SIZE: usize>(devs: &mut heapless::Vec<adt::AdtNode, SIZE>) {
+    let parent = devs.last().unwrap().clone();
+    for subdev in parent.child_iter() {
+        devs.push(subdev).expect("Exceeded recursion size");
+        match drivers::probe_device(devs) {
+            Ok(_) => {}
+            Err(drivers::Error::DeviceSpecificError(dev_error)) => {
+                log_warning!("Unable to probe device. Error: {:?}", dev_error);
+            }
+            Err(_) => {}
+        }
+        probe_subdevices(devs);
+        devs.pop();
+    }
+}
+
+fn probe_devices() {
+    let adt = adt::get_adt().unwrap();
+    let mut devs: heapless::Vec<adt::AdtNode, 8> = adt.path_iter("/arm-io").collect();
+    probe_subdevices(&mut devs);
 }
 
 /// # Safety
