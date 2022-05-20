@@ -14,7 +14,7 @@ use crate::{
     backtrace,
     boot_args::BootArgs,
     chickens, drivers,
-    drivers::{aic, generic_timer, interfaces::timer::Timer, uart, wdt},
+    drivers::{aic, generic_timer, interfaces::timer::Timer, uart},
     memory::{
         self,
         address::{Address, PhysicalAddress},
@@ -134,12 +134,8 @@ unsafe fn kernel_prelude() {
     CPACR.modify(CPACR::FPEN::Enable);
 
     memory::MemoryManager::instance().late_init();
-    uart::probe_late();
 
     exceptions::handling_init();
-    // This services and initializes the watchdog (on first call). To avoid a reboot we should
-    // periodically call this function
-    wdt::service();
 
     let aic = aic::Aic::probe("/arm-io/aic").unwrap();
     aic::AIC.replace(aic);

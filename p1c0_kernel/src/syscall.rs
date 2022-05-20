@@ -1,5 +1,5 @@
 use crate::thread::current_pid;
-use crate::{arch::exceptions::ExceptionContext, drivers::wdt, log_info, log_warning};
+use crate::{arch::exceptions::ExceptionContext, log_info, log_warning};
 
 macro_rules! gen_syscall_caller {
     (
@@ -374,9 +374,6 @@ fn handle_reboot(_e: &mut ExceptionContext) {
     unsafe {
         crate::print::force_flush();
     }
-
-    // In case it hasn't been probed yet
-    wdt::service();
 
     // We hang here never servicing the WDT again, causing a reboot
     loop {
