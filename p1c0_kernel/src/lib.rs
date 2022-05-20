@@ -16,6 +16,7 @@ mod collections;
 pub mod crc;
 pub mod drivers;
 pub mod elf;
+pub mod error;
 pub mod filesystem;
 mod font;
 pub mod hash;
