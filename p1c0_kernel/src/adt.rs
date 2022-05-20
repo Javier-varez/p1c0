@@ -176,6 +176,11 @@ impl AdtNode {
             })
     }
 
+    pub fn get_compatible_list(&self) -> Option<StrListIter<impl FnMut(&'_ u8) -> bool>> {
+        self.find_property("compatible")
+            .map(|prop| prop.str_list_value())
+    }
+
     pub fn is_compatible(&self, expected_compatible: &str) -> bool {
         self.find_property("compatible")
             .and_then(|prop| {
@@ -366,7 +371,14 @@ impl Adt {
         reg_index: usize,
     ) -> Option<(PhysicalAddress, usize)> {
         let nodes: Vec<AdtNode, 8> = self.path_iter(path).collect();
+        self.get_device_addr_from_nodes(&nodes, reg_index)
+    }
 
+    pub fn get_device_addr_from_nodes(
+        &self,
+        nodes: &[AdtNode],
+        reg_index: usize,
+    ) -> Option<(PhysicalAddress, usize)> {
         let mut iter = nodes.iter().rev();
         let mut child = iter.next()?;
         let mut maybe_parent = iter.clone().next();
