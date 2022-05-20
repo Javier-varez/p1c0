@@ -39,6 +39,7 @@ mod early_uart {
     impl EarlyUart {
         pub(super) fn new() -> Self {
             let adt = crate::adt::get_adt().unwrap();
+            // TODO(javier-varez): Remove hardcoded uart path and figure out where to provide this from
             let (device_addr, _) = adt.get_device_addr("/arm-io/uart0", 0).unwrap();
             let regs = device_addr.as_mut_ptr() as *mut _;
             Self { regs }
@@ -73,47 +74,64 @@ mod early_uart {
 
 mod late_uart {
     use super::{Status, UartRegs};
-    use crate::memory::address::Address;
-    use crate::memory::MemoryManager;
-    use crate::print::{self, Print};
-    use crate::sync::spinlock::SpinLock;
+    use crate::{
+        adt::AdtNode,
+        drivers::DeviceRef,
+        memory::{address::Address, MemoryManager},
+        prelude::*,
+        print::{self, Print},
+        sync::spinlock::RwSpinLock,
+    };
+    use alloc::sync::Arc;
+
+    use p1c0_macros::initcall;
     use tock_registers::interfaces::{Readable, Writeable};
 
-    pub static LATE_UART: SpinLock<Option<Uart>> = SpinLock::new(None);
+    pub struct UartDriver {}
+
+    impl super::super::Driver for UartDriver {
+        fn probe(&self, dev_path: &[AdtNode]) -> crate::drivers::Result<DeviceRef> {
+            let adt = crate::adt::get_adt().unwrap();
+            let (device_addr, size) = adt.get_device_addr_from_nodes(dev_path, 0).unwrap();
+
+            let mut mem_mgr = MemoryManager::instance();
+            let vaddr = mem_mgr
+                .map_io(dev_path.last().unwrap().get_name(), device_addr, size)
+                .unwrap();
+
+            let regs = unsafe { &*(vaddr.as_mut_ptr() as *const _) };
+            let dev = Arc::new(RwSpinLock::new(Uart { regs }));
+
+            // On success we register this device as the printer
+            print::init_printer(dev.clone());
+            Ok(dev)
+        }
+    }
+
+    #[initcall(priority = 0)]
+    fn late_uart_register_driver() {
+        super::super::register_driver("uart-1,samsung", Box::new(UartDriver {})).unwrap();
+    }
 
     pub struct Uart {
-        regs: *mut UartRegs,
+        regs: &'static UartRegs,
     }
 
     impl Uart {
-        pub(super) fn new() -> Self {
-            let adt = crate::adt::get_adt().unwrap();
-            let (device_addr, size) = adt.get_device_addr("/arm-io/uart0", 0).unwrap();
-
-            let mut mem_mgr = MemoryManager::instance();
-            let vaddr = mem_mgr.map_io("Uart regs", device_addr, size).unwrap();
-
-            let regs = vaddr.as_mut_ptr() as *mut _;
-            Self { regs }
-        }
-
-        fn regs(&mut self) -> &'static UartRegs {
-            unsafe { &mut (*self.regs) }
-        }
-
         // TODO(javier-varez): Use interrupts for handling the UART
         fn putchar(&mut self, character: u8) {
-            while self.regs().status.read(Status::TXBE) == 0 {}
+            while self.regs.status.read(Status::TXBE) == 0 {}
 
-            self.regs().tx.set(character as u32);
+            self.regs.tx.set(character as u32);
         }
     }
 
+    impl super::super::Device for Uart {}
+
     // We really should do better than this next time tbh
-    impl Print for SpinLock<Option<Uart>> {
+    impl Print for Arc<RwSpinLock<Uart>> {
         fn write_u8(&self, c: u8) -> Result<(), print::Error> {
-            let mut lock = self.lock();
-            let uart = lock.as_mut().ok_or(print::Error::PrintFailed)?;
+            let mut uart = self.lock_write();
             uart.putchar(c);
             Ok(())
         }
@@ -127,9 +145,4 @@ pub unsafe fn probe_early() {
     uart.replace(early_uart::EarlyUart::new());
 
     print::register_early_printer(uart.as_mut().unwrap());
-}
-
-pub fn probe_late() {
-    late_uart::LATE_UART.lock().replace(late_uart::Uart::new());
-    print::init_printer(&late_uart::LATE_UART);
 }
