@@ -1,8 +1,9 @@
 pub use crate::collections::{
+    flat_map::{self, FlatMap},
     intrusive_list::{IntrusiveItem, IntrusiveList},
     OwnedMutPtr, OwnedPtr,
 };
-pub use crate::{log_debug, log_error, log_info, log_verbose, log_warning, print, println};
+pub use crate::{error, log_debug, log_error, log_info, log_verbose, log_warning, print, println};
 
 pub extern crate alloc;
 
