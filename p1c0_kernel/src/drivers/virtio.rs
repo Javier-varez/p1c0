@@ -7,11 +7,17 @@ use crate::{
     prelude::*,
 };
 
+use crate::sync::spinlock::RwSpinLock;
+use alloc::sync::Arc;
+use p1c0_macros::initcall;
+
 use tock_registers::{
     interfaces::Readable,
     register_bitfields,
     registers::{ReadOnly, ReadWrite, WriteOnly},
 };
+
+const COMPATIBLE: &'static str = "virtio,mmio";
 
 #[derive(Debug)]
 pub enum Error {
@@ -27,6 +33,7 @@ pub enum Error {
     InitializationError,
     InvalidFeatures,
     DeviceSpecificError,
+    EmptyDev,
 }
 
 impl From<memory::Error> for Error {
@@ -37,6 +44,8 @@ impl From<memory::Error> for Error {
 
 trait Subdev {}
 
+impl super::Device for Virtio {}
+
 pub struct Virtio {
     _subdev: Box<dyn Subdev>,
 }
@@ -45,19 +54,19 @@ impl Virtio {
     const MAGIC_VALUE: u32 = 0x74726976;
     const SUPPORTED_VERSION: u32 = 2;
 
-    pub fn probe(path: &str) -> Result<Option<Self>, Error> {
+    pub fn probe(path: &[adt::AdtNode]) -> Result<Self, Error> {
         let adt = adt::get_adt().map_err(Error::AdtNotAvailable)?;
 
-        let node = adt.find_node(path).ok_or(Error::NodeNotCompatible)?;
-        if !node.is_compatible("virtio,mmio") {
+        let node = path.last().expect("No path given!");
+        if !node.is_compatible(COMPATIBLE) {
             return Err(Error::NodeNotCompatible);
         }
 
         let (pa, size) = adt
-            .get_device_addr(path, 0)
+            .get_device_addr_from_nodes(path, 0)
             .ok_or(Error::MissingAdtProperty("reg"))?;
 
-        let base_address = MemoryManager::instance().map_io(path, pa, size)?;
+        let base_address = MemoryManager::instance().map_io(node.get_name(), pa, size)?;
         let regs: &'static VirtioMmioRegs::Bank =
             unsafe { &*(base_address.as_ptr() as *const VirtioMmioRegs::Bank) };
 
@@ -78,7 +87,7 @@ impl Virtio {
             }
             Some(DeviceId::ID::Value::Dummy) => {
                 log_debug!("Unused virtio,mmio. Dummy device found");
-                return Ok(None);
+                return Err(Error::EmptyDev);
             }
             Some(_) => {
                 log_warning!("Other virtio device ids are unsupported");
@@ -91,7 +100,33 @@ impl Virtio {
 
         log_debug!("Probe ok!");
 
-        Ok(Some(Virtio { _subdev: subdev }))
+        Ok(Virtio { _subdev: subdev })
+    }
+}
+
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+impl From<Error> for super::Error {
+    fn from(e: Error) -> Self {
+        super::Error::DeviceSpecificError(Box::new(e))
+    }
+}
+
+#[initcall(priority = 0)]
+fn virtio_register_driver() {
+    super::register_driver(COMPATIBLE, Box::new(VirtioDriver {})).unwrap();
+}
+
+struct VirtioDriver {}
+
+impl super::Driver for VirtioDriver {
+    fn probe(&self, dev_path: &[adt::AdtNode]) -> super::Result<super::DeviceRef> {
+        let dev = Virtio::probe(dev_path)?;
+        Ok(Arc::new(RwSpinLock::new(dev)))
     }
 }
 
