@@ -99,26 +99,29 @@ pub unsafe fn register_early_printer<T: EarlyPrint>(printer: &'static mut T) {
 }
 
 #[inline]
-pub fn init_printer<T: Print + Sync>(printer: &'static T) {
+pub fn init_printer<T: Print + Send + 'static>(printer: T) {
     let mut reader = BUFFER.split_reader().expect("The buffer is already split!");
-    PRINT.lock().replace(printer as *const _);
 
     crate::thread::Builder::new()
         .name("Printer")
-        .spawn(move || loop {
-            match reader.pop() {
-                Ok(val) => {
-                    printer.write_u8(val).unwrap();
-                }
-                Err(ring_buffer::Error::WouldBlock) => {
-                    // TODO(javier-varez): Sleep here waiting for condition to happen instead of looping
-                    // At the time of this writing there is no mechanism to do this.
-                    // We can at least yield to the scheduler again
-                    Syscall::yield_exec();
-                    continue;
-                }
-                Err(e) => {
-                    panic!("Error reading from the print buffer, {:?}", e);
+        .spawn(move || {
+            let printer = printer;
+            PRINT.lock().replace(&printer as *const _);
+            loop {
+                match reader.pop() {
+                    Ok(val) => {
+                        printer.write_u8(val).unwrap();
+                    }
+                    Err(ring_buffer::Error::WouldBlock) => {
+                        // TODO(javier-varez): Sleep here waiting for condition to happen instead of looping
+                        // At the time of this writing there is no mechanism to do this.
+                        // We can at least yield to the scheduler again
+                        Syscall::yield_exec();
+                        continue;
+                    }
+                    Err(e) => {
+                        panic!("Error reading from the print buffer, {:?}", e);
+                    }
                 }
             }
         });
