@@ -1,9 +1,9 @@
 #![no_std]
 #![cfg_attr(test, no_main)]
-#![feature(custom_test_frameworks)]
-#![test_runner(test_fwk::runner)]
-#![reexport_test_harness_main = "test_main"]
-#![feature(default_alloc_error_handler)]
+#![cfg_attr(test, feature(default_alloc_error_handler))]
+#![cfg_attr(test, feature(custom_test_frameworks))]
+#![cfg_attr(test, test_runner(test_fwk::runner))]
+#![cfg_attr(test, reexport_test_harness_main = "test_main")]
 
 #[cfg(feature = "coverage")]
 use minicov as _;
