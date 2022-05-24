@@ -97,6 +97,7 @@ impl address::Validator for StackValidator {
 enum BlockReason {
     Sleep(Ticks),
     Join(ThreadHandle),
+    WaitForPid(ProcessHandle),
 }
 
 pub struct ThreadControlBlock {
@@ -335,6 +336,22 @@ fn wake_asleep_threads() {
             return *ticks <= current_ticks;
         }
         false
+    });
+
+    ACTIVE_THREADS.lock().join(unblocked_threads);
+}
+
+pub(crate) fn wake_threads_waiting_on_pid(pid: &ProcessHandle, exit_code: u64) {
+    let mut unblocked_threads = BLOCKED_THREADS.lock().drain_filter(|thread| {
+        if let BlockReason::WaitForPid(p) = thread.block_reason.as_ref().unwrap() {
+            return p == pid;
+        }
+        false
+    });
+
+    // Set the exit code in those threads
+    unblocked_threads.iter_mut().for_each(|thread| {
+        thread.regs[0] = exit_code;
     });
 
     ACTIVE_THREADS.lock().join(unblocked_threads);
@@ -585,4 +602,22 @@ pub(crate) fn stack_validator(stack_type: StackType) -> Option<StackValidator> {
             .as_ref()
             .map(|thread| thread.stack.validator()),
     }
+}
+
+pub(crate) fn wait_for_pid_in_current_thread(cx: &mut ExceptionContext, pid: ProcessHandle) {
+    let mut current_thread = CURRENT_THREAD.lock();
+
+    let mut thread = current_thread
+        .take()
+        .expect("There is no current thread calling wait_for_pid!");
+    assert!(!thread.is_idle_thread);
+
+    save_thread_context(&mut thread, cx);
+
+    thread.block_reason = Some(BlockReason::WaitForPid(pid));
+    BLOCKED_THREADS.lock().push(thread);
+
+    let thread = schedule_next_thread();
+    restore_thread_context(cx, &thread);
+    current_thread.replace(thread);
 }

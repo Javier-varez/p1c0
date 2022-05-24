@@ -1,5 +1,6 @@
-use crate::thread::current_pid;
-use crate::{arch::exceptions::ExceptionContext, log_info, log_warning};
+use crate::{
+    arch::exceptions::ExceptionContext, log_info, log_warning, process, thread, thread::current_pid,
+};
 
 macro_rules! gen_syscall_caller {
     (
@@ -250,7 +251,7 @@ macro_rules! call_syscall_hdlr {
         $syscall_hdlr_name: ident,
         () -> $ret_ty: ty
     ) => {
-        let result = $syscall_hdlr_name();
+        let result = $syscall_hdlr_name($context);
         $context.gpr[0] = result as u64;
     };
     (
@@ -259,7 +260,7 @@ macro_rules! call_syscall_hdlr {
         ($arg0_ty: ty) -> $ret_ty: ty
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
-        let result = $syscall_hdlr_name(arg0);
+        let result = $syscall_hdlr_name($context, arg0);
         $context.gpr[0] = result as u64;
     };
     (
@@ -269,7 +270,7 @@ macro_rules! call_syscall_hdlr {
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
-        let result = $syscall_hdlr_name(arg0, arg1);
+        let result = $syscall_hdlr_name($context, arg0, arg1);
         $context.gpr[0] = result as u64;
     };
     (
@@ -280,7 +281,7 @@ macro_rules! call_syscall_hdlr {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
         let arg2 = $context.gpr[2] as $arg2_ty;
-        let result = $syscall_hdlr_name(arg0, arg1, arg2);
+        let result = $syscall_hdlr_name($context, arg0, arg1, arg2);
         $context.gpr[0] = result as u64;
     };
     (
@@ -292,7 +293,7 @@ macro_rules! call_syscall_hdlr {
         let arg1 = $context.gpr[1] as $arg1_ty;
         let arg2 = $context.gpr[2] as $arg2_ty;
         let arg3 = $context.gpr[3] as $arg3_ty;
-        let result = $syscall_hdlr_name(arg0, arg1, arg2, arg3);
+        let result = $syscall_hdlr_name($context, arg0, arg1, arg2, arg3);
         $context.gpr[0] = result as u64;
     };
 }
@@ -358,6 +359,8 @@ define_syscalls!(
     [4, ThreadExit, thread_exit, handle_thread_exit, ()],
     [5, ThreadJoin, thread_join, handle_thread_join, (u64)],
     [6, PutString, puts, handle_puts, (*const u8, usize)],
+    [7, WaitPid, wait_pid, handle_wait_pid, (u64) -> u64],
+    [8, Exit, exit, handle_exit, (u64)],
     [0x8000, Multiply, multiply, handle_multiply, (u32, u32) -> u32],
 );
 
@@ -365,11 +368,11 @@ pub enum Error {
     UnknownSyscall(u32),
 }
 
-fn handle_noop(_e: &mut ExceptionContext) {
+fn handle_noop(_cx: &mut ExceptionContext) {
     log_info!("Syscall Noop");
 }
 
-fn handle_reboot(_e: &mut ExceptionContext) {
+fn handle_reboot(_cx: &mut ExceptionContext) {
     log_warning!("Syscall Reboot - Rebooting computer");
     unsafe {
         crate::print::force_flush();
@@ -381,7 +384,7 @@ fn handle_reboot(_e: &mut ExceptionContext) {
     }
 }
 
-fn handle_multiply(a: u32, b: u32) -> u32 {
+fn handle_multiply(_cx: &mut ExceptionContext, a: u32, b: u32) -> u32 {
     a * b
 }
 
@@ -414,4 +417,22 @@ fn handle_puts(_cx: &mut ExceptionContext, str_ptr: *const u8, length: usize) {
 
         log_info!("Message from userspace pid {:?}: {}", current_pid(), string);
     }
+}
+
+fn handle_wait_pid(cx: &mut ExceptionContext, pid: u64) -> u64 {
+    // Validate pid
+    let pid = match process::validate_pid(pid) {
+        None => {
+            return 0xFFFF;
+        }
+        Some(val) => val,
+    };
+
+    thread::wait_for_pid_in_current_thread(cx, pid);
+    cx.gpr[0]
+}
+
+fn handle_exit(cx: &mut ExceptionContext, exit_code: u64) {
+    // This can only be called from a process. Calling it from the kernel itself causes a panic
+    process::kill_current_process(cx, exit_code).unwrap();
 }

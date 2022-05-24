@@ -29,6 +29,8 @@ pub enum Error {
     ThreadError(thread::Error),
     NoCurrentProcess,
     InvalidBase,
+    ElfError(crate::elf::Error),
+    UnsupportedExecutable,
 }
 
 impl From<address_space::Error> for Error {
@@ -58,8 +60,14 @@ static NUM_PROCESSES: AtomicU64 = AtomicU64::new(0);
 
 static PROCESSES: SpinLock<IntrusiveList<Process>> = SpinLock::new(IntrusiveList::new());
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessHandle(u64);
+
+impl ProcessHandle {
+    pub fn get_raw(&self) -> u64 {
+        self.0
+    }
+}
 
 pub struct Builder {
     address_space: ProcessAddressSpace,
@@ -149,7 +157,7 @@ impl Builder {
         entry_point: VirtualAddress,
         base_address: VirtualAddress,
         elf_data: Vec<u8>,
-    ) -> Result<(), Error> {
+    ) -> Result<ProcessHandle, Error> {
         // Allocate stack
         let pmr = MemoryManager::instance().request_any_pages(1, memory::AllocPolicy::ZeroFill)?;
 
@@ -186,7 +194,7 @@ impl Builder {
         })));
 
         PROCESSES.lock().push(process);
-        Ok(())
+        Ok(ProcessHandle(pid))
     }
 }
 
@@ -253,7 +261,10 @@ pub(crate) fn do_with_process<T>(
     f(proc)
 }
 
-pub(crate) fn kill_current_process(cx: &mut ExceptionContext) -> Result<(), Error> {
+pub(crate) fn kill_current_process(
+    cx: &mut ExceptionContext,
+    error_code: u64,
+) -> Result<(), Error> {
     let pid = match thread::current_pid() {
         Some(pid) => pid,
         None => {
@@ -262,6 +273,7 @@ pub(crate) fn kill_current_process(cx: &mut ExceptionContext) -> Result<(), Erro
         }
     };
     let mut removed_process = PROCESSES.lock().drain_filter(|p| p.pid == pid.0);
+    thread::wake_threads_waiting_on_pid(&pid, error_code);
 
     // Only one process must match
     assert_eq!(removed_process.len(), 1);
@@ -272,4 +284,93 @@ pub(crate) fn kill_current_process(cx: &mut ExceptionContext) -> Result<(), Erro
 
     crate::thread::exit_matching_threads(&mut process.thread_list, cx)?;
     Ok(())
+}
+
+pub fn new_from_elf_data(elf_data: Vec<u8>, aslr: usize) -> Result<ProcessHandle, Error> {
+    let elf =
+        elf::ElfParser::from_slice(&elf_data[..]).map_err(|_| Error::UnsupportedExecutable)?;
+    if !matches!(
+        elf.elf_type(),
+        elf::EType::Executable | elf::EType::SharedObject
+    ) {
+        log_warning!("Elf file is not executable, bailing");
+        return Err(Error::UnsupportedExecutable);
+    }
+
+    let mut process_builder = Builder::new();
+    for header in elf.program_header_iter() {
+        let header_type = header.ty().map_err(|_| Error::UnsupportedExecutable)?;
+        if matches!(header_type, elf::PtType::Load) {
+            log_debug!(
+                "Vaddr 0x{:x}, Paddr 0x{:x}, Memsize {} Filesize {}",
+                header.vaddr(),
+                header.paddr(),
+                header.memsize(),
+                header.filesize()
+            );
+
+            let vaddr = (header.vaddr() as usize + aslr) as *const _;
+            let vaddr =
+                VirtualAddress::try_from_ptr(vaddr).map_err(|_| Error::UnsupportedExecutable)?;
+
+            let segment_data = elf.get_segment_data(&header);
+
+            let permissions = match header.permissions() {
+                elf::Permissions {
+                    read: true,
+                    write: true,
+                    exec: false,
+                } => Permissions::RW,
+                elf::Permissions {
+                    read: true,
+                    write: false,
+                    exec: false,
+                } => Permissions::RO,
+                elf::Permissions {
+                    read: _,
+                    write: false,
+                    exec: true,
+                } => Permissions::RX,
+                elf::Permissions {
+                    read: true,
+                    write: true,
+                    exec: true,
+                } => Permissions::RWX,
+                elf::Permissions { read, write, exec } => {
+                    let read = if read { "R" } else { "-" };
+                    let write = if write { "W" } else { "-" };
+                    let exec = if exec { "X" } else { "-" };
+                    panic!(
+                        "Unsupported set of permissions found in elf {}{}{}",
+                        read, write, exec
+                    );
+                }
+            };
+
+            process_builder.map_section(
+                elf.matching_section_name(&header)
+                    .map_err(|_| Error::UnsupportedExecutable)?
+                    .unwrap_or(""),
+                vaddr,
+                header.memsize() as usize,
+                segment_data,
+                permissions,
+            )?;
+        } else {
+            log_warning!("Unhandled ELF program header with type {:?}", header_type);
+        }
+    }
+
+    let vaddr = (elf.entry_point() as usize + aslr) as *const _;
+    let entry_point = VirtualAddress::new_unaligned(vaddr);
+    let base_address = VirtualAddress::new_unaligned(aslr as *const _);
+    process_builder.start(entry_point, base_address, elf_data)
+}
+
+pub(crate) fn validate_pid(pid: u64) -> Option<ProcessHandle> {
+    PROCESSES
+        .lock()
+        .iter()
+        .find(|process| process.pid == pid)
+        .map(|process| ProcessHandle(process.pid))
 }
