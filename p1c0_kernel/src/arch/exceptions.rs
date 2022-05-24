@@ -159,7 +159,7 @@ unsafe fn handle_synchronous(e: &mut ExceptionContext, origin: ExceptionOrigin) 
                         e
                     );
 
-                    crate::process::kill_current_process(e).unwrap();
+                    crate::process::kill_current_process(e, 1).unwrap();
                 }
             }
         }
@@ -470,18 +470,17 @@ pub fn handling_init() {
         Some(CurrentEL::EL::Value::EL2)
     ) {
         HCR_EL2.write(
-            HCR_EL2::RW::EL1IsAarch64
-            // These settings would make EL2 work just like an OS and also trap any exceptions
-            // from EL1 to EL2. EL1 cannot be used with them.
-            //
-            // + HCR_EL2::API::NoTrapPointerAuthInstToEl2
-            // + HCR_EL2::APK::NoTrapPointerAuthKeyRegsToEl2
-            // + HCR_EL2::TEA::RouteSyncExtAborts
-            // + HCR_EL2::E2H::EnableOsAtEl2
-            // + HCR_EL2::TGE::TrapGeneralExceptions
-            // + HCR_EL2::AMO::SET
-            // + HCR_EL2::IMO::SET
-            // + HCR_EL2::FMO::SET,
+            HCR_EL2::RW::EL1IsAarch64, // These settings would make EL2 work just like an OS and also trap any exceptions
+                                       // from EL1 to EL2. EL1 cannot be used with them.
+                                       //
+                                       // + HCR_EL2::API::NoTrapPointerAuthInstToEl2
+                                       // + HCR_EL2::APK::NoTrapPointerAuthKeyRegsToEl2
+                                       // + HCR_EL2::TEA::RouteSyncExtAborts
+                                       // + HCR_EL2::E2H::EnableOsAtEl2
+                                       // + HCR_EL2::TGE::TrapGeneralExceptions
+                                       // + HCR_EL2::AMO::SET
+                                       // + HCR_EL2::IMO::SET
+                                       // + HCR_EL2::FMO::SET,
         );
 
         // Force HCR update to complete before next instruction.

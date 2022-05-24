@@ -1,5 +1,14 @@
 #include <crt/relocations.h>
 
+namespace {
+    [[noreturn]] void exit(crt::relocations::u64 exit_code) {
+      asm volatile(
+      "mov x0, %0\n"
+      "svc 8" : : "r" (exit_code) : "x0");
+      __builtin_unreachable();
+    }
+}
+
 int main();
 
 // base_addr is passed to us via the OS so that we know where the binary was loaded. This can be used for ASLR.
@@ -17,7 +26,7 @@ extern "C" [[noreturn]] void _start(crt::relocations::u64 base_addr) {
   crt::relocations::apply_relocations(base_addr, relocations, rela_len_bytes);
 
   const auto retval = main();
-  // TODO(javier-varez): Call exit here
+  exit(retval);
 
   while (true);
 }
