@@ -78,7 +78,7 @@ impl FilesystemDevice for InitFsDevice {
         let header = cpio::parse_entry(&self.data[fd.block_offset..])
             .unwrap()
             .unwrap();
-        let data_offset = header.data_offset;
+        let data_offset = fd.block_offset + header.data_offset;
 
         if fd.read_offset > fd.size {
             return Err(Error::EndOfFile);
