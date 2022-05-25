@@ -430,8 +430,8 @@ fn handle_wait_pid(cx: &mut ExceptionContext, pid: u64) -> u64 {
     };
 
     // TODO(javier-varez): Clean this lock mess. This is just used to ensure we don't get switched out
-    static spinlock: SpinLock<()> = SpinLock::new(());
-    let _lock = spinlock.lock();
+    static SPINLOCK: SpinLock<()> = SpinLock::new(());
+    let _lock = SPINLOCK.lock();
 
     let exit_code = process::do_with_process(&pid, |process| process.exit_code());
     match exit_code {

@@ -5,7 +5,7 @@ use alloc::sync::Arc;
 use p1c0_macros::initcall;
 use tock_registers::{interfaces::Writeable, register_bitfields, registers::ReadWrite};
 
-const COMPATIBLE: &'static str = "wdt,t6000";
+const COMPATIBLE: &str = "wdt,t6000";
 
 // Defines bitfields for the WDT registers
 register_bitfields![u32,
