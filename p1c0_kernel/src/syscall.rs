@@ -1,3 +1,4 @@
+use crate::sync::spinlock::SpinLock;
 use crate::{
     arch::exceptions::ExceptionContext, log_info, log_warning, process, thread, thread::current_pid,
 };
@@ -428,8 +429,19 @@ fn handle_wait_pid(cx: &mut ExceptionContext, pid: u64) -> u64 {
         Some(val) => val,
     };
 
-    thread::wait_for_pid_in_current_thread(cx, pid);
-    cx.gpr[0]
+    // TODO(javier-varez): Clean this lock mess. This is just used to ensure we don't get switched out
+    static spinlock: SpinLock<()> = SpinLock::new(());
+    let _lock = spinlock.lock();
+
+    let exit_code = process::do_with_process(&pid, |process| process.exit_code());
+    match exit_code {
+        Some(val) => val,
+        None => {
+            thread::wait_for_pid_in_current_thread(cx, pid);
+            // Do not use retval here.
+            cx.gpr[0]
+        }
+    }
 }
 
 fn handle_exit(cx: &mut ExceptionContext, exit_code: u64) {

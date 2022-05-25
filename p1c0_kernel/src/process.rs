@@ -53,7 +53,7 @@ impl From<thread::Error> for Error {
 
 pub enum State {
     Running,
-    Done,
+    Killed(u64),
 }
 
 static NUM_PROCESSES: AtomicU64 = AtomicU64::new(0);
@@ -187,7 +187,7 @@ impl Builder {
         let process = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(Process {
             address_space: self.address_space,
             thread_list: vec![thread_id],
-            _state: State::Running,
+            state: State::Running,
             pid,
             base_address,
             elf_data,
@@ -202,7 +202,7 @@ pub struct Process {
     address_space: ProcessAddressSpace,
     // List of thread IDs of our threads
     thread_list: Vec<ThreadHandle>,
-    _state: State,
+    state: State,
     pid: u64,
     base_address: VirtualAddress,
     elf_data: Vec<u8>,
@@ -218,6 +218,16 @@ impl Process {
         ProcessSymbolicator {
             elf_parser,
             base_address: self.base_address,
+        }
+    }
+
+    pub fn exit_code(&self) -> Option<u64> {
+        match self.state {
+            State::Killed(retval) => {
+                // TODO(javier-varez): Reap process here somehow
+                Some(retval)
+            }
+            State::Running => None,
         }
     }
 }
@@ -272,17 +282,21 @@ pub(crate) fn kill_current_process(
             return Err(Error::NoCurrentProcess);
         }
     };
-    let mut removed_process = PROCESSES.lock().drain_filter(|p| p.pid == pid.0);
+    let mut processes = PROCESSES.lock();
+
+    let killed_proc = processes.iter_mut().find(|p| p.pid == pid.0).unwrap();
+
+    log_info!(
+        "Killing process with PID {}, exit code {}",
+        killed_proc.pid,
+        error_code
+    );
+
     thread::wake_threads_waiting_on_pid(&pid, error_code);
+    thread::exit_matching_threads(&mut killed_proc.thread_list, cx)?;
 
-    // Only one process must match
-    assert_eq!(removed_process.len(), 1);
-
-    // # Safety: into_box is safe because processes are allocated with box
-    let mut process = unsafe { removed_process.pop().unwrap().into_box() };
-    log_info!("Killing process with PID {}", process.pid);
-
-    crate::thread::exit_matching_threads(&mut process.thread_list, cx)?;
+    // Don't free process but instead keep it in a zombie state unitl states are collected
+    killed_proc.state = State::Killed(error_code);
     Ok(())
 }
 
