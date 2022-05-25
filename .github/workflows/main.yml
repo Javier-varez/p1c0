@@ -62,4 +62,4 @@ jobs:
     - uses: actions/upload-artifact@v3
       with:
         name: Coverage Report
-        path: fw/coverage_report
+        path: coverage_report
