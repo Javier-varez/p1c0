@@ -176,6 +176,19 @@ impl Builder {
 
         let pid = NUM_PROCESSES.fetch_add(1, Ordering::Relaxed);
 
+        let mut process = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(Process {
+            address_space: self.address_space,
+            thread_list: vec![],
+            state: State::Running,
+            pid,
+            base_address,
+            elf_data,
+        })));
+
+        // Lock before we create threads or we might get preempted before the process is valid, but
+        // the thread has a ref to it.
+        let mut processes = PROCESSES.lock();
+
         let thread_id = thread::new_for_process(
             ProcessHandle(pid),
             stack_va,
@@ -183,17 +196,9 @@ impl Builder {
             entry_point,
             base_address,
         );
+        process.thread_list.push(thread_id);
 
-        let process = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(Process {
-            address_space: self.address_space,
-            thread_list: vec![thread_id],
-            state: State::Running,
-            pid,
-            base_address,
-            elf_data,
-        })));
-
-        PROCESSES.lock().push(process);
+        processes.push(process);
         Ok(ProcessHandle(pid))
     }
 }
