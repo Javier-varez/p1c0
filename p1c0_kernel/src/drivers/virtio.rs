@@ -17,7 +17,7 @@ use tock_registers::{
     registers::{ReadOnly, ReadWrite, WriteOnly},
 };
 
-const COMPATIBLE: &'static str = "virtio,mmio";
+const COMPATIBLE: &str = "virtio,mmio";
 
 #[derive(Debug)]
 pub enum Error {

@@ -7,6 +7,7 @@ macro_rules! named_register_string {
 }
 
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)]
 macro_rules! define_register {
     ($name: ident, $type: ty, $op0: literal,
     $op1: literal, $crn: literal, $crm: literal, $op2: literal) => {

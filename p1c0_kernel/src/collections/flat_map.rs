@@ -442,6 +442,10 @@ where
         self.num_elements
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.num_elements == 0
+    }
+
     pub fn iter(&self) -> FlatMapIter<'_, K, V, H> {
         FlatMapIter {
             map: self,
@@ -729,5 +733,13 @@ mod tests {
             let key = format!("key {}", i);
             assert_eq!(*map.lookup(&key).unwrap(), i + 1);
         }
+    }
+
+    fn test_is_empty() {
+        let mut map = FlatMap::new();
+        assert!(map.is_empty());
+        map.insert_with_strategy("test", 1, InsertStrategy::NoReplaceResize)
+            .unwrap();
+        assert!(!map.is_empty());
     }
 }
