@@ -463,19 +463,20 @@ impl MemoryManager {
         Ok(())
     }
 
-    pub fn do_with_fast_map(
+    pub fn do_with_fast_map<T>(
         &mut self,
         pa: PhysicalAddress,
         permissions: GlobalPermissions,
-        mut f: impl FnMut(VirtualAddress),
-    ) {
+        mut f: impl FnMut(VirtualAddress) -> T,
+    ) -> T {
         self.kernel_address_space
             .fast_page_map(pa, permissions, Attributes::Normal)
             .unwrap();
 
-        f(FASTMAP_PAGE);
+        let val = f(FASTMAP_PAGE);
 
         self.kernel_address_space.fast_page_unmap().unwrap();
+        val
     }
 
     pub fn map_kernel_low_pages(&mut self) {

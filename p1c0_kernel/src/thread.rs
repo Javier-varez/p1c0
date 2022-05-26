@@ -251,6 +251,7 @@ pub(crate) fn new_for_process(
     stack_size: usize,
     entry_point: VirtualAddress,
     base_address: VirtualAddress,
+    (argc, argv, envp): (usize, VirtualAddress, VirtualAddress),
 ) -> ThreadHandle {
     let name = String::new();
     let stack = Stack::ProcessThread(stack_va, stack_size);
@@ -274,7 +275,10 @@ pub(crate) fn new_for_process(
         stack_ptr,
         is_idle_thread: false,
     })));
-    tcb.regs[0] = base_address.as_u64();
+    tcb.regs[0] = argc as u64;
+    tcb.regs[1] = argv.as_u64();
+    tcb.regs[2] = envp.as_u64();
+    tcb.regs[3] = base_address.as_u64();
 
     ACTIVE_THREADS.lock().push(tcb);
 
