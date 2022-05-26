@@ -1,15 +1,13 @@
 extern crate alloc;
 
 use crate::memory::address::{Address, VirtualAddress};
-use crate::memory::{GlobalPermissions, MemoryManager, Permissions};
+use crate::memory::{num_pages_from_bytes, GlobalPermissions, MemoryManager, Permissions};
 use crate::prelude::*;
 use crate::{
-    collections::{
-        intrusive_list::{IntrusiveItem, IntrusiveList},
-        OwnedMutPtr,
+    memory::{
+        self,
+        address_space::{self, ProcessAddressSpace},
     },
-    memory,
-    memory::address_space::{self, ProcessAddressSpace},
     sync::spinlock::SpinLock,
     thread::{self, ThreadHandle},
 };
@@ -31,6 +29,7 @@ pub enum Error {
     InvalidBase,
     ElfError(crate::elf::Error),
     UnsupportedExecutable,
+    NoEntryPoint,
 }
 
 impl From<address_space::Error> for Error {
@@ -71,19 +70,43 @@ impl ProcessHandle {
 
 pub struct Builder {
     address_space: ProcessAddressSpace,
+    arguments: Vec<String>,
+    environment: FlatMap<String, String>,
+    entrypoint: Option<VirtualAddress>,
+    aslr_base: Option<VirtualAddress>,
+    elf_data: Vec<u8>,
 }
 
 impl Default for Builder {
     fn default() -> Self {
         Self {
             address_space: ProcessAddressSpace::new(),
+            arguments: vec![],
+            environment: FlatMap::new(),
+            entrypoint: None,
+            aslr_base: None,
+            elf_data: vec![],
         }
     }
 }
 
 impl Builder {
+    const STACK_SIZE: usize = 32 * 1024;
+
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn set_entrypoint(&mut self, entrypoint: VirtualAddress) {
+        self.entrypoint = Some(entrypoint);
+    }
+
+    pub fn set_elf_data(&mut self, elf_data: Vec<u8>) {
+        self.elf_data = elf_data;
+    }
+
+    pub fn set_aslr_base(&mut self, aslr_base: VirtualAddress) {
+        self.aslr_base = Some(aslr_base);
     }
 
     fn copy_section(&mut self, pmr: &PhysicalMemoryRegion, data: &[u8]) {
@@ -152,28 +175,136 @@ impl Builder {
         Ok(())
     }
 
-    pub fn start(
-        mut self,
-        entry_point: VirtualAddress,
-        base_address: VirtualAddress,
-        elf_data: Vec<u8>,
-    ) -> Result<ProcessHandle, Error> {
-        // Allocate stack
-        let pmr = MemoryManager::instance().request_any_pages(1, memory::AllocPolicy::ZeroFill)?;
+    pub fn push_argument(&mut self, arg: &str) {
+        self.arguments.push(arg.to_owned());
+    }
 
-        const STACK_SIZE: usize = 4096;
+    pub fn push_environment_variable(&mut self, key: &str, value: &str) {
+        self.environment.insert(key.to_owned(), value.to_owned());
+    }
+
+    fn map_stack(&mut self, aslr_base: VirtualAddress) -> Result<VirtualAddress, Error> {
+        let numpages = num_pages_from_bytes(Self::STACK_SIZE);
+        let pmr =
+            MemoryManager::instance().request_any_pages(numpages, memory::AllocPolicy::ZeroFill)?;
 
         let stack_va =
-            VirtualAddress::try_from_ptr((0xF00000000000 + base_address.as_u64()) as *const _)
+            VirtualAddress::try_from_ptr((0xF00000000000 + aslr_base.as_u64()) as *const _)
                 .map_err(|_e| Error::InvalidBase)?;
         self.address_space.map_section(
             ".stack",
             stack_va,
             pmr,
-            STACK_SIZE,
+            Self::STACK_SIZE,
             GlobalPermissions::new_for_process(Permissions::RW),
         )?;
+        Ok(stack_va)
+    }
 
+    fn map_arguments(
+        &mut self,
+        aslr_base: VirtualAddress,
+    ) -> Result<(usize, VirtualAddress, VirtualAddress), Error> {
+        let mut mapped_arg_addresses: Vec<*const u8> = vec![];
+        let mut mapped_env_addresses: Vec<*const u8> = vec![];
+
+        let args_va_start = unsafe {
+            VirtualAddress::new_unchecked(0xF80000000000 as *const _).offset(aslr_base.as_usize())
+        };
+        // We are going to assume that args + environment fit in the PAGE_SIZE, which should REALLY be the case
+        let pmr = MemoryManager::instance().request_any_pages(1, memory::AllocPolicy::ZeroFill)?;
+        let pmr_base_address = pmr.base_address();
+
+        self.address_space.map_section(
+            ".args",
+            args_va_start,
+            pmr,
+            PAGE_SIZE,
+            GlobalPermissions::new_for_process(Permissions::RO),
+        )?;
+
+        Ok(memory::MemoryManager::instance().do_with_fast_map(
+            pmr_base_address,
+            GlobalPermissions::new_only_privileged(Permissions::RW),
+            |tmp_va| {
+                let mut offset = 0;
+
+                let mut copy_string = |str: &str| {
+                    let len = str.len();
+                    let va = unsafe { args_va_start.offset(offset) };
+
+                    assert!((offset + len + 1) <= PAGE_SIZE);
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            str.as_ptr(),
+                            tmp_va.offset(offset).as_mut_ptr(),
+                            len,
+                        );
+                        offset += len;
+                        core::ptr::write(tmp_va.offset(offset).as_mut_ptr(), 0);
+                        offset += 1;
+                    }
+                    va
+                };
+                for arg in &self.arguments {
+                    let va = copy_string(arg);
+                    mapped_arg_addresses.push(va.as_ptr());
+                }
+
+                for (key, value) in self.environment.iter() {
+                    let mut envvar = key.clone();
+                    envvar.push('=');
+                    envvar.push_str(value);
+
+                    let va = copy_string(&envvar);
+                    mapped_env_addresses.push(va.as_ptr());
+                }
+
+                // Now that the data is there, we need to push the arrays
+                let argc = mapped_arg_addresses.len();
+
+                mapped_arg_addresses.push(core::ptr::null());
+                mapped_env_addresses.push(core::ptr::null());
+
+                let mut copy_slice = |slice: &[*const u8]| {
+                    let size_bytes = slice.len() * core::mem::size_of::<*const u8>();
+                    let va = unsafe { args_va_start.offset(offset) };
+
+                    // Align offset to pointer size
+                    let misalign = offset % core::mem::size_of::<*const u8>();
+                    if misalign != 0 {
+                        offset += core::mem::size_of::<*const u8>() - misalign;
+                    }
+
+                    assert!((offset + size_bytes) <= PAGE_SIZE);
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            slice.as_ptr(),
+                            tmp_va.offset(offset).as_mut_ptr() as *mut *const u8,
+                            slice.len(),
+                        );
+                        offset += size_bytes;
+                        core::ptr::write(tmp_va.offset(offset).as_mut_ptr(), 0);
+                        offset += 1;
+                    }
+                    va
+                };
+                let argv = copy_slice(&mapped_arg_addresses);
+                let envp = copy_slice(&mapped_env_addresses);
+                (argc, argv, envp)
+            },
+        ))
+    }
+
+    pub fn start(mut self) -> Result<ProcessHandle, Error> {
+        let entrypoint = self.entrypoint.ok_or(Error::NoEntryPoint)?;
+        let aslr_base = self
+            .aslr_base
+            .unwrap_or_else(|| VirtualAddress::new_unaligned(core::ptr::null()));
+        let stack_va = self.map_stack(aslr_base)?;
+        let args = self.map_arguments(aslr_base)?;
+
+        // Reserve PID
         let pid = NUM_PROCESSES.fetch_add(1, Ordering::Relaxed);
 
         let mut process = OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(Process {
@@ -181,8 +312,8 @@ impl Builder {
             thread_list: vec![],
             state: State::Running,
             pid,
-            base_address,
-            elf_data,
+            aslr_base,
+            elf_data: self.elf_data,
         })));
 
         // Lock before we create threads or we might get preempted before the process is valid, but
@@ -192,14 +323,98 @@ impl Builder {
         let thread_id = thread::new_for_process(
             ProcessHandle(pid),
             stack_va,
-            STACK_SIZE,
-            entry_point,
-            base_address,
+            Self::STACK_SIZE,
+            entrypoint,
+            aslr_base,
+            args,
         );
         process.thread_list.push(thread_id);
 
         processes.push(process);
         Ok(ProcessHandle(pid))
+    }
+
+    pub fn new_from_elf_data(name: &str, elf_data: Vec<u8>, aslr: usize) -> Result<Builder, Error> {
+        let elf =
+            elf::ElfParser::from_slice(&elf_data[..]).map_err(|_| Error::UnsupportedExecutable)?;
+        if !matches!(
+            elf.elf_type(),
+            elf::EType::Executable | elf::EType::SharedObject
+        ) {
+            log_warning!("Elf file is not executable, bailing");
+            return Err(Error::UnsupportedExecutable);
+        }
+
+        let mut process_builder = Builder::new();
+        for header in elf.program_header_iter() {
+            let header_type = header.ty().map_err(|_| Error::UnsupportedExecutable)?;
+            if matches!(header_type, elf::PtType::Load) {
+                log_debug!(
+                    "Vaddr 0x{:x}, Paddr 0x{:x}, Memsize {} Filesize {}",
+                    header.vaddr(),
+                    header.paddr(),
+                    header.memsize(),
+                    header.filesize()
+                );
+
+                let vaddr = (header.vaddr() as usize + aslr) as *const _;
+                let vaddr = VirtualAddress::try_from_ptr(vaddr)
+                    .map_err(|_| Error::UnsupportedExecutable)?;
+
+                let segment_data = elf.get_segment_data(&header);
+
+                let permissions = match header.permissions() {
+                    elf::Permissions {
+                        read: true,
+                        write: true,
+                        exec: false,
+                    } => Permissions::RW,
+                    elf::Permissions {
+                        read: true,
+                        write: false,
+                        exec: false,
+                    } => Permissions::RO,
+                    elf::Permissions {
+                        read: _,
+                        write: false,
+                        exec: true,
+                    } => Permissions::RX,
+                    elf::Permissions {
+                        read: true,
+                        write: true,
+                        exec: true,
+                    } => Permissions::RWX,
+                    elf::Permissions { read, write, exec } => {
+                        let read = if read { "R" } else { "-" };
+                        let write = if write { "W" } else { "-" };
+                        let exec = if exec { "X" } else { "-" };
+                        panic!(
+                            "Unsupported set of permissions found in elf {}{}{}",
+                            read, write, exec
+                        );
+                    }
+                };
+
+                process_builder.map_section(
+                    elf.matching_section_name(&header)
+                        .map_err(|_| Error::UnsupportedExecutable)?
+                        .unwrap_or(""),
+                    vaddr,
+                    header.memsize() as usize,
+                    segment_data,
+                    permissions,
+                )?;
+            } else {
+                log_warning!("Unhandled ELF program header with type {:?}", header_type);
+            }
+        }
+
+        process_builder.set_aslr_base(VirtualAddress::new_unaligned(aslr as *const _));
+        let vaddr = (elf.entry_point() as usize + aslr) as *const _;
+        process_builder.set_entrypoint(VirtualAddress::new_unaligned(vaddr));
+        process_builder.set_elf_data(elf_data);
+        process_builder.push_argument(name);
+        Ok(process_builder)
     }
 }
 
@@ -209,7 +424,7 @@ pub struct Process {
     thread_list: Vec<ThreadHandle>,
     state: State,
     pid: u64,
-    base_address: VirtualAddress,
+    aslr_base: VirtualAddress,
     elf_data: Vec<u8>,
 }
 
@@ -222,7 +437,7 @@ impl Process {
         let elf_parser = ElfParser::from_slice(&self.elf_data[..]).unwrap();
         ProcessSymbolicator {
             elf_parser,
-            base_address: self.base_address,
+            aslr_base: self.aslr_base,
         }
     }
 
@@ -240,12 +455,12 @@ impl Process {
 #[derive(Clone)]
 pub struct ProcessSymbolicator<'a> {
     elf_parser: ElfParser<'a>,
-    base_address: VirtualAddress,
+    aslr_base: VirtualAddress,
 }
 
 impl<'a> crate::backtrace::Symbolicator for ProcessSymbolicator<'a> {
     fn symbolicate(&self, addr: VirtualAddress) -> Option<(String, usize)> {
-        let addr = addr.remove_base(self.base_address).as_usize();
+        let addr = addr.remove_base(self.aslr_base).as_usize();
 
         self.elf_parser
             .symbol_table_iter()?
@@ -303,87 +518,6 @@ pub(crate) fn kill_current_process(
     // Don't free process but instead keep it in a zombie state unitl states are collected
     killed_proc.state = State::Killed(error_code);
     Ok(())
-}
-
-pub fn new_from_elf_data(elf_data: Vec<u8>, aslr: usize) -> Result<ProcessHandle, Error> {
-    let elf =
-        elf::ElfParser::from_slice(&elf_data[..]).map_err(|_| Error::UnsupportedExecutable)?;
-    if !matches!(
-        elf.elf_type(),
-        elf::EType::Executable | elf::EType::SharedObject
-    ) {
-        log_warning!("Elf file is not executable, bailing");
-        return Err(Error::UnsupportedExecutable);
-    }
-
-    let mut process_builder = Builder::new();
-    for header in elf.program_header_iter() {
-        let header_type = header.ty().map_err(|_| Error::UnsupportedExecutable)?;
-        if matches!(header_type, elf::PtType::Load) {
-            log_debug!(
-                "Vaddr 0x{:x}, Paddr 0x{:x}, Memsize {} Filesize {}",
-                header.vaddr(),
-                header.paddr(),
-                header.memsize(),
-                header.filesize()
-            );
-
-            let vaddr = (header.vaddr() as usize + aslr) as *const _;
-            let vaddr =
-                VirtualAddress::try_from_ptr(vaddr).map_err(|_| Error::UnsupportedExecutable)?;
-
-            let segment_data = elf.get_segment_data(&header);
-
-            let permissions = match header.permissions() {
-                elf::Permissions {
-                    read: true,
-                    write: true,
-                    exec: false,
-                } => Permissions::RW,
-                elf::Permissions {
-                    read: true,
-                    write: false,
-                    exec: false,
-                } => Permissions::RO,
-                elf::Permissions {
-                    read: _,
-                    write: false,
-                    exec: true,
-                } => Permissions::RX,
-                elf::Permissions {
-                    read: true,
-                    write: true,
-                    exec: true,
-                } => Permissions::RWX,
-                elf::Permissions { read, write, exec } => {
-                    let read = if read { "R" } else { "-" };
-                    let write = if write { "W" } else { "-" };
-                    let exec = if exec { "X" } else { "-" };
-                    panic!(
-                        "Unsupported set of permissions found in elf {}{}{}",
-                        read, write, exec
-                    );
-                }
-            };
-
-            process_builder.map_section(
-                elf.matching_section_name(&header)
-                    .map_err(|_| Error::UnsupportedExecutable)?
-                    .unwrap_or(""),
-                vaddr,
-                header.memsize() as usize,
-                segment_data,
-                permissions,
-            )?;
-        } else {
-            log_warning!("Unhandled ELF program header with type {:?}", header_type);
-        }
-    }
-
-    let vaddr = (elf.entry_point() as usize + aslr) as *const _;
-    let entry_point = VirtualAddress::new_unaligned(vaddr);
-    let base_address = VirtualAddress::new_unaligned(aslr as *const _);
-    process_builder.start(entry_point, base_address, elf_data)
 }
 
 pub(crate) fn validate_pid(pid: u64) -> Option<ProcessHandle> {

@@ -10,9 +10,13 @@ namespace {
 }
 
 // base_addr is passed to us via the OS so that we know where the binary was loaded. This can be used for ASLR.
-int main() {
+int main(int argc, char *argv[], char *envp[]) {
   int i = 0;
   // And now we can start doing work
+  libcxx::syscalls::puts("Num arguments is");
+  libcxx::syscalls::puthex(argc);
+  libcxx::syscalls::puts(argv[0]);
+  libcxx::syscalls::puthex(reinterpret_cast<u64>(envp[0]));
   while (true) {
     print_message(i);
     i++;

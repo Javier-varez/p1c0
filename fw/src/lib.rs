@@ -8,8 +8,6 @@
 #[cfg(feature = "coverage")]
 use minicov as _;
 
-pub mod userspace_proc;
-
 use p1c0_kernel::{boot_args::BootArgs, prelude::*};
 
 #[panic_handler]

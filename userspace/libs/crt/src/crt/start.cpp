@@ -9,10 +9,10 @@ namespace {
     }
 }
 
-int main();
+int main(int argc, char *argv[], char *envp[]);
 
 // base_addr is passed to us via the OS so that we know where the binary was loaded. This can be used for ASLR.
-extern "C" [[noreturn]] void _start(crt::relocations::u64 base_addr) {
+extern "C" [[noreturn]] void _start(int argc, char *argv[], char *envp[], crt::relocations::u64 base_addr) {
   // After booting we need to apply self-relocations (since this is a pie executable there is no dynamic loader to do
   // any relocations)
   const crt::relocations::RelaEntry *relocations;
@@ -25,7 +25,7 @@ extern "C" [[noreturn]] void _start(crt::relocations::u64 base_addr) {
 
   crt::relocations::apply_relocations(base_addr, relocations, rela_len_bytes);
 
-  const auto retval = main();
+  const auto retval = main(argc, argv, envp);
   exit(retval);
 
   while (true);

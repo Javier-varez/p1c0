@@ -37,7 +37,8 @@ fn test_fail_process() {
     VirtualFileSystem::read(&mut file, &mut elf_data[..]).unwrap();
     VirtualFileSystem::close(file);
 
-    let pid = process::new_from_elf_data(elf_data, 0).unwrap();
+    let builder = process::Builder::new_from_elf_data("/bin/false", elf_data, 0).unwrap();
+    let pid = builder.start().unwrap();
     assert_eq!(Syscall::wait_pid(pid.get_raw()), 1);
 }
 
@@ -50,6 +51,7 @@ fn test_pass_process() {
     VirtualFileSystem::read(&mut file, &mut elf_data[..]).unwrap();
     VirtualFileSystem::close(file);
 
-    let pid = process::new_from_elf_data(elf_data, 0).unwrap();
+    let builder = process::Builder::new_from_elf_data("/bin/true", elf_data, 0).unwrap();
+    let pid = builder.start().unwrap();
     assert_eq!(Syscall::wait_pid(pid.get_raw()), 0);
 }

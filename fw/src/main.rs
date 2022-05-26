@@ -77,8 +77,22 @@ fn kernel_entry() {
         }
     });
 
-    p1c0::userspace_proc::create_process("/bin/basic_test", 0x3000000).unwrap();
-    p1c0::userspace_proc::create_process("/bin/basic_test", 0x0000000).unwrap();
+    let filename = "/bin/basic_test";
+    let mut file = p1c0_kernel::filesystem::VirtualFileSystem::open(
+        filename,
+        p1c0_kernel::filesystem::OpenMode::Read,
+    )
+    .unwrap();
+
+    let mut elf_data = vec![];
+    elf_data.resize(file.size, 0);
+    p1c0_kernel::filesystem::VirtualFileSystem::read(&mut file, &mut elf_data[..]).unwrap();
+    p1c0_kernel::filesystem::VirtualFileSystem::close(file);
+
+    p1c0_kernel::process::Builder::new_from_elf_data(filename, elf_data.clone(), 0)
+        .unwrap()
+        .start()
+        .unwrap();
 
     thread::initialize();
 }
