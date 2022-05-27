@@ -633,7 +633,13 @@ define_enum! {
         Dynamic = 6,
         Note = 7,
         NoBits = 8,
-        Rel = 9
+        Rel = 9,
+        DynSym = 11,
+        InitArray = 14,
+        FiniArray = 15,
+        PreinitArray = 16,
+        Group = 17,
+        SymtabShndx = 18
     ],
     InvalidShType
 }

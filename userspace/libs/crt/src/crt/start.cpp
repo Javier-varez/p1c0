@@ -1,5 +1,11 @@
 #include <crt/relocations.h>
 
+namespace crt {
+    void init() noexcept;
+
+    void fini() noexcept;
+}
+
 namespace {
     [[noreturn]] void exit(crt::relocations::u64 exit_code) {
       asm volatile(
@@ -25,7 +31,12 @@ extern "C" [[noreturn]] void _start(int argc, char *argv[], char *envp[], crt::r
 
   crt::relocations::apply_relocations(base_addr, relocations, rela_len_bytes);
 
+  crt::init();
+
   const auto retval = main(argc, argv, envp);
+
+  crt::fini();
+
   exit(retval);
 
   while (true);
