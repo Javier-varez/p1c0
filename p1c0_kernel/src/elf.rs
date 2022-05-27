@@ -512,8 +512,8 @@ mod file_offsets {
         pub const P_OFFSET: usize = 0x08;
         pub const P_VADDR: usize = 0x10;
         pub const P_PADDR: usize = 0x18;
-        pub const P_MEMSIZE: usize = 0x20;
-        pub const P_FILESIZE: usize = 0x28;
+        pub const P_FILESIZE: usize = 0x20;
+        pub const P_MEMSIZE: usize = 0x28;
 
         // Section header
         pub const SH_NAME: usize = 0x00;
