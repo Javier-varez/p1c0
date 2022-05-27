@@ -268,13 +268,14 @@ impl Builder {
 
                 let mut copy_slice = |slice: &[*const u8]| {
                     let size_bytes = slice.len() * core::mem::size_of::<*const u8>();
-                    let va = unsafe { args_va_start.offset(offset) };
 
                     // Align offset to pointer size
                     let misalign = offset % core::mem::size_of::<*const u8>();
                     if misalign != 0 {
                         offset += core::mem::size_of::<*const u8>() - misalign;
                     }
+
+                    let va = unsafe { args_va_start.offset(offset) };
 
                     assert!((offset + size_bytes) <= PAGE_SIZE);
                     unsafe {
