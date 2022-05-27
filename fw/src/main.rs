@@ -89,10 +89,17 @@ fn kernel_entry() {
     p1c0_kernel::filesystem::VirtualFileSystem::read(&mut file, &mut elf_data[..]).unwrap();
     p1c0_kernel::filesystem::VirtualFileSystem::close(file);
 
+    // We start two instances of the process. One of them will contain different number of arguments
     p1c0_kernel::process::Builder::new_from_elf_data(filename, elf_data.clone(), 0)
         .unwrap()
         .start()
         .unwrap();
+
+    let mut builder =
+        p1c0_kernel::process::Builder::new_from_elf_data(filename, elf_data.clone(), 0x30000)
+            .unwrap();
+    builder.push_argument("additionalArgument");
+    builder.start().unwrap();
 
     thread::initialize();
 }
