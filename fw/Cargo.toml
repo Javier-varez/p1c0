@@ -38,6 +38,18 @@ path = "tests/unknown_syscall_tests.rs"
 name = "initcall_tests"
 path = "tests/initcall_tests.rs"
 
+[[test]]
+name = "process_tests"
+path = "tests/process_tests.rs"
+
+[[test]]
+name = "sync_tests"
+path = "tests/sync_tests.rs"
+
+[[test]]
+name = "backtracer_tests"
+path = "tests/backtracer_tests.rs"
+
 [features]
 emulator = ["arm-semihosting"]
 # The binary feature builds a bin file instead of a macho file and uses a different ld script

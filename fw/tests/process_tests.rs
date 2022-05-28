@@ -56,3 +56,17 @@ fn test_pass_process() {
     let pid = builder.start().unwrap();
     assert_eq!(Syscall::wait_pid(pid.get_raw()), 0);
 }
+
+#[test_case]
+fn test_process_crash() {
+    let mut file = VirtualFileSystem::open("/bin/crash", OpenMode::Read).unwrap();
+    let mut elf_data = vec![];
+    elf_data.resize(file.size, 0);
+
+    VirtualFileSystem::read(&mut file, &mut elf_data[..]).unwrap();
+    VirtualFileSystem::close(file);
+
+    let builder = process::Builder::new_from_elf_data("/bin/crash", elf_data, 0).unwrap();
+    let pid = builder.start().unwrap();
+    assert_eq!(Syscall::wait_pid(pid.get_raw()), 0xdeadc0de);
+}

@@ -178,7 +178,9 @@ where
             _hasher_builder: hasher_builder,
         };
 
-        instance.metadata_buckets.resize_with(capacity, Meta::new);
+        instance
+            .metadata_buckets
+            .resize_with(capacity, Meta::default);
         instance.buckets.resize_with(capacity, MaybeUninit::uninit);
         instance
     }
@@ -551,7 +553,13 @@ mod tests {
 
     #[test]
     fn test_can_create_map() {
-        let _map: FlatMap<String, u32> = FlatMap::new();
+        let _map: FlatMap<String, u32> = FlatMap::default();
+    }
+
+    #[test]
+    fn test_can_create_map_with_no_capacity() {
+        let mut map: FlatMap<String, u32> = FlatMap::new_no_capacity();
+        map.insert("Does this make sense?".to_string(), 8);
     }
 
     #[test]
@@ -575,6 +583,19 @@ mod tests {
         assert_eq!(res.unwrap(), "cool!");
 
         let res = map.lookup("Does this make sense");
+        assert!(res.is_none());
+    }
+
+    #[test]
+    fn test_can_lookup_mut_element() {
+        let mut map = FlatMap::new();
+        map.insert("Does this make sense?".to_string(), "cool!".to_string());
+
+        let res = map.lookup_mut("Does this make sense?");
+        assert!(res.is_some());
+        assert_eq!(res.unwrap(), "cool!");
+
+        let res = map.lookup_mut("Does this make sense");
         assert!(res.is_none());
     }
 
@@ -717,5 +738,47 @@ mod tests {
         map.insert_with_strategy("test", 1, InsertStrategy::NoReplaceResize)
             .unwrap();
         assert!(!map.is_empty());
+    }
+
+    #[test]
+    fn test_len() {
+        let mut map = FlatMap::new();
+        assert_eq!(map.len(), 0);
+        map.insert_with_strategy("test", 1, InsertStrategy::NoReplaceResize)
+            .unwrap();
+        assert_eq!(map.len(), 1);
+        map.insert_with_strategy("test2", 1, InsertStrategy::NoReplaceResize)
+            .unwrap();
+        assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn test_insert_and_delete() {
+        let mut map = FlatMap::new_no_capacity();
+        map.insert_with_strategy("test", 1, InsertStrategy::NoReplaceResize)
+            .unwrap();
+        map.insert_with_strategy("test2", 1, InsertStrategy::NoReplaceResize)
+            .unwrap();
+        map.remove("test").unwrap();
+        map.insert_with_strategy("test3", 1, InsertStrategy::NoReplaceResize)
+            .unwrap();
+        map.remove("test2").unwrap();
+        map.insert_with_strategy("test4", 1, InsertStrategy::NoReplaceResize)
+            .unwrap();
+        map.insert_with_strategy("test5", 1, InsertStrategy::NoReplaceResize)
+            .unwrap();
+        map.remove("test4").unwrap();
+        map.remove("test5").unwrap();
+    }
+
+    #[test]
+    fn test_resize() {
+        let mut map: FlatMap<u32, u32> = FlatMap::with_capacity(12);
+        map.resize(12).unwrap();
+        assert_eq!(map.capacity(), 12);
+        map.resize(8).unwrap_err();
+        assert_eq!(map.capacity(), 12);
+        map.resize(16).unwrap();
+        assert_eq!(map.capacity(), 16);
     }
 }

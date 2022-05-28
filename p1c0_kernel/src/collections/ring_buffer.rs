@@ -363,4 +363,24 @@ mod test {
             Err(Error::AlreadySplit)
         ));
     }
+
+    #[test]
+    fn test_can_split_unchecked() {
+        let ring_buffer: RingBuffer<16> = RingBuffer::new();
+        let _writer = ring_buffer.split_writer().unwrap();
+        assert!(matches!(
+            ring_buffer.split_writer(),
+            Err(Error::AlreadySplit)
+        ));
+        ring_buffer.split_writer().unwrap_err();
+
+        let reader = ring_buffer.split_reader().unwrap();
+        drop(reader);
+        assert!(matches!(
+            ring_buffer.split_reader(),
+            Err(Error::AlreadySplit)
+        ));
+
+        let _reader = unsafe { ring_buffer.split_reader_unchecked() };
+    }
 }
