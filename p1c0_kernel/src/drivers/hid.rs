@@ -1,15 +1,18 @@
 pub mod keyboard;
 
-use super::generic_timer;
-use super::gpio::{self, GpioBank, PinState};
-use super::interfaces::timer::Timer;
-use super::spi::{self, Spi};
-
-use crate::{adt, log_error, log_warning};
+use crate::{
+    adt,
+    drivers::{
+        generic_timer,
+        gpio::{self, GpioBank, PinState},
+        interfaces::timer::Timer,
+        spi::{self, Spi},
+    },
+    prelude::*,
+};
+use keyboard::{Keyboard, KeyboardReport};
 
 use core::{mem::MaybeUninit, time::Duration};
-
-use keyboard::{Keyboard, KeyboardReport};
 
 #[derive(Debug)]
 pub enum IoError {

@@ -1,8 +1,7 @@
-use core::sync::atomic;
+use core::{cell::UnsafeCell, sync::atomic};
+
 use cortex_a::{asm::barrier, registers::DAIF};
 use tock_registers::interfaces::{Readable, Writeable};
-
-use core::cell::UnsafeCell;
 
 static CRITICAL_NESTING: atomic::AtomicU32 = atomic::AtomicU32::new(0);
 static mut SAVED_DAIF: u64 = 0;
@@ -39,7 +38,7 @@ fn increment_critical_nesting(saved_daif: u64) {
     assert_eq!(DAIF.read(DAIF::F), 1);
 
     let prev_nesting = CRITICAL_NESTING.fetch_add(1, atomic::Ordering::Acquire);
-    if prev_nesting == core::u32::MAX {
+    if prev_nesting == u32::MAX {
         panic!("We have reached the maximum value for CRITICAL_NESTING. This is MOST LIKELY a bug in user code");
     } else if prev_nesting == 0 {
         // Save the daif value for later when it is unlocked

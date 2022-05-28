@@ -5,9 +5,10 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(default_alloc_error_handler)]
 
+use p1c0 as _; // needed to link libentry (and _start)
+
 use core::time::Duration;
-use p1c0 as _;
-// needed to link libentry (and _start)
+
 use p1c0_kernel::{
     drivers::{generic_timer::get_timer, interfaces::timer::Timer},
     sync::spinlock::SpinLock,

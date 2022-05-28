@@ -1,7 +1,10 @@
-use crate::collections::ring_buffer::{self, RingBuffer};
-use crate::init::is_kernel_relocated;
-use crate::sync::spinlock::SpinLock;
-use crate::syscall::Syscall;
+use crate::{
+    collections::ring_buffer::{self, RingBuffer},
+    init::is_kernel_relocated,
+    sync::spinlock::SpinLock,
+    syscall::Syscall,
+};
+
 use core::fmt::Write;
 
 #[derive(Debug)]
@@ -14,7 +17,7 @@ pub enum Error {
 
 /// Marker trait to indicate this logger can be used early during the boot chain
 /// (Before MMU is active)
-pub trait EarlyPrint: core::fmt::Write {}
+pub trait EarlyPrint: Write {}
 
 pub trait Print {
     fn write_str(&self, s: &str) -> Result<(), Error> {
@@ -47,7 +50,7 @@ struct LogWriter<'a> {
     writer: ring_buffer::Writer<'a, BUFFER_SIZE>,
 }
 
-impl<'a> core::fmt::Write for LogWriter<'a> {
+impl<'a> Write for LogWriter<'a> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for c in s.bytes() {
             self.writer.push(c).map_err(|_| core::fmt::Error)?;

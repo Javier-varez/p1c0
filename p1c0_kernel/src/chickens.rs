@@ -1,5 +1,5 @@
-use crate::log_debug;
-use crate::registers::*;
+use crate::{prelude::*, registers::*};
+
 use cortex_a::registers::*;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 

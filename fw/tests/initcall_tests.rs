@@ -5,10 +5,12 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(default_alloc_error_handler)]
 
+use p1c0 as _; // needed to link libentry (and _start)
+
 use core::sync::atomic::{AtomicBool, Ordering};
-use p1c0 as _;
-// needed to link libentry (and _start)
+
 use p1c0_macros::initcall;
+
 use test_fwk::Status;
 
 static HIGH_PRIO_RUN: AtomicBool = AtomicBool::new(false);

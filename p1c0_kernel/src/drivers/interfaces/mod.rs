@@ -1,6 +1,6 @@
-use core::time::Duration;
-
 pub mod timer;
+
+use core::time::Duration;
 
 /// The current number of ticks the timer has made since boot
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]

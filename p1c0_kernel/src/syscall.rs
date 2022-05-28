@@ -1,6 +1,5 @@
-use crate::sync::spinlock::SpinLock;
 use crate::{
-    arch::exceptions::ExceptionContext, log_info, log_warning, process, thread, thread::current_pid,
+    arch::exceptions::ExceptionContext, prelude::*, process, sync::spinlock::SpinLock, thread,
 };
 
 macro_rules! gen_syscall_caller {
@@ -201,100 +200,100 @@ macro_rules! gen_syscall_caller {
     };
 }
 
-macro_rules! call_syscall_hdlr {
+macro_rules! call_syscall_handler {
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         ()
     ) => {
-        $syscall_hdlr_name($context);
+        $syscall_handler_name($context);
     };
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         ($arg0_ty: ty)
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
-        $syscall_hdlr_name($context, arg0);
+        $syscall_handler_name($context, arg0);
     };
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty)
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
-        $syscall_hdlr_name($context, arg0, arg1);
+        $syscall_handler_name($context, arg0, arg1);
     };
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty)
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
         let arg2 = $context.gpr[2] as $arg2_ty;
-        $syscall_hdlr_name($context, arg0, arg1, arg2);
+        $syscall_handler_name($context, arg0, arg1, arg2);
     };
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty, $arg3_ty: ty)
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
         let arg2 = $context.gpr[2] as $arg2_ty;
         let arg3 = $context.gpr[3] as $arg3_ty;
-        $syscall_hdlr_name($context, arg0, arg1, arg2, arg3);
+        $syscall_handler_name($context, arg0, arg1, arg2, arg3);
     };
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         () -> $ret_ty: ty
     ) => {
-        let result = $syscall_hdlr_name($context);
+        let result = $syscall_handler_name($context);
         $context.gpr[0] = result as u64;
     };
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         ($arg0_ty: ty) -> $ret_ty: ty
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
-        let result = $syscall_hdlr_name($context, arg0);
+        let result = $syscall_handler_name($context, arg0);
         $context.gpr[0] = result as u64;
     };
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty) -> $ret_ty: ty
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
-        let result = $syscall_hdlr_name($context, arg0, arg1);
+        let result = $syscall_handler_name($context, arg0, arg1);
         $context.gpr[0] = result as u64;
     };
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty) -> $ret_ty: ty
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
         let arg2 = $context.gpr[2] as $arg2_ty;
-        let result = $syscall_hdlr_name($context, arg0, arg1, arg2);
+        let result = $syscall_handler_name($context, arg0, arg1, arg2);
         $context.gpr[0] = result as u64;
     };
     (
         $context: expr,
-        $syscall_hdlr_name: ident,
+        $syscall_handler_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty, $arg3_ty: ty) -> $ret_ty: ty
     ) => {
         let arg0 = $context.gpr[0] as $arg0_ty;
         let arg1 = $context.gpr[1] as $arg1_ty;
         let arg2 = $context.gpr[2] as $arg2_ty;
         let arg3 = $context.gpr[3] as $arg3_ty;
-        let result = $syscall_hdlr_name($context, arg0, arg1, arg2, arg3);
+        let result = $syscall_handler_name($context, arg0, arg1, arg2, arg3);
         $context.gpr[0] = result as u64;
     };
 }
@@ -306,7 +305,7 @@ macro_rules! define_syscalls {
                 $syscall_idx: literal,
                 $syscall_name: ident,
                 $syscall_fn_name: ident,
-                $syscall_hdlr_name: ident,
+                $syscall_handler_name: ident,
                 ( $($argv_ty: ty),* ) $(-> $ret_ty: ty)?
             ],
         )+
@@ -339,7 +338,7 @@ macro_rules! define_syscalls {
             match imm.try_into() {
                 $(
                     Ok(Syscall::$syscall_name) => {
-                        call_syscall_hdlr!(cx, $syscall_hdlr_name, ($($argv_ty),*) $(-> $ret_ty)*);
+                        call_syscall_handler!(cx, $syscall_handler_name, ($($argv_ty),*) $(-> $ret_ty)*);
                     }
                 )*
                 Err(Error::UnknownSyscall(id)) => {
@@ -376,7 +375,7 @@ fn handle_noop(_cx: &mut ExceptionContext) {
 fn handle_reboot(_cx: &mut ExceptionContext) {
     log_warning!("Syscall Reboot - Rebooting computer");
     unsafe {
-        crate::print::force_flush();
+        print::force_flush();
     }
 
     // We hang here never servicing the WDT again, causing a reboot
@@ -391,19 +390,19 @@ fn handle_multiply(_cx: &mut ExceptionContext, a: u32, b: u32) -> u32 {
 
 fn handle_sleep_us(cx: &mut ExceptionContext, duration_us: u64) {
     let duration = core::time::Duration::from_micros(duration_us);
-    crate::thread::sleep_current_thread(cx, duration);
+    thread::sleep_current_thread(cx, duration);
 }
 
 fn handle_yield_exec(cx: &mut ExceptionContext) {
-    crate::thread::run_scheduler(cx);
+    thread::run_scheduler(cx);
 }
 
 fn handle_thread_exit(cx: &mut ExceptionContext) {
-    crate::thread::exit_current_thread(cx);
+    thread::exit_current_thread(cx);
 }
 
 fn handle_thread_join(cx: &mut ExceptionContext, tid: u64) {
-    crate::thread::join_thread(cx, tid);
+    thread::join_thread(cx, tid);
 }
 
 fn handle_puts(_cx: &mut ExceptionContext, str_ptr: *const u8, length: usize) {
@@ -416,7 +415,11 @@ fn handle_puts(_cx: &mut ExceptionContext, str_ptr: *const u8, length: usize) {
     if let Ok(string) = core::str::from_utf8(slice) {
         // TODO(javier-varez): Of course this needs to be redirected to stdout instead of using the klog system...
 
-        log_info!("Message from userspace pid {:?}: {}", current_pid(), string);
+        log_info!(
+            "Message from userspace pid {:?}: {}",
+            thread::current_pid(),
+            string
+        );
     }
 }
 
@@ -438,7 +441,6 @@ fn handle_wait_pid(cx: &mut ExceptionContext, pid: u64) -> u64 {
         Some(val) => val,
         None => {
             thread::wait_for_pid_in_current_thread(cx, pid);
-            // Do not use retval here.
             cx.gpr[0]
         }
     }

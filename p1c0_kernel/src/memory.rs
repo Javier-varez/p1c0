@@ -4,21 +4,16 @@ pub mod kalloc;
 pub mod map;
 pub mod physical_page_allocator;
 
-extern crate alloc;
-
-use crate::arch::{
-    self,
-    mmu::{PAGE_BITS, PAGE_SIZE},
+use crate::{
+    arch::{
+        self,
+        mmu::{PAGE_BITS, PAGE_SIZE},
+    },
+    sync::spinlock::{SpinLock, SpinLockGuard},
 };
-
 use address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress};
-use address_space::KernelAddressSpace;
-use map::{KernelSection, ADT_VIRTUAL_BASE, FASTMAP_PAGE};
+use address_space::MemoryRange;
 use physical_page_allocator::{PhysicalMemoryRegion, PhysicalPageAllocator};
-
-use crate::sync::spinlock::{SpinLock, SpinLockGuard};
-
-use self::address_space::MemoryRange;
 
 pub fn num_pages_from_bytes(bytes: usize) -> usize {
     if bytes & (PAGE_SIZE - 1) == 0 {
@@ -117,19 +112,19 @@ impl GlobalPermissions {
 static MEMORY_MANAGER: SpinLock<MemoryManager> = SpinLock::new(MemoryManager::new());
 
 pub struct MemoryManager {
-    kernel_address_space: KernelAddressSpace,
+    kernel_address_space: address_space::KernelAddressSpace,
     physical_page_allocator: PhysicalPageAllocator,
 }
 
 impl MemoryManager {
     const fn new() -> Self {
         Self {
-            kernel_address_space: KernelAddressSpace::new(),
+            kernel_address_space: address_space::KernelAddressSpace::new(),
             physical_page_allocator: PhysicalPageAllocator::new(),
         }
     }
 
-    fn add_kernel_mapping(&mut self, section: &KernelSection) -> Result<(), Error> {
+    fn add_kernel_mapping(&mut self, section: &map::KernelSection) -> Result<(), Error> {
         let high_table = self.kernel_address_space.high_table();
         let pa = section.pa();
         let va = section.la().into_virtual();
@@ -281,7 +276,7 @@ impl MemoryManager {
         self.kernel_address_space
             .high_table()
             .map_region(
-                ADT_VIRTUAL_BASE,
+                map::ADT_VIRTUAL_BASE,
                 device_tree,
                 device_tree_size,
                 Attributes::Normal,
@@ -473,7 +468,7 @@ impl MemoryManager {
             .fast_page_map(pa, permissions, Attributes::Normal)
             .unwrap();
 
-        let val = f(FASTMAP_PAGE);
+        let val = f(map::FASTMAP_PAGE);
 
         self.kernel_address_space.fast_page_unmap().unwrap();
         val

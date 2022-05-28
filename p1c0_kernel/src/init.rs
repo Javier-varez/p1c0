@@ -1,13 +1,3 @@
-use core::time::Duration;
-
-use cortex_a::{
-    asm,
-    registers::{CurrentEL, CNTHCTL_EL2, CNTVOFF_EL2, ELR_EL2, HCR_EL2, SPSR_EL2, SP_EL1},
-};
-use p1c0_macros::initcall;
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
-
-use crate::memory::address::VirtualAddress;
 use crate::{
     adt,
     arch::{exceptions, read_pc},
@@ -17,12 +7,22 @@ use crate::{
     drivers::{aic, generic_timer, interfaces::timer::Timer, uart},
     memory::{
         self,
-        address::{Address, PhysicalAddress},
+        address::{Address, PhysicalAddress, VirtualAddress},
         map,
     },
     prelude::*,
     registers::CPACR,
 };
+
+use p1c0_macros::initcall;
+
+use core::time::Duration;
+
+use cortex_a::{
+    asm,
+    registers::{CurrentEL, CNTHCTL_EL2, CNTVOFF_EL2, ELR_EL2, HCR_EL2, SPSR_EL2, SP_EL1},
+};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[repr(C)]
 struct RelaEntry {
@@ -154,8 +154,8 @@ unsafe fn kernel_prelude() {
 
 fn probe_subdevices<const SIZE: usize>(devs: &mut heapless::Vec<adt::AdtNode, SIZE>) {
     let parent = devs.last().unwrap().clone();
-    for subdev in parent.child_iter() {
-        devs.push(subdev).expect("Exceeded recursion size");
+    for subdevices in parent.child_iter() {
+        devs.push(subdevices).expect("Exceeded recursion size");
         match drivers::probe_device(devs) {
             Ok(_) => {}
             Err(drivers::Error::DeviceSpecificError(dev_error)) => {

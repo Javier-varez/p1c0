@@ -7,7 +7,7 @@ pub enum Error {
     CouldNotParse,
 }
 
-type Result<T> = ::core::result::Result<T, Error>;
+type Result<T> = core::result::Result<T, Error>;
 
 const HEADER_SIZE_BYTES: usize = 110;
 const MAGIC_STR: &str = "070701";

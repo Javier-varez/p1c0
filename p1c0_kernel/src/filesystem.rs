@@ -1,13 +1,10 @@
-use crate::log_debug;
-use crate::sync::spinlock::RwSpinLock;
-
-use crate::prelude::*;
-
-use crate::collections::flat_map::{self, FlatMap, InsertStrategy};
-use p1c0_macros::initcall;
-
 mod cpio;
 mod initfs;
+
+use crate::prelude::*;
+use crate::sync::spinlock::RwSpinLock;
+
+use p1c0_macros::initcall;
 
 type Result<T> = ::core::result::Result<T, Error>;
 
@@ -263,9 +260,12 @@ impl<'a> Iterator for PathIter<'a> {
 
 pub fn register_driver(name: &str, driver: Box<dyn FilesystemDriver>) {
     log_debug!("Registering FS driver with name {}", name);
-    if let Err(flat_map::Error::KeyAlreadyPresentInMap) = FS_DRIVERS
-        .lock_write()
-        .insert_with_strategy(name.to_string(), driver, InsertStrategy::NoReplaceResize)
+    if let Err(flat_map::Error::KeyAlreadyPresentInMap) =
+        FS_DRIVERS.lock_write().insert_with_strategy(
+            name.to_string(),
+            driver,
+            flat_map::InsertStrategy::NoReplaceResize,
+        )
     {
         panic!(
             "Tried to register two fs drivers with the same key `{}`",

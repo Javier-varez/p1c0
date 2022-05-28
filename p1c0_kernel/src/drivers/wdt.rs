@@ -1,8 +1,7 @@
 use crate::{memory::address::Address, prelude::*, sync::spinlock::RwSpinLock, syscall, thread};
 
-use alloc::sync::Arc;
-
 use p1c0_macros::initcall;
+
 use tock_registers::{interfaces::Writeable, register_bitfields, registers::ReadWrite};
 
 const COMPATIBLE: &str = "wdt,t6000";

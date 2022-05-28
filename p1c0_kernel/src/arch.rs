@@ -1,11 +1,11 @@
-use crate::log_debug;
-use crate::memory::address::VirtualAddress;
-use cortex_a::registers::{CurrentEL, SPSel};
-use tock_registers::interfaces::Readable;
-
 pub mod cache;
 pub mod exceptions;
 pub mod mmu;
+
+use crate::memory::address::VirtualAddress;
+
+use cortex_a::registers::{CurrentEL, SPSel};
+use tock_registers::interfaces::Readable;
 
 #[derive(Debug, Clone)]
 pub enum ExceptionLevel {

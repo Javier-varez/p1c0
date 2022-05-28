@@ -1,12 +1,12 @@
+use crate::{
+    adt::get_adt,
+    memory::{self, address::Address, MemoryManager},
+};
+
 use tock_registers::{
     interfaces::{Readable, Writeable},
     register_bitfields,
     registers::{ReadOnly, ReadWrite},
-};
-
-use crate::{
-    adt::get_adt,
-    memory::{self, address::Address, MemoryManager},
 };
 
 #[derive(Debug)]
@@ -187,7 +187,7 @@ impl Aic {
             Some(Event::Type::Value::HW) => IrqType::HW,
             None => {
                 panic!(
-                    "Unknow IRQ type read out from register! {}",
+                    "Unknown IRQ type read out from register! {}",
                     self.event_regs.event.read(Event::Type)
                 );
             }

@@ -1,10 +1,10 @@
+use crate::sync::spinlock::SpinLock;
+
 use core::{
     alloc::{GlobalAlloc, Layout},
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
 };
-
-use crate::sync::spinlock::SpinLock;
 
 #[cfg(not(test))]
 #[global_allocator]
@@ -266,7 +266,7 @@ unsafe impl GlobalAlloc for LockedHeapAllocator {
 }
 
 /// Safety:
-/// The allocator can be sent to a different thread without causing any undefinded behavior. No
+/// The allocator can be sent to a different thread without causing any undefined behavior. No
 /// shared data with other instances is used.
 unsafe impl Send for HeapAllocator {}
 

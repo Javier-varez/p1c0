@@ -5,13 +5,9 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(default_alloc_error_handler)]
 
-extern crate alloc;
-
-use alloc::vec;
-use alloc::vec::Vec;
-use p1c0_kernel::{adt::get_adt, memory::address::PhysicalAddress};
-
 use p1c0 as _; // needed to link libentry (and _start)
+
+use p1c0_kernel::{adt::get_adt, memory::address::PhysicalAddress, prelude::*};
 
 #[panic_handler]
 fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {

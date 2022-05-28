@@ -5,10 +5,9 @@ use crate::{
     adt,
     memory::{self, address::Address, MemoryManager},
     prelude::*,
+    sync::spinlock::RwSpinLock,
 };
 
-use crate::sync::spinlock::RwSpinLock;
-use alloc::sync::Arc;
 use p1c0_macros::initcall;
 
 use tock_registers::{
@@ -83,7 +82,7 @@ impl Virtio {
         let subdev = match regs.device_id.read_as_enum(DeviceId::ID) {
             Some(DeviceId::ID::Value::Input) => {
                 log_debug!("Found input device!");
-                Box::new(input::InputSubdev::probe(regs)?)
+                Box::new(input::InputSubdevice::probe(regs)?)
             }
             Some(DeviceId::ID::Value::Dummy) => {
                 log_debug!("Unused virtio,mmio. Dummy device found");

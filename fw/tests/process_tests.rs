@@ -6,6 +6,7 @@
 #![feature(default_alloc_error_handler)]
 
 use p1c0 as _; // needed to link libentry (and _start)
+
 use p1c0_kernel::{
     filesystem::{OpenMode, VirtualFileSystem},
     prelude::*,

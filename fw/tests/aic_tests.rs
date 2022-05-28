@@ -7,9 +7,10 @@
 #![feature(assert_matches)]
 
 use p1c0 as _; // needed to link libentry (and _start)
-use p1c0_kernel::drivers::aic::{Aic, IrqType};
 
 use core::assert_matches::assert_matches;
+
+use p1c0_kernel::drivers::aic::{Aic, IrqType};
 
 use cortex_a::registers::DAIF;
 use tock_registers::interfaces::Writeable;

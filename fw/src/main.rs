@@ -2,18 +2,18 @@
 #![no_main]
 #![feature(default_alloc_error_handler)]
 
-use core::sync::atomic::{AtomicBool, Ordering};
-use embedded_graphics::pixelcolor::Rgb888;
-use tinybmp::Bmp;
-
-use p1c0_kernel::prelude::*;
-
 use p1c0::print_boot_args;
+
+#[cfg(feature = "emulator")]
+use p1c0::print_semihosting_caps;
+
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use p1c0_kernel::{
     arch::get_exception_level,
     boot_args::get_boot_args,
     drivers::display::Display,
+    prelude::*,
     syscall::Syscall,
     thread::{self, print_thread_info},
 };
@@ -22,10 +22,9 @@ use p1c0_kernel::{
 use p1c0_kernel::drivers::{gpio::GpioBank, hid::HidDev, spi::Spi};
 
 use cortex_a::registers::DAIF;
+use embedded_graphics::pixelcolor::Rgb888;
+use tinybmp::Bmp;
 use tock_registers::interfaces::Writeable;
-
-#[cfg(feature = "emulator")]
-use p1c0::print_semihosting_caps;
 
 const ATE_LOGO_DATA: &[u8] = include_bytes!("../ate_logo.bmp");
 
@@ -137,14 +136,14 @@ fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
             panic_info
         );
         unsafe {
-            p1c0_kernel::print::force_flush();
+            print::force_flush();
         }
         finish();
     }
     ALREADY_PANICKED.store(true, Ordering::Relaxed);
 
     unsafe {
-        p1c0_kernel::print::force_flush();
+        print::force_flush();
     }
 
     log_error!("Panicked with message: {:?}", panic_info);
@@ -153,7 +152,7 @@ fn panic_handler(panic_info: &core::panic::PanicInfo) -> ! {
     }
 
     unsafe {
-        p1c0_kernel::print::force_flush();
+        print::force_flush();
     }
     finish();
 }

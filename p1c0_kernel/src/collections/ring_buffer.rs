@@ -1,4 +1,3 @@
-use crate::collections::ring_buffer::Error::AlreadySplit;
 /// Single-producer, single-consumer buffer that allows the user to share data across threads
 use core::{
     cell::UnsafeCell,
@@ -120,7 +119,7 @@ impl<const SIZE: usize> RingBuffer<SIZE> {
     pub fn split(&self) -> Result<(Writer<'_, SIZE>, Reader<'_, SIZE>), Error> {
         let split = self.split.load(Ordering::Relaxed);
         if (split & (READER_SPLIT_TOK | WRITER_SPLIT_TOK)) != 0 {
-            return Err(AlreadySplit);
+            return Err(Error::AlreadySplit);
         }
 
         if self
@@ -143,7 +142,7 @@ impl<const SIZE: usize> RingBuffer<SIZE> {
         loop {
             let split = self.split.load(Ordering::Relaxed);
             if (split & WRITER_SPLIT_TOK) != 0 {
-                return Err(AlreadySplit);
+                return Err(Error::AlreadySplit);
             }
 
             if self
@@ -165,7 +164,7 @@ impl<const SIZE: usize> RingBuffer<SIZE> {
         loop {
             let split = self.split.load(Ordering::Relaxed);
             if (split & READER_SPLIT_TOK) != 0 {
-                return Err(AlreadySplit);
+                return Err(Error::AlreadySplit);
             }
 
             if self

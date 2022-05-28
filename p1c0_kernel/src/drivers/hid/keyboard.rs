@@ -1,6 +1,6 @@
-use crate::{log_error, log_info};
+use crate::prelude::*;
 
-// TODO(jalv): Add missing entries here
+// TODO(javier-varez): Add missing entries here
 static SCAN_TABLE: [Option<char>; 256] = [
     None,
     None,

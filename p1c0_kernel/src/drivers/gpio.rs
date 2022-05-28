@@ -1,13 +1,14 @@
+use crate::{
+    adt,
+    memory::{self, address::Address, MemoryManager},
+    prelude::*,
+    sync::spinlock::SpinLock,
+};
+
 use tock_registers::{
     interfaces::{ReadWriteable, Readable},
     register_bitfields,
     registers::ReadWrite,
-};
-
-use crate::{
-    adt, log_error,
-    memory::{self, address::Address, MemoryManager},
-    sync::spinlock::SpinLock,
 };
 
 register_bitfields! {u32,
@@ -155,7 +156,7 @@ impl<'a, MODE> Drop for Pin<'a, MODE> {
 }
 
 impl GpioBank {
-    /// Constucts a new GpioBank peripheral from the given adt node reference.
+    /// Constructs a new GpioBank peripheral from the given adt node reference.
     ///
     /// # Safety
     /// The gpio_bank must not already be in use by any other piece of code.

@@ -1,9 +1,10 @@
 //! Ram File system that is loaded with the kernel. Used as the rootfs
-use crate::prelude::*;
 
-use super::{cpio, Error, FilesystemDevice, FilesystemDriver, Result};
-use crate::filesystem::cpio::CpioHeader;
-use crate::filesystem::{FileDescription, FileType, OpenMode};
+use super::{
+    cpio::{self, CpioHeader},
+    Error, FileDescription, FileType, FilesystemDevice, FilesystemDriver, OpenMode, Result,
+};
+use crate::prelude::*;
 
 /// This filesystem assumes that the order of records within the archive is depth first.
 /// That ensures that we can find all the children of a directory node without iterating the

@@ -1,4 +1,14 @@
-use crate::boot_args::get_boot_args;
+use crate::{
+    boot_args::get_boot_args,
+    font::FIRA_CODE_30,
+    memory::{
+        self,
+        address::{Address, PhysicalAddress},
+        Attributes, Permissions,
+    },
+    sync::spinlock::SpinLock,
+};
+
 use core::fmt::{self, Write};
 
 use embedded_graphics::{
@@ -9,17 +19,6 @@ use embedded_graphics::{
     prelude::*,
     primitives::Rectangle,
     text::{Baseline, Text},
-};
-
-use crate::font::FIRA_CODE_30;
-
-use crate::memory;
-
-use crate::sync::spinlock::SpinLock;
-
-use crate::memory::{
-    address::{Address, PhysicalAddress},
-    Attributes, Permissions,
 };
 
 const RETINA_DEPTH_FLAG: usize = 1 << 16;
@@ -100,7 +99,7 @@ impl Display {
         let size = video_args.height * video_args.stride;
         let video_base = Self::map_fb(video_args.base as *mut u32, size).unwrap();
 
-        let mut disp = Self {
+        let mut display = Self {
             hwbase: video_base,
             width: video_args.width as u32,
             height: video_args.height as u32,
@@ -111,11 +110,11 @@ impl Display {
             max_rows,
         };
 
-        let rect = Rectangle::new(Point::new(0, 0), Size::new(disp.width, disp.height));
-        disp.fill_solid(&rect, Rgb888::BLACK).unwrap();
-        disp.draw_logo(logo);
+        let rect = Rectangle::new(Point::new(0, 0), Size::new(display.width, display.height));
+        display.fill_solid(&rect, Rgb888::BLACK).unwrap();
+        display.draw_logo(logo);
 
-        DISPLAY.lock().replace(disp);
+        DISPLAY.lock().replace(display);
     }
 
     fn draw_logo<T: ImageDrawable<Color = Rgb888>>(&mut self, logo: &T) {
@@ -193,7 +192,7 @@ impl OriginDimensions for Display {
     }
 }
 
-impl fmt::Write for Display {
+impl Write for Display {
     fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
         let splits = s.split_inclusive('\n');
 
@@ -227,7 +226,7 @@ impl fmt::Write for Display {
 }
 
 #[doc(hidden)]
-pub fn _print(args: ::core::fmt::Arguments) {
+pub fn _print(args: fmt::Arguments) {
     // If the MMU is not initialized the memory is not shareable and atomic operations just won't
     // work and will trigger an exception.
     if crate::arch::mmu::is_initialized() {

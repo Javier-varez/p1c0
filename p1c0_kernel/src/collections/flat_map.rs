@@ -1,9 +1,11 @@
 use crate::prelude::*;
-use core::borrow::Borrow;
 
-use core::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
-use core::marker::PhantomData;
-use core::mem::MaybeUninit;
+use core::{
+    borrow::Borrow,
+    hash::{BuildHasher, BuildHasherDefault, Hash, Hasher},
+    marker::PhantomData,
+    mem::MaybeUninit,
+};
 
 // This is the default hasher. Currently uses a Crc32C hash
 pub type FlatMapHasherBuilder = BuildHasherDefault<crate::hash::CrcHasher>;
@@ -55,11 +57,6 @@ impl Meta {
     }
 
     #[must_use]
-    fn is_bucket_empty(&self) -> bool {
-        (self.hash & (Self::EMPTY_FLAG | Self::DELETED_FLAG)) == Self::EMPTY_FLAG
-    }
-
-    #[must_use]
     fn is_bucket_deleted(&self) -> bool {
         (self.hash & (Self::EMPTY_FLAG | Self::DELETED_FLAG))
             == (Self::EMPTY_FLAG | Self::DELETED_FLAG)
@@ -87,28 +84,6 @@ impl Meta {
 
     fn set_deleted(&mut self) {
         self.hash = Self::EMPTY_FLAG | Self::DELETED_FLAG;
-    }
-
-    fn set_empty(&mut self) {
-        self.hash = Self::EMPTY_FLAG;
-    }
-
-    #[must_use]
-    fn get_hash(&self) -> Option<u64> {
-        if self.is_bucket_in_use() {
-            Some(self.hash & Self::HASH_MASK)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    fn matches_hash(&self, hash: u64) -> Option<bool> {
-        if self.is_bucket_in_use() {
-            Some((hash & Self::HASH_MASK) == self.hash)
-        } else {
-            None
-        }
     }
 }
 
@@ -295,21 +270,21 @@ where
                         unsafe { self.buckets[index].assume_init_mut() };
 
                     if *key_in_map != key {
-                        // This must be a hash collision, a rare ocasion, but it happens
+                        // This must be a hash collision, a rare occasion, but it happens
                         current_hash = Self::rehash(current_hash);
                         continue;
                     }
 
-                    match strategy {
+                    return match strategy {
                         InsertStrategy::NoReplaceResize | InsertStrategy::NoReplaceNoResize => {
-                            return Err(Error::KeyAlreadyPresentInMap);
+                            Err(Error::KeyAlreadyPresentInMap)
                         }
                         InsertStrategy::ReplaceResize => {
                             // Replace the old value
                             *value_in_map = value;
-                            return Ok(());
+                            Ok(())
                         }
-                    }
+                    };
                 }
                 BucketState::InUse(_) => {
                     // This bucket is used and does not match the hash, so we continue searching
@@ -355,7 +330,7 @@ where
                         break;
                     }
 
-                    // This must be a hash collision, a rare ocasion, but it happens
+                    // This must be a hash collision, a rare occasion, but it happens
                     current_hash = Self::rehash(current_hash);
                 }
                 BucketState::InUse(_) | BucketState::Deleted => {
@@ -597,7 +572,7 @@ mod tests {
 
         let res = map.lookup("Does this make sense?");
         assert!(res.is_some());
-        assert!(res.unwrap() == "cool!");
+        assert_eq!(res.unwrap(), "cool!");
 
         let res = map.lookup("Does this make sense");
         assert!(res.is_none());
@@ -611,15 +586,15 @@ mod tests {
 
         let res = map.lookup("Does this make sense?");
         assert!(res.is_some());
-        assert!(res.unwrap() == "cool!");
+        assert_eq!(res.unwrap(), "cool!");
 
         let res = map.lookup("second key");
         assert!(res.is_some());
-        assert!(res.unwrap() == "nice!");
+        assert_eq!(res.unwrap(), "nice!");
 
         let res = map.remove("Does this make sense?");
         assert!(res.is_ok());
-        assert!(res.unwrap() == "cool!");
+        assert_eq!(res.unwrap(), "cool!");
 
         map.remove("Does this make sense?").unwrap_err();
 
@@ -628,7 +603,7 @@ mod tests {
 
         let res = map.lookup("second key");
         assert!(res.is_some());
-        assert!(res.unwrap() == "nice!");
+        assert_eq!(res.unwrap(), "nice!");
     }
 
     #[test]
@@ -735,6 +710,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn test_is_empty() {
         let mut map = FlatMap::new();
         assert!(map.is_empty());

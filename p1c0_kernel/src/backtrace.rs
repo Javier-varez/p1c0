@@ -1,10 +1,9 @@
 use crate::{
+    arch::{read_frame_pointer, read_pc},
     memory::address::{Address, Validator, VirtualAddress},
     prelude::*,
 };
 
-use crate::arch::{read_frame_pointer, read_pc};
-use crate::backtrace::ksyms::KSyms;
 use core::fmt::Formatter;
 
 #[repr(C)]
@@ -127,15 +126,13 @@ where
 
 pub mod ksyms {
     use super::Symbolicator;
-    use alloc::borrow::ToOwned;
+    use crate::prelude::*;
 
     use crate::{
         init,
         memory::address::{Address, VirtualAddress},
         sync::spinlock::RwSpinLock,
     };
-
-    use alloc::string::String;
 
     static KSYMS: RwSpinLock<Option<KSyms>> = RwSpinLock::new(None);
 
@@ -248,7 +245,7 @@ pub mod ksyms {
 
                 EntryMatch::Match(
                     self.get_name(name_offset, name_length)
-                        .map(|name| (name.to_owned(), addr - symbol_start)),
+                        .map(|name| (name.to_string(), addr - symbol_start)),
                 )
             }
         }
@@ -299,7 +296,7 @@ pub mod ksyms {
 }
 
 #[inline(always)]
-pub fn kernel_backtracer() -> Option<Backtracer<crate::thread::StackValidator, KSyms>> {
+pub fn kernel_backtracer() -> Option<Backtracer<crate::thread::StackValidator, ksyms::KSyms>> {
     if let Some(validator) = crate::thread::stack_validator(crate::arch::StackType::current()) {
         let symbolicator = ksyms::symbolicator();
         Some(backtracer(

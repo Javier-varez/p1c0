@@ -1,27 +1,18 @@
-extern crate alloc;
-
 use super::{
-    address::{Address, LogicalAddress, VirtualAddress},
-    map::{MMIO_BASE, MMIO_SIZE},
+    address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress},
+    map::{FASTMAP_PAGE, MMIO_BASE, MMIO_SIZE},
     num_pages_from_bytes,
     physical_page_allocator::PhysicalMemoryRegion,
-    Attributes, Permissions,
+    Attributes, GlobalPermissions, Permissions,
 };
 use crate::{
-    arch::mmu::{self, PAGE_SIZE},
-    log_info,
+    arch::mmu::{self, LevelTable, PAGE_SIZE},
+    prelude::*,
 };
 
-use heapless::String;
-
-use crate::arch::mmu::LevelTable;
-use crate::memory::address::PhysicalAddress;
-use crate::memory::map::FASTMAP_PAGE;
-use crate::memory::GlobalPermissions;
-use alloc::boxed::Box;
-use alloc::vec;
-use alloc::vec::Vec;
 use core::str::FromStr;
+
+use heapless::String;
 
 const MAX_NAME_LENGTH: usize = 32;
 
@@ -32,7 +23,7 @@ pub enum Error {
     MemoryRangeAlreadyExists(String<MAX_NAME_LENGTH>),
     MemoryRangeOverlaps(String<MAX_NAME_LENGTH>),
     NameTooLong,
-    InvalidAddresss,
+    InvalidAddress,
 }
 
 impl From<mmu::Error> for Error {
@@ -54,7 +45,7 @@ pub(super) struct VirtualMemoryRange {
 pub(super) struct LogicalMemoryRange {
     pub la: LogicalAddress,
     pub size_bytes: usize,
-    pub name: heapless::String<32>,
+    pub name: String<32>,
     pub attributes: Attributes,
     pub permissions: Permissions,
     pub _physical_region: Option<PhysicalMemoryRegion>,
@@ -64,7 +55,7 @@ pub(super) struct MMIORange {
     pub va: VirtualAddress,
     pub pa: PhysicalAddress,
     pub size_bytes: usize,
-    pub name: heapless::String<32>,
+    pub name: String<32>,
 }
 
 pub(super) enum GenericMemoryRange {
@@ -161,8 +152,8 @@ impl MemoryRange for GenericMemoryRange {
 pub(super) struct KernelAddressSpace {
     // FIXME(javier-varez): Using vec here is most likely not a good idea for performance reasons.
     // Find a better alternative with better insertion/removal/lookup performance
-    high_address_table: mmu::LevelTable,
-    low_address_table: mmu::LevelTable,
+    high_address_table: LevelTable,
+    low_address_table: LevelTable,
     virtual_ranges: Vec<VirtualMemoryRange>,
     logical_ranges: Vec<LogicalMemoryRange>,
     mmio_ranges: Vec<MMIORange>,
@@ -172,8 +163,8 @@ pub(super) struct KernelAddressSpace {
 impl KernelAddressSpace {
     pub const fn new() -> Self {
         Self {
-            high_address_table: mmu::LevelTable::new(),
-            low_address_table: mmu::LevelTable::new(),
+            high_address_table: LevelTable::new(),
+            low_address_table: LevelTable::new(),
             virtual_ranges: vec![],
             logical_ranges: vec![],
             mmio_ranges: vec![],
@@ -380,12 +371,12 @@ impl KernelAddressSpace {
         }
 
         // This doesn't seem to match any ranges
-        Err(Error::InvalidAddresss)
+        Err(Error::InvalidAddress)
     }
 }
 
 pub struct ProcessAddressSpace {
-    address_table: Box<mmu::LevelTable>,
+    address_table: Box<LevelTable>,
     // FIXME(javier-varez): Using vec here is most likely not a good idea for performance reasons.
     // Find a better alternative with better insertion/removal/lookup performance
     memory_ranges: Vec<VirtualMemoryRange>,
@@ -394,7 +385,7 @@ pub struct ProcessAddressSpace {
 impl Default for ProcessAddressSpace {
     fn default() -> Self {
         Self {
-            address_table: Box::new(mmu::LevelTable::new()),
+            address_table: Box::new(LevelTable::new()),
             memory_ranges: vec![],
         }
     }
