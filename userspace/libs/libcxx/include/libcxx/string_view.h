@@ -39,8 +39,6 @@ namespace libcxx {
     private:
         Span<const char> mInner;
     };
-
-
 }
 
 #endif  // LIBCXX_STRING_VIEW_H_

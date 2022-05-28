@@ -2,7 +2,6 @@
 #include <libcxx/fmt.h>
 #include <libcxx/syscalls.h>
 #include <libcxx/stdarg.h>
-//#include <cstdarg>
 
 using libcxx::usize;
 using libcxx::Span;

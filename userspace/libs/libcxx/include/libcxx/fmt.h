@@ -3,7 +3,6 @@
 
 #include <libcxx/string.h>
 #include <libcxx/span.h>
-#include <libcxx/stdarg.h>
 
 namespace libcxx {
     usize sprint(Span<char> buffer, const char *fmt, ...) noexcept __attribute__((format(printf, 2, 3)));
