@@ -32,7 +32,6 @@ pub fn read_frame_pointer() -> VirtualAddress {
     unsafe {
         core::arch::asm!("mov {}, x29", out(reg) fp);
     }
-    log_debug!("fp is 0x{:x}", fp);
     VirtualAddress::new_unaligned(fp as *const _)
 }
 
