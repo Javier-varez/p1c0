@@ -565,8 +565,34 @@ mod test {
         assert_eq!(iter.next(), None);
         assert_eq!(iter.next_back(), None);
 
+        let mut iter = list.iter_mut().map(|item| item.inner);
+        assert_eq!(iter.next(), Some(32));
+        assert_eq!(iter.next_back(), Some(843));
+        assert_eq!(iter.next(), Some(23));
+        assert_eq!(iter.next_back(), Some(123));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.next_back(), None);
+
         list.release(|element| {
             unsafe { element.into_box() };
         });
+    }
+
+    #[test]
+    fn empty_list() {
+        let mut list = IntrusiveList::<u32>::new();
+        assert!(list.pop().is_none());
+        assert!(list.iter().next().is_none());
+        assert!(list.iter_mut().next().is_none());
+        assert!(list.remove(0).is_none());
+        assert!(list.remove(2).is_none());
+    }
+
+    #[test]
+    fn length() {
+        let mut list = IntrusiveList::<_>::new();
+        assert_eq!(list.len(), 0);
+        list.push(OwnedMutPtr::new_from_box(Box::new(IntrusiveItem::new(32))));
+        assert_eq!(list.len(), 1);
     }
 }

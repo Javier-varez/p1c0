@@ -160,7 +160,7 @@ unsafe fn handle_synchronous(e: &mut ExceptionContext, origin: ExceptionOrigin) 
                         e
                     );
 
-                    process::kill_current_process(e, 1).unwrap();
+                    process::kill_current_process(e, 0xdeadc0de).unwrap();
                 }
             }
         }
