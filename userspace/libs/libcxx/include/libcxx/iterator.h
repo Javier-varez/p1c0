@@ -24,7 +24,7 @@ namespace  libcxx {
       { t <= v } -> SameAs<bool>;
     };
 
-    template<typename T>
+    template <typename T>
     class Iterator {
     public:
         constexpr Iterator() noexcept = default;
