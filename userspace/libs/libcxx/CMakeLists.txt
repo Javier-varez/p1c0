@@ -1,4 +1,6 @@
-add_library(libcxx src/libcxx/syscalls.cpp)
+add_library(libcxx
+        src/libcxx/syscalls.cpp
+        src/libcxx/fmt.cpp)
 
 target_include_directories(libcxx PUBLIC include)
 
@@ -7,6 +9,7 @@ target_compile_options(libcxx PRIVATE
         -g3)
 
 target_compile_options(libcxx PUBLIC
+        -ffreestanding
         -fno-rtti
         -fno-exceptions
         -std=gnu++20)

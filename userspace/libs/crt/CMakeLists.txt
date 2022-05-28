@@ -16,6 +16,7 @@ target_compile_options(crt PRIVATE
 # TODO: Add support for out-of-line atomics to increase performance with LSE. For now they are disabled and old-style
 # exclusive load/store/clear instructions are used.
 target_compile_options(crt PUBLIC
+        -ffreestanding
         -nostdlib
         -nodefaultlibs
         -mno-outline-atomics

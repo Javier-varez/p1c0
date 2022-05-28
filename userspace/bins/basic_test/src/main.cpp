@@ -1,5 +1,6 @@
 #include <libcxx/types.h>
 #include <libcxx/syscalls.h>
+#include <libcxx/fmt.h>
 
 using libcxx::u64;
 using libcxx::usize;
@@ -14,10 +15,9 @@ namespace {
 int main(int argc, char *argv[], char *envp[]) {
   int i = 0;
 
-  libcxx::syscalls::puts("Num arguments is");
-  libcxx::syscalls::puthex(argc);
+  libcxx::print("Num arguments is %x", argc);
   for (usize i = 0; i < argc; i++) {
-    libcxx::syscalls::puts(argv[i]);
+    libcxx::print("Argument %x is `%s`", i, argv[i]);
   }
 
   while (i < 5) {
@@ -25,26 +25,28 @@ int main(int argc, char *argv[], char *envp[]) {
     i++;
     libcxx::syscalls::sleep(1'000'000);
   }
+
+  return 0;
 }
 
 namespace {
     class Guard {
     public:
         Guard() {
-          libcxx::syscalls::puts("C++ global constructors work!");
+          libcxx::print("C++ global constructors work!");
         }
 
         ~Guard() {
-          libcxx::syscalls::puts("C++ global destructors also work!");
+          libcxx::print("C++ global destructors also work!");
         }
     };
 
     __attribute__((constructor)) void constructor() {
-      libcxx::syscalls::puts("C constructor functions work!");
+      libcxx::print("C constructor functions work!");
     }
 
     __attribute__((destructor)) void destructor() {
-      libcxx::syscalls::puts("C destructor functions work!");
+      libcxx::print("C destructor functions work!");
     }
 
     Guard guard;
@@ -58,8 +60,7 @@ namespace {
     }
 
     [[gnu::noinline]] void print_message(u64 i, bool withTrick) {
-      libcxx::syscalls::puts("Hi there!");
-      libcxx::syscalls::puthex(i);
+      libcxx::print("Hi there! %x", i);
       oh_my_bug(i, withTrick);
     }
 }

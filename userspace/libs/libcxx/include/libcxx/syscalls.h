@@ -1,5 +1,5 @@
-#ifndef LIBCXX_SYSCALLS_H
-#define LIBCXX_SYSCALLS_H
+#ifndef LIBCXX_SYSCALLS_H_
+#define LIBCXX_SYSCALLS_H_
 
 #include <libcxx/types.h>
 
@@ -12,12 +12,7 @@ namespace libcxx::syscalls {
     /**
      * @brief Sleeps for the given number of nanoseconds
      */
-    void sleep(const u64 time_us);
-
-    /**
-     * @brief Writes the given value as hex to stdout
-     */
-    void puthex(u64 value);
+    void sleep(u64 time_us);
 }
 
-#endif  // LIBCXX_SYSCALLS_H
+#endif  // LIBCXX_SYSCALLS_H_
