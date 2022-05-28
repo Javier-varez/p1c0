@@ -100,22 +100,26 @@ impl<T> core::ops::Deref for OwnedPtr<T> {
 
 impl<T> Drop for OwnedMutPtr<T> {
     fn drop(&mut self) {
-        // TODO(javier-varez): Print backtrace here when available
         log_warning!(
             "Attempted to drop an OwnedMutPtr<{}> with address {:?}",
             core::any::type_name::<T>(),
             self.inner
         );
+        if let Some(bt) = crate::backtrace::kernel_backtracer() {
+            log_warning!("{}", bt);
+        }
     }
 }
 
 impl<T> Drop for OwnedPtr<T> {
     fn drop(&mut self) {
-        // TODO(javier-varez): Print backtrace here when available
         log_warning!(
             "Attempted to drop an OwnedPtr<{}> with address {:?}",
             core::any::type_name::<T>(),
             self.inner
         );
+        if let Some(bt) = crate::backtrace::kernel_backtracer() {
+            log_warning!("{}", bt);
+        }
     }
 }
