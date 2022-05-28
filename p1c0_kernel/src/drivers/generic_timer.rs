@@ -1,13 +1,12 @@
+use super::interfaces::{self, TimerResolution};
+
+use core::sync::atomic::{AtomicU32, Ordering};
+
 use cortex_a::{
     asm::barrier,
     registers::{CNTFRQ_EL0, CNTVCT_EL0, CNTV_CTL_EL0, CNTV_TVAL_EL0},
 };
 use tock_registers::interfaces::{Readable, Writeable};
-
-use crate::drivers::interfaces::TimerResolution;
-use core::sync::atomic::{AtomicU32, Ordering};
-
-use super::interfaces;
 
 pub struct GenericTimer {
     ticks_per_cycle: AtomicU32,
@@ -32,7 +31,7 @@ impl interfaces::timer::Timer for GenericTimer {
             .store(ticks_per_cycle, Ordering::Relaxed)
     }
 
-    fn resolution(&self) -> interfaces::TimerResolution {
+    fn resolution(&self) -> TimerResolution {
         TimerResolution::from_hz(CNTFRQ_EL0.get())
     }
 

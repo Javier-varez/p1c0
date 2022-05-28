@@ -1,7 +1,6 @@
 use crate::memory::address::{Address, VirtualAddress};
 
-use cortex_a::asm::barrier::dmb;
-use cortex_a::asm::barrier::SY;
+use cortex_a::asm::barrier::{dmb, SY};
 
 const CACHE_LINE_SIZE: usize = 64;
 

@@ -87,10 +87,7 @@ fn parse_config(config: &mut Config, manifest_path: &Path) -> anyhow::Result<()>
     Ok(())
 }
 
-fn build_macho_executable_with_payload(
-    elf: &std::path::Path,
-    macho_exec: &std::path::Path,
-) -> anyhow::Result<()> {
+fn build_macho_executable_with_payload(elf: &Path, macho_exec: &Path) -> anyhow::Result<()> {
     let objcopy_output = cmd!("rust-objcopy")
         .arg("-O")
         .arg("binary")
@@ -98,7 +95,7 @@ fn build_macho_executable_with_payload(
         .arg("-")
         .output()?;
 
-    let mut macho_exec = std::fs::File::create(&macho_exec)?;
+    let mut macho_exec = File::create(&macho_exec)?;
     macho_exec.write_all(&objcopy_output.stdout[..])?;
 
     // Now symbolicate and append that as well

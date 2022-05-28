@@ -1,26 +1,27 @@
+use crate::{
+    arch::StackType,
+    backtrace,
+    drivers::{generic_timer, interfaces::timer::Timer},
+    memory::address::VirtualAddress,
+    prelude::*,
+    process::{self, ProcessSymbolicator},
+    syscall::syscall_handler,
+    thread::{self, StackValidator},
+};
+
+#[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
+use core::arch::global_asm;
 use core::fmt;
+
 use cortex_a::{asm::barrier, registers::*};
 use tock_registers::{
     interfaces::{Readable, Writeable},
     registers::InMemoryRegister,
 };
 
-use crate::drivers::interfaces::timer::Timer;
-
-#[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
-use core::arch::global_asm;
-
 // Assembly code for the exception table ane entry points
 #[cfg(all(target_os = "none", target_arch = "aarch64", not(test)))]
 global_asm!(include_str!("exceptions.s"));
-
-use crate::arch::StackType;
-use crate::memory::address::VirtualAddress;
-use crate::process::ProcessSymbolicator;
-use crate::thread::StackValidator;
-use crate::{
-    backtrace, drivers::generic_timer, prelude::*, process, syscall::syscall_handler, thread,
-};
 
 /// Wrapper structs for memory copies of registers.
 #[repr(transparent)]
@@ -34,7 +35,7 @@ impl SpsrEL1 {
         self.0.get()
     }
 
-    pub fn from_raw(&mut self, value: u64) {
+    pub fn read_from_raw(&mut self, value: u64) {
         self.0.set(value);
     }
 
@@ -159,7 +160,7 @@ unsafe fn handle_synchronous(e: &mut ExceptionContext, origin: ExceptionOrigin) 
                         e
                     );
 
-                    crate::process::kill_current_process(e, 1).unwrap();
+                    process::kill_current_process(e, 1).unwrap();
                 }
             }
         }

@@ -1,7 +1,8 @@
 use crate::crc::Crc32C;
+
 use core::hash::Hasher;
 
-// This is not a cryptografically safe hasher, but it is easy to implement and works well enough.
+// This is not a cryptographically safe hasher, but it is easy to implement and works well enough.
 pub struct CrcHasher {
     crc32c: Crc32C,
 }

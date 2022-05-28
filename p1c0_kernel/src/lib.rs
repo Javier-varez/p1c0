@@ -4,8 +4,6 @@
 #![feature(maybe_uninit_slice)]
 #![cfg_attr(test, feature(scoped_threads))]
 
-extern crate alloc;
-
 pub mod adt;
 pub mod arch;
 pub mod backtrace;
@@ -32,7 +30,7 @@ pub mod syscall;
 pub mod thread;
 
 #[doc(hidden)]
-pub fn _print(args: ::core::fmt::Arguments) {
+pub fn _print(args: core::fmt::Arguments) {
     match print::_print(args) {
         Ok(_) => {}
         Err(print::Error::WriterLocked) => {

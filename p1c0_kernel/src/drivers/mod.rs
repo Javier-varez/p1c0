@@ -1,18 +1,15 @@
-use crate::{adt::AdtNode, prelude::*, sync::spinlock::RwSpinLock};
-
-use alloc::sync::Arc;
-
-pub mod interfaces;
-
 pub mod aic;
 pub mod display;
 pub mod generic_timer;
 pub mod gpio;
 pub mod hid;
+pub mod interfaces;
 pub mod spi;
 pub mod uart;
 pub mod virtio;
 pub mod wdt;
+
+use crate::{adt::AdtNode, prelude::*, sync::spinlock::RwSpinLock};
 
 #[derive(Debug)]
 pub enum Error {

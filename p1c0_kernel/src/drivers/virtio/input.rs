@@ -1,14 +1,13 @@
-use crate::{
-    memory::address::Address,
-    prelude::*,
-    thread::{self, ThreadHandle},
-};
-
 use super::{
     virtqueue::VirtQueue, DeviceStatus, FeatureBits1, FeatureBits2, Subdev, VirtioMmioRegs,
 };
+use crate::{
+    memory::address::Address,
+    prelude::*,
+    sync::spinlock::SpinLock,
+    thread::{self, ThreadHandle},
+};
 
-use crate::sync::spinlock::SpinLock;
 use tock_registers::{
     interfaces::{ReadWriteable, Readable, Writeable},
     registers::InMemoryRegister,
@@ -21,11 +20,11 @@ pub enum Error {
     InvalidKeyState(u32),
 }
 
-pub struct InputSubdev {
+pub struct InputSubdevice {
     _thread_handle: ThreadHandle,
 }
 
-struct InputSubdevImpl {
+struct InputSubdeviceImpl {
     regs: &'static VirtioMmioRegs::Bank,
     eventq: InputVirtQueue,
     _statusq: InputVirtQueue,
@@ -38,7 +37,7 @@ const DESC_BUFFER_SIZE: usize = 32;
 
 type InputVirtQueue = VirtQueue<QUEUE_SIZE, DESC_BUFFER_SIZE>;
 
-impl InputSubdev {
+impl InputSubdevice {
     pub fn probe(regs: &'static VirtioMmioRegs::Bank) -> Result<Self, super::Error> {
         regs.status.modify(DeviceStatus::ACK::SET);
         regs.status.modify(DeviceStatus::DRIVER::SET);
@@ -66,7 +65,7 @@ impl InputSubdev {
 
         // Finally go live!
         regs.status.modify(DeviceStatus::DRIVER_OK::SET);
-        let instance = SpinLock::new(InputSubdevImpl {
+        let instance = SpinLock::new(InputSubdeviceImpl {
             regs,
             eventq,
             _statusq: statusq,
@@ -616,4 +615,4 @@ struct Event {
 }
 
 // This is just a marker trait really
-impl Subdev for InputSubdev {}
+impl Subdev for InputSubdevice {}

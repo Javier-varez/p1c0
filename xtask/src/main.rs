@@ -189,7 +189,7 @@ fn get_cargo_args(
 fn run_build(release: bool, emulator: bool, binary: bool) -> Result<(), anyhow::Error> {
     build_rootfs()?;
 
-    let _dir = xshell::pushd(FW_DIR)?;
+    let _dir = pushd(FW_DIR)?;
     let (release, features) = get_cargo_args(release, emulator, binary)?;
 
     let output_name = if binary { "p1c0.bin" } else { "p1c0.macho" };
@@ -222,7 +222,7 @@ fn run_tests() -> Result<(), anyhow::Error> {
     cmd!("cargo test").run()?;
 
     // run FW tests
-    let _dir = xshell::pushd(FW_DIR)?;
+    let _dir = pushd(FW_DIR)?;
     cmd!("cargo test").run()?;
     Ok(())
 }
@@ -230,7 +230,7 @@ fn run_tests() -> Result<(), anyhow::Error> {
 fn run_clippy() -> Result<(), anyhow::Error> {
     build_rootfs()?;
     cmd!("cargo clippy").run()?;
-    let _dir = xshell::pushd(FW_DIR)?;
+    let _dir = pushd(FW_DIR)?;
     cmd!("cargo clippy").run()?;
     Ok(())
 }
@@ -238,7 +238,7 @@ fn run_clippy() -> Result<(), anyhow::Error> {
 fn run_qemu(release: bool) -> Result<(), anyhow::Error> {
     build_rootfs()?;
 
-    let _dir = xshell::pushd(FW_DIR)?;
+    let _dir = pushd(FW_DIR)?;
     let (release, features) = get_cargo_args(release, true, false)?;
 
     cmd!("cargo run")
@@ -261,7 +261,7 @@ fn run_clean() -> Result<(), anyhow::Error> {
 
 fn run_fw_coverage() -> Result<(), anyhow::Error> {
     // run FW tests and trigger coverage
-    let _dir = xshell::pushd(FW_DIR)?;
+    let _dir = pushd(FW_DIR)?;
 
     let rustflags = vec![
         "-C",
@@ -291,7 +291,7 @@ fn run_fw_coverage() -> Result<(), anyhow::Error> {
         rustflags_str.push(' ');
     }
 
-    let _env = xshell::pushenv("RUSTFLAGS", rustflags_str);
+    let _env = pushenv("RUSTFLAGS", rustflags_str);
     cmd!("cargo test --features=coverage -- --profile").run()?;
 
     Ok(())
@@ -302,7 +302,7 @@ fn run_coverage() -> Result<(), anyhow::Error> {
 
     run_fw_coverage()?;
 
-    let _rustflags_env = xshell::pushenv("RUSTFLAGS", "-Cinstrument-coverage");
+    let _rustflags_env = pushenv("RUSTFLAGS", "-Cinstrument-coverage");
 
     cmd!("cargo test --tests").run()?;
 

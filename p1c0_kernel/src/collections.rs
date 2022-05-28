@@ -1,13 +1,8 @@
-#![allow(dead_code)]
-pub mod aligned_vec;
 pub mod flat_map;
 pub mod intrusive_list;
 pub mod ring_buffer;
 
-extern crate alloc;
-use alloc::boxed::Box;
-
-use crate::log_warning;
+use crate::prelude::*;
 
 /// This is a type that owns a pointer and cannot be dropped. If it is dropped it logs the problem.
 /// Instead, the pointer should be freed and used in a different manner (e.g: using it
@@ -105,6 +100,7 @@ impl<T> Drop for OwnedMutPtr<T> {
             core::any::type_name::<T>(),
             self.inner
         );
+        #[cfg(not(test))]
         if let Some(bt) = crate::backtrace::kernel_backtracer() {
             log_warning!("{}", bt);
         }
@@ -118,6 +114,7 @@ impl<T> Drop for OwnedPtr<T> {
             core::any::type_name::<T>(),
             self.inner
         );
+        #[cfg(not(test))]
         if let Some(bt) = crate::backtrace::kernel_backtracer() {
             log_warning!("{}", bt);
         }

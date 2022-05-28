@@ -1,33 +1,30 @@
-extern crate alloc;
-
-use alloc::boxed::Box;
-use alloc::vec::Vec;
-use arch::StackType;
-use cortex_a::{asm::wfi, registers::SPSR_EL1};
-use heapless::String;
-use tock_registers::interfaces::Readable;
-
+use crate::memory::address::{Address, VirtualAddress};
+use crate::process::{do_with_process, ProcessHandle};
 use crate::{
     arch,
-    arch::exceptions::ExceptionContext,
+    arch::exceptions::{return_from_exception, ExceptionContext},
     collections::{
         intrusive_list::{IntrusiveItem, IntrusiveList},
         OwnedMutPtr,
     },
-    drivers::interfaces::{timer::Timer, Ticks},
+    drivers::{
+        generic_timer::get_timer,
+        interfaces::{timer::Timer, Ticks},
+    },
     memory::address,
     prelude::*,
     sync::spinlock::SpinLock,
+    syscall::Syscall,
 };
 
-use crate::arch::exceptions::return_from_exception;
-use crate::drivers::generic_timer::get_timer;
-use crate::memory::address::{Address, VirtualAddress};
-use crate::process::{do_with_process, ProcessHandle};
-use crate::syscall::Syscall;
-use core::ops::Add;
-use core::sync::atomic::{AtomicU64, Ordering};
-use core::time::Duration;
+use core::{
+    sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
+};
+
+use cortex_a::{asm::wfi, registers::SPSR_EL1};
+use heapless::String;
+use tock_registers::interfaces::Readable;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Error {
@@ -85,7 +82,7 @@ pub struct StackValidator {
 }
 
 impl address::Validator for StackValidator {
-    fn is_valid(&self, ptr: address::VirtualAddress) -> bool {
+    fn is_valid(&self, ptr: VirtualAddress) -> bool {
         let range_base = self.range_base.as_usize();
         let range_len = self.range_len;
 
@@ -103,7 +100,7 @@ enum BlockReason {
 pub struct ThreadControlBlock {
     tid: u64,
     name: String<32>,
-    process: Option<crate::process::ProcessHandle>,
+    process: Option<ProcessHandle>,
     entry: Option<Box<dyn FnOnce()>>,
     stack: Stack,
     is_idle_thread: bool,
@@ -318,7 +315,7 @@ fn save_thread_context(thread: &mut Tcb, cx: &ExceptionContext) {
 }
 
 fn restore_thread_context(cx: &mut ExceptionContext, thread: &Tcb) {
-    cx.spsr_el1.from_raw(thread.spsr);
+    cx.spsr_el1.read_from_raw(thread.spsr);
     cx.sp_el0 = thread.stack_ptr;
     cx.gpr.copy_from_slice(&thread.regs[..]);
     cx.elr_el1 = thread.elr;
@@ -417,7 +414,7 @@ pub fn sleep_current_thread(cx: &mut ExceptionContext, duration: Duration) {
     let current_ticks = timer.ticks();
 
     let time_since_epoch = timer_res.ticks_to_duration(current_ticks);
-    let target_ticks = timer_res.duration_to_ticks(time_since_epoch.add(duration));
+    let target_ticks = timer_res.duration_to_ticks(time_since_epoch + duration);
 
     thread.block_reason = Some(BlockReason::Sleep(target_ticks));
     BLOCKED_THREADS.lock().push(thread);
@@ -591,9 +588,9 @@ pub(crate) fn exit_matching_threads(
     Ok(())
 }
 
-pub(crate) fn stack_validator(stack_type: StackType) -> Option<StackValidator> {
+pub(crate) fn stack_validator(stack_type: arch::StackType) -> Option<StackValidator> {
     match stack_type {
-        StackType::KernelStack => {
+        arch::StackType::KernelStack => {
             let (range_base, range_len) = crate::memory::map::stack_range();
             let range_base = range_base.try_into_logical().unwrap().into_virtual();
             Some(StackValidator {
@@ -601,7 +598,7 @@ pub(crate) fn stack_validator(stack_type: StackType) -> Option<StackValidator> {
                 range_len,
             })
         }
-        StackType::ProcessStack => CURRENT_THREAD
+        arch::StackType::ProcessStack => CURRENT_THREAD
             .lock()
             .as_ref()
             .map(|thread| thread.stack.validator()),

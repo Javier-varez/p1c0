@@ -1,12 +1,5 @@
 mod early_alloc;
 
-use core::ops::{Deref, DerefMut};
-use cortex_a::{
-    asm::barrier,
-    registers::{MAIR_EL1, SCTLR_EL1, TCR_EL1, TTBR0_EL1, TTBR1_EL1},
-};
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
-
 use crate::{
     memory::{
         address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress},
@@ -14,8 +7,15 @@ use crate::{
     },
     prelude::*,
 };
-
 use early_alloc::{AllocRef, EarlyAllocator};
+
+use core::ops::{Deref, DerefMut};
+
+use cortex_a::{
+    asm::barrier,
+    registers::{MAIR_EL1, SCTLR_EL1, TCR_EL1, TTBR0_EL1, TTBR1_EL1},
+};
+use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 pub const VA_MASK: u64 = (1 << 48) - (1 << 14);
 pub const PA_MASK: u64 = (1 << 48) - (1 << 14);

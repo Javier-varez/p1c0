@@ -6,6 +6,7 @@
 #![feature(default_alloc_error_handler)]
 
 use p1c0 as _; // needed to link libentry (and _start)
+
 use p1c0_kernel::syscall::Syscall;
 
 #[panic_handler]
@@ -24,6 +25,6 @@ fn test_noop_syscall() {
 }
 
 #[test_case]
-fn test_mult_syscall() {
+fn test_multiply_syscall() {
     assert_eq!(Syscall::multiply(12, 14), 168);
 }

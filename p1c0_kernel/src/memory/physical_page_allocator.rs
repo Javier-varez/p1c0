@@ -1,7 +1,3 @@
-extern crate alloc;
-
-use alloc::boxed::Box;
-
 use super::address::{Address, PhysicalAddress};
 use crate::{
     arch::mmu::PAGE_BITS,
@@ -9,7 +5,7 @@ use crate::{
         intrusive_list::{IntrusiveItem, IntrusiveList},
         OwnedMutPtr,
     },
-    log_info,
+    prelude::*,
 };
 
 #[derive(Debug, Clone)]

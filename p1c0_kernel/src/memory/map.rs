@@ -1,9 +1,8 @@
 use super::{
     address::{LogicalAddress, PhysicalAddress, VirtualAddress},
-    Permissions,
+    GlobalPermissions, Permissions,
 };
 use crate::arch::mmu::PAGE_SIZE;
-use crate::memory::GlobalPermissions;
 
 /// This is the base address for logical addresses.
 pub const KERNEL_LOGICAL_BASE: LogicalAddress =

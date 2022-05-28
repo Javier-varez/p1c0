@@ -1,9 +1,3 @@
-use tock_registers::{
-    interfaces::{ReadWriteable, Readable, Writeable},
-    register_bitfields,
-    registers::{ReadOnly, ReadWrite, WriteOnly},
-};
-
 use crate::{
     adt::get_adt,
     drivers::{generic_timer, interfaces::timer::Timer},
@@ -11,6 +5,12 @@ use crate::{
 };
 
 use core::{iter::Iterator, mem::MaybeUninit, time::Duration};
+
+use tock_registers::{
+    interfaces::{ReadWriteable, Readable, Writeable},
+    register_bitfields,
+    registers::{ReadOnly, ReadWrite, WriteOnly},
+};
 
 register_bitfields! {u32,
     Control [
@@ -133,7 +133,8 @@ register_bitfields! {u32,
 const CLOCK_DIV_MAX: u32 = 0x7FF;
 const PARENT_CLK_HZ: u128 = 24_000_000; // TODO(javier-varez): deduct this from the clock source in adt
 
-const CLK_RATE_DEFAULT: Duration = Duration::from_micros(1); // 1 Mhz
+const CLK_RATE_DEFAULT: Duration = Duration::from_micros(1);
+// 1 Mhz
 const CS_TO_CLK_DELAY_DEFAULT: Duration = Duration::from_micros(0);
 const CLK_TO_CS_DELAY_DEFAULT: Duration = Duration::from_micros(0);
 const CS_IDLE_DELAY_DEFAULT: Duration = Duration::from_micros(0);
@@ -142,33 +143,59 @@ const FIFO_DEPTH: u32 = 16;
 
 #[repr(C)]
 struct SpiRegisters {
-    control: ReadWrite<u32, Control::Register>,        // 0x00
-    config: ReadWrite<u32, Config::Register>,          // 0x04
-    status: ReadWrite<u32, Status::Register>,          // 0x08
-    pin: ReadWrite<u32, Pin::Register>,                // 0x0C
-    tx_data: WriteOnly<u32>,                           // 0x10
-    reserved_1: [u32; 3],                              // 0x14
-    rx_data: ReadOnly<u32>,                            // 0x20
-    reserved_2: [u32; 3],                              // 0x24
-    clk_div: ReadWrite<u32>,                           // 0x30
-    rx_count: ReadWrite<u32>,                          // 0x34
-    word_delay: ReadWrite<u32>,                        // 0x38
-    reserved_3: [u32; 4],                              // 0x3C
-    tx_count: ReadWrite<u32>,                          // 0x4C
-    reserved_4: [u32; 47],                             // 0x50
-    fifo_status: ReadWrite<u32, FifoStatus::Register>, // 0x10C
-    reserved_5: [u32; 8],                              // 0x110
-    ie_xfer: ReadWrite<u32, InterruptEnableXfer::Register>, // 0x130
-    if_xfer: ReadWrite<u32, InterruptFlagXfer::Register>, // 0x134
-    ie_fifo: ReadWrite<u32, InterruptEnableFifo::Register>, // 0x138
-    if_fifo: ReadWrite<u32, InterruptFlagFifo::Register>, // 0x13C
-    reserved_6: [u32; 4],                              // 0x140
-    shift_config: ReadWrite<u32, ShiftConfig::Register>, // 0x150
-    pin_config: ReadWrite<u32, PinConfig::Register>,   // 0x154
-    reserved_7: [u32; 2],                              // 0x158
-    delay_pre: ReadWrite<u32, DelayPre::Register>,     // 0x160
-    reserved_8: u32,                                   // 0x164
-    delay_post: ReadWrite<u32, DelayPost::Register>,   // 0x168
+    control: ReadWrite<u32, Control::Register>,
+    // 0x00
+    config: ReadWrite<u32, Config::Register>,
+    // 0x04
+    status: ReadWrite<u32, Status::Register>,
+    // 0x08
+    pin: ReadWrite<u32, Pin::Register>,
+    // 0x0C
+    tx_data: WriteOnly<u32>,
+    // 0x10
+    reserved_1: [u32; 3],
+    // 0x14
+    rx_data: ReadOnly<u32>,
+    // 0x20
+    reserved_2: [u32; 3],
+    // 0x24
+    clk_div: ReadWrite<u32>,
+    // 0x30
+    rx_count: ReadWrite<u32>,
+    // 0x34
+    word_delay: ReadWrite<u32>,
+    // 0x38
+    reserved_3: [u32; 4],
+    // 0x3C
+    tx_count: ReadWrite<u32>,
+    // 0x4C
+    reserved_4: [u32; 47],
+    // 0x50
+    fifo_status: ReadWrite<u32, FifoStatus::Register>,
+    // 0x10C
+    reserved_5: [u32; 8],
+    // 0x110
+    ie_xfer: ReadWrite<u32, InterruptEnableXfer::Register>,
+    // 0x130
+    if_xfer: ReadWrite<u32, InterruptFlagXfer::Register>,
+    // 0x134
+    ie_fifo: ReadWrite<u32, InterruptEnableFifo::Register>,
+    // 0x138
+    if_fifo: ReadWrite<u32, InterruptFlagFifo::Register>,
+    // 0x13C
+    reserved_6: [u32; 4],
+    // 0x140
+    shift_config: ReadWrite<u32, ShiftConfig::Register>,
+    // 0x150
+    pin_config: ReadWrite<u32, PinConfig::Register>,
+    // 0x154
+    reserved_7: [u32; 2],
+    // 0x158
+    delay_pre: ReadWrite<u32, DelayPre::Register>,
+    // 0x160
+    reserved_8: u32,
+    // 0x164
+    delay_post: ReadWrite<u32, DelayPost::Register>, // 0x168
 }
 
 fn pointer_alignment<T>(ptr: *const T) -> usize {
@@ -230,7 +257,7 @@ pub struct Spi {
 }
 
 impl Spi {
-    /// Constucts a new Spi peripheral from the given adt node reference.
+    /// Constructs a new Spi peripheral from the given adt node reference.
     ///
     /// # Safety
     /// The spi_node must not already be in use by any other piece of code.

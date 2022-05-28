@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use super::OwnedMutPtr;
 
 #[derive(Debug)]
@@ -200,7 +198,7 @@ impl<T> IntrusiveList<T> {
     }
 }
 
-impl<T> core::ops::Drop for IntrusiveList<T> {
+impl<T> Drop for IntrusiveList<T> {
     fn drop(&mut self) {
         let mut element = self.head;
         while !element.is_null() {
@@ -250,7 +248,7 @@ pub struct IntrusiveListIter<'a, T> {
     tail_item: *const IntrusiveItem<T>,
 }
 
-impl<'a, T> core::iter::Iterator for IntrusiveListIter<'a, T> {
+impl<'a, T> Iterator for IntrusiveListIter<'a, T> {
     type Item = &'a IntrusiveItem<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -270,7 +268,7 @@ impl<'a, T> core::iter::Iterator for IntrusiveListIter<'a, T> {
     }
 }
 
-impl<'a, T> core::iter::DoubleEndedIterator for IntrusiveListIter<'a, T> {
+impl<'a, T> DoubleEndedIterator for IntrusiveListIter<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.tail_item.is_null() {
             None
@@ -294,7 +292,7 @@ pub struct IntrusiveListMutIter<'a, T> {
     tail_item: *mut IntrusiveItem<T>,
 }
 
-impl<'a, T> core::iter::Iterator for IntrusiveListMutIter<'a, T> {
+impl<'a, T> Iterator for IntrusiveListMutIter<'a, T> {
     type Item = &'a mut IntrusiveItem<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -314,7 +312,7 @@ impl<'a, T> core::iter::Iterator for IntrusiveListMutIter<'a, T> {
     }
 }
 
-impl<'a, T> core::iter::DoubleEndedIterator for IntrusiveListMutIter<'a, T> {
+impl<'a, T> DoubleEndedIterator for IntrusiveListMutIter<'a, T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.tail_item.is_null() {
             None

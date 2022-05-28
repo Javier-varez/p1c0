@@ -1,9 +1,9 @@
+use crate::print;
+
 use tock_registers::{
     register_bitfields,
     registers::{ReadOnly, ReadWrite},
 };
-
-use crate::print;
 
 // Defines bitfields for the UART registers
 register_bitfields![u32,

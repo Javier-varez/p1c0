@@ -1,6 +1,9 @@
 use crate::{
     arch::mmu::PAGE_SIZE,
-    memory::address::{Address, PhysicalAddress, VirtualAddress},
+    memory::{
+        address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress},
+        physical_page_allocator::PhysicalMemoryRegion,
+    },
     prelude::*,
 };
 
@@ -9,8 +12,6 @@ use core::{
     ptr::NonNull,
 };
 
-use crate::memory::address::LogicalAddress;
-use crate::memory::physical_page_allocator::PhysicalMemoryRegion;
 use tock_registers::{
     interfaces::{Readable, Writeable},
     register_bitfields,

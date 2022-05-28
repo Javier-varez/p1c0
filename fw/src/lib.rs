@@ -5,10 +5,10 @@
 #![cfg_attr(test, test_runner(test_fwk::runner))]
 #![cfg_attr(test, reexport_test_harness_main = "test_main")]
 
+use p1c0_kernel::{boot_args::BootArgs, prelude::*};
+
 #[cfg(feature = "coverage")]
 use minicov as _;
-
-use p1c0_kernel::{boot_args::BootArgs, prelude::*};
 
 #[panic_handler]
 #[cfg(test)]
@@ -60,26 +60,10 @@ pub extern "C" fn kernel_main() {
 #[cfg(test)]
 mod tests {
     use super::print_boot_args;
-    use p1c0_kernel::{
-        boot_args::get_boot_args,
-        drivers::{generic_timer::get_timer, interfaces::timer::Timer},
-        log_debug,
-    };
+    use p1c0_kernel::boot_args::get_boot_args;
 
     #[test_case]
     fn test_print_boot_args() {
         print_boot_args(get_boot_args());
-    }
-
-    #[test_case]
-    fn test_system_timer() {
-        let timer = get_timer();
-        let resolution = timer.resolution();
-        log_debug!("Timer resolution is {:?}", resolution);
-        let old_ticks = timer.ticks();
-        log_debug!("Timer ticks is {:?}", old_ticks);
-        let new_ticks = timer.ticks();
-        log_debug!("Timer ticks is {:?}", new_ticks);
-        assert!(new_ticks > old_ticks);
     }
 }

@@ -1,23 +1,19 @@
-extern crate alloc;
-
-use crate::memory::address::{Address, VirtualAddress};
-use crate::memory::{num_pages_from_bytes, GlobalPermissions, MemoryManager, Permissions};
-use crate::prelude::*;
 use crate::{
+    arch::{exceptions::ExceptionContext, mmu::PAGE_SIZE},
+    elf::{self, ElfParser},
     memory::{
         self,
+        address::{Address, VirtualAddress},
         address_space::{self, ProcessAddressSpace},
+        num_pages_from_bytes,
+        physical_page_allocator::PhysicalMemoryRegion,
+        GlobalPermissions, MemoryManager, Permissions,
     },
+    prelude::*,
     sync::spinlock::SpinLock,
     thread::{self, ThreadHandle},
 };
-use alloc::borrow::ToOwned;
-use alloc::{boxed::Box, vec, vec::Vec};
 
-use crate::arch::exceptions::ExceptionContext;
-use crate::arch::mmu::PAGE_SIZE;
-use crate::elf::{self, ElfParser};
-use crate::memory::physical_page_allocator::PhysicalMemoryRegion;
 use core::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug)]
@@ -27,7 +23,7 @@ pub enum Error {
     ThreadError(thread::Error),
     NoCurrentProcess,
     InvalidBase,
-    ElfError(crate::elf::Error),
+    ElfError(elf::Error),
     UnsupportedExecutable,
     NoEntryPoint,
 }
@@ -125,7 +121,7 @@ impl Builder {
             let page_data = &data[current_offset..];
 
             // Try to perform a fast mapping of the page to load the contents
-            memory::MemoryManager::instance().do_with_fast_map(
+            MemoryManager::instance().do_with_fast_map(
                 pa,
                 GlobalPermissions::new_only_privileged(Permissions::RW),
                 |va| unsafe {
@@ -158,7 +154,7 @@ impl Builder {
         // TODO(javier-varez): In reality this should be done lazily in most cases
         assert!(size_bytes >= data.len());
 
-        let num_pages = crate::memory::num_pages_from_bytes(size_bytes);
+        let num_pages = num_pages_from_bytes(size_bytes);
         let pmr = MemoryManager::instance()
             .request_any_pages(num_pages, memory::AllocPolicy::ZeroFill)?;
 
@@ -176,17 +172,17 @@ impl Builder {
     }
 
     pub fn push_argument(&mut self, arg: &str) {
-        self.arguments.push(arg.to_owned());
+        self.arguments.push(arg.to_string());
     }
 
     pub fn push_environment_variable(&mut self, key: &str, value: &str) {
-        self.environment.insert(key.to_owned(), value.to_owned());
+        self.environment.insert(key.to_string(), value.to_string());
     }
 
     fn map_stack(&mut self, aslr_base: VirtualAddress) -> Result<VirtualAddress, Error> {
-        let numpages = num_pages_from_bytes(Self::STACK_SIZE);
-        let pmr =
-            MemoryManager::instance().request_any_pages(numpages, memory::AllocPolicy::ZeroFill)?;
+        let num_pages = num_pages_from_bytes(Self::STACK_SIZE);
+        let pmr = MemoryManager::instance()
+            .request_any_pages(num_pages, memory::AllocPolicy::ZeroFill)?;
 
         let stack_va =
             VirtualAddress::try_from_ptr((0xF00000000000 + aslr_base.as_u64()) as *const _)
@@ -223,7 +219,7 @@ impl Builder {
             GlobalPermissions::new_for_process(Permissions::RO),
         )?;
 
-        Ok(memory::MemoryManager::instance().do_with_fast_map(
+        Ok(MemoryManager::instance().do_with_fast_map(
             pmr_base_address,
             GlobalPermissions::new_only_privileged(Permissions::RW),
             |tmp_va| {
@@ -270,9 +266,9 @@ impl Builder {
                     let size_bytes = slice.len() * core::mem::size_of::<*const u8>();
 
                     // Align offset to pointer size
-                    let misalign = offset % core::mem::size_of::<*const u8>();
-                    if misalign != 0 {
-                        offset += core::mem::size_of::<*const u8>() - misalign;
+                    let alignment = offset % core::mem::size_of::<*const u8>();
+                    if alignment != 0 {
+                        offset += core::mem::size_of::<*const u8>() - alignment;
                     }
 
                     let va = unsafe { args_va_start.offset(offset) };
@@ -336,8 +332,7 @@ impl Builder {
     }
 
     pub fn new_from_elf_data(name: &str, elf_data: Vec<u8>, aslr: usize) -> Result<Builder, Error> {
-        let elf =
-            elf::ElfParser::from_slice(&elf_data[..]).map_err(|_| Error::UnsupportedExecutable)?;
+        let elf = ElfParser::from_slice(&elf_data[..]).map_err(|_| Error::UnsupportedExecutable)?;
         if !matches!(
             elf.elf_type(),
             elf::EType::Executable | elf::EType::SharedObject
@@ -351,7 +346,7 @@ impl Builder {
             let header_type = header.ty().map_err(|_| Error::UnsupportedExecutable)?;
             if matches!(header_type, elf::PtType::Load) {
                 log_debug!(
-                    "Vaddr 0x{:x}, Paddr 0x{:x}, Memsize {} Filesize {}",
+                    "Virtual addr 0x{:x}, Physical addr 0x{:x}, Size in process {} Size in file {}",
                     header.vaddr(),
                     header.paddr(),
                     header.memsize(),
@@ -444,9 +439,9 @@ impl Process {
 
     pub fn exit_code(&self) -> Option<u64> {
         match self.state {
-            State::Killed(retval) => {
+            State::Killed(return_value) => {
                 // TODO(javier-varez): Reap process here somehow
-                Some(retval)
+                Some(return_value)
             }
             State::Running => None,
         }
@@ -472,7 +467,7 @@ impl<'a> crate::backtrace::Symbolicator for ProcessSymbolicator<'a> {
                 if (addr >= symbol_start) && (addr < (symbol_start + symbol_size)) {
                     symbol
                         .name()
-                        .map(|string| (string.to_owned(), addr - symbol_start))
+                        .map(|string| (string.to_string(), addr - symbol_start))
                 } else {
                     None
                 }
@@ -516,7 +511,7 @@ pub(crate) fn kill_current_process(
     thread::wake_threads_waiting_on_pid(&pid, error_code);
     thread::exit_matching_threads(&mut killed_proc.thread_list, cx)?;
 
-    // Don't free process but instead keep it in a zombie state unitl states are collected
+    // Don't free process but instead keep it in a zombie state until states are collected
     killed_proc.state = State::Killed(error_code);
     Ok(())
 }
