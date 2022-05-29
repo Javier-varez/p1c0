@@ -8,47 +8,46 @@ using libcxx::Span;
 using libcxx::u32;
 
 namespace {
-    usize format_hex(u32 number, Span<char> buffer) {
-      usize offset = 0;
+    template<libcxx::IteratorType Iter>
+    Iter format_hex(u32 number, const Iter begin, const Iter end) {
+      Iter iter = begin;
       const u32 mask = 0xF000'0000;
 
       for (u32 i = 0; i < 8; i++) {
         const auto value = (number & mask) >> 28;
         if (value != 0) {
-          if (offset >= buffer.size() - 1) {
-            return offset;
+          if (iter == end) {
+            return iter;
           }
 
           if (value >= 10) {
-            buffer[offset++] = 'A' + value - 10;
+            *iter++ = 'A' + value - 10;
           } else {
-            buffer[offset++] = '0' + value;
+            *iter++ = '0' + value;
           }
         }
         number <<= 4;
       }
 
-      if (offset == 0) {
-        // No characters were written, write a 0 at least
-        if (offset >= buffer.size() - 1) {
-          return offset;
-        }
-        buffer[offset++] = '0';
+      if ((iter == begin) && (iter != end)) {
+        *iter++ = '0';
       }
 
-      return offset;
+      return iter;
     }
 
-    usize format_string(Span<char> buffer, const char *str) {
-      usize offset = 0;
-      while ((*str != '\0') && (offset < (buffer.size() - 1))) {
-        buffer[offset++] = *str++;
+    template<libcxx::IteratorType Iter>
+    Iter format_string(Iter iter, Iter end, const char *str) {
+      while ((*str != '\0') && (iter != end)) {
+        *iter++ = *str++;
       }
-      return offset;
+      return iter;
     }
 
     usize vsprint(Span<char> buffer, const char *fmt, va_list list) noexcept {
-      usize offset = 0;
+      auto iter = buffer.begin();
+      const auto end = buffer.begin() - 1;
+
       while (*fmt != '\0') {
         if (*fmt == '%') {
           // Skip the %
@@ -58,34 +57,34 @@ namespace {
             case 'x': {
               // Right now only this is supported with no other spec parsers
               const u32 value = va_arg(list, u32);
-              offset += format_hex(value, buffer.from_offset(offset));
+              iter = format_hex(value, iter, end);
               break;
             }
             case 's': {
               const char *str = va_arg(list, const char*);
-              offset += format_string(buffer.from_offset(offset), str);
+              iter = format_string(iter, end, str);
               break;
             }
             default: {
-              if (offset >= buffer.size() - 1) {
+              if (iter == end) {
                 // Can't push more characters, just return what we have
-                return offset;
+                return iter - buffer.begin();
               }
-              buffer[offset++] = *fmt;
+              *iter++ = *fmt;
               break;
             }
           }
         } else {
-          if (offset >= buffer.size() - 1) {
-            // Can't push more characters, just return what we have
-            return offset;
+          if (iter == end) {
+              // Can't push more characters, just return what we have
+              return iter - buffer.begin();
           }
-          buffer[offset++] = *fmt;
+          *iter++ = *fmt;
         }
         fmt++;
       }
 
-      return offset;
+      return iter - buffer.begin();
     }
 }
 

@@ -14,6 +14,9 @@ namespace  libcxx {
       { --t } -> SameAs<T&>;
       { t += 1 } -> SameAs<T&>;
       { t -= 1 } -> SameAs<T&>;
+      { t + 1 } -> SameAs<T>;
+      { t - 1 } -> SameAs<T>;
+      { t - v } -> SameAs<typename T::difference_type>;
       { *t } -> SameAs<typename T::reference_type>;
       { t[2] } -> SameAs<typename T::reference_type>;
       { t == v } -> SameAs<bool>;
@@ -83,9 +86,22 @@ namespace  libcxx {
           return *this;
         }
 
+        constexpr Iterator operator+(usize step) const {
+            return Iterator{mPtr + step};
+        }
+
+        constexpr Iterator operator-(usize step) const noexcept {
+            return Iterator{mPtr - step};
+        }
+
+        constexpr usize operator-(Iterator other) const noexcept {
+            return static_cast<usize>(mPtr - other.mPtr);
+        }
+
         constexpr std::strong_ordering operator<=>(const Iterator&) const = default;
 
         using reference_type = T&;
+        using difference_type = usize;
 
     private:
         T *mPtr{nullptr};
