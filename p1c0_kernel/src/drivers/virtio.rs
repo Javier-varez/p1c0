@@ -125,7 +125,9 @@ struct VirtioDriver {}
 impl super::Driver for VirtioDriver {
     fn probe(&self, dev_path: &[adt::AdtNode]) -> super::Result<super::DeviceRef> {
         let dev = Virtio::probe(dev_path)?;
-        Ok(Arc::new(RwSpinLock::new(dev)))
+        Ok(Arc::new(RwSpinLock::new(super::Dev::Generic(Box::new(
+            dev,
+        )))))
     }
 }
 

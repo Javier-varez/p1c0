@@ -1,4 +1,7 @@
+pub mod interrupt_controller;
+pub mod logger;
 pub mod timer;
+pub mod watchdog;
 
 use core::time::Duration;
 

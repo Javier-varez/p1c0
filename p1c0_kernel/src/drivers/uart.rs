@@ -76,10 +76,10 @@ mod late_uart {
     use super::{Status, UartRegs};
     use crate::{
         adt::AdtNode,
-        drivers::DeviceRef,
+        drivers::{Dev, DeviceRef},
         memory::{address::Address, MemoryManager},
         prelude::*,
-        print::{self, Print},
+        print,
         sync::spinlock::RwSpinLock,
     };
     use alloc::sync::Arc;
@@ -100,10 +100,10 @@ mod late_uart {
                 .unwrap();
 
             let regs = unsafe { &*(vaddr.as_mut_ptr() as *const _) };
-            let dev = Arc::new(RwSpinLock::new(Uart { regs }));
+            let dev = Arc::new(RwSpinLock::new(Dev::Logger(Box::new(Uart { regs }))));
 
             // On success we register this device as the printer
-            print::init_printer(dev.clone());
+            print::register_printer(dev.clone());
             Ok(dev)
         }
     }
@@ -126,13 +126,9 @@ mod late_uart {
         }
     }
 
-    impl super::super::Device for Uart {}
-
-    // We really should do better than this next time tbh
-    impl Print for Arc<RwSpinLock<Uart>> {
-        fn write_u8(&self, c: u8) -> Result<(), print::Error> {
-            let mut uart = self.lock_write();
-            uart.putchar(c);
+    impl super::super::interfaces::logger::Logger for Uart {
+        fn write_u8(&mut self, c: u8) -> Result<(), print::Error> {
+            self.putchar(c);
             Ok(())
         }
     }

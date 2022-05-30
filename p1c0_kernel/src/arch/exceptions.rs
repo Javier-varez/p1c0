@@ -1,7 +1,7 @@
 use crate::{
     arch::StackType,
     backtrace,
-    drivers::{generic_timer, interfaces::timer::Timer},
+    drivers::{generic_timer, interfaces::interrupt_controller, interfaces::timer::Timer},
     memory::address::VirtualAddress,
     prelude::*,
     process::{self, ProcessSymbolicator},
@@ -78,6 +78,16 @@ impl Default for ExceptionContext {
     }
 }
 
+fn print_interrupt() {
+    interrupt_controller::may_do_with_irq_controller(|irq_ctrler| {
+        if let Some((die, number, r#type)) = irq_ctrler.get_current_irq() {
+            log_debug!("Irq die {}", die);
+            log_debug!("Irq number {}", number);
+            log_debug!("Irq type {:?}", r#type);
+        }
+    });
+}
+
 /// Prints verbose information about the exception and then panics.
 fn default_exception_handler(exc: &ExceptionContext) {
     panic!(
@@ -116,13 +126,7 @@ fn handle_fiq(e: &mut ExceptionContext) {
     }
 
     log_info!("FIQ");
-    if let Some(aic) = unsafe { crate::drivers::aic::AIC.as_mut() } {
-        if let Some((die, number, r#type)) = aic.get_current_irq() {
-            log_debug!("Irq die {}", die);
-            log_debug!("Irq number {}", number);
-            log_debug!("Irq type {:?}", r#type);
-        }
-    }
+    print_interrupt();
     default_exception_handler(e);
 }
 
@@ -175,14 +179,7 @@ unsafe extern "C" fn current_el0_synchronous(e: &mut ExceptionContext) {
 #[no_mangle]
 unsafe extern "C" fn current_el0_irq(e: &mut ExceptionContext) {
     log_info!("IRQ from EL0 stack");
-
-    if let Some(aic) = &mut crate::drivers::aic::AIC {
-        if let Some((die, number, r#type)) = aic.get_current_irq() {
-            log_debug!("Irq die {}", die);
-            log_debug!("Irq number {}", number);
-            log_debug!("Irq type {:?}", r#type);
-        }
-    }
+    print_interrupt();
     default_exception_handler(e);
 }
 
@@ -210,15 +207,7 @@ unsafe extern "C" fn current_elx_fiq(e: &mut ExceptionContext) {
 #[no_mangle]
 unsafe extern "C" fn current_elx_irq(e: &mut ExceptionContext) {
     log_info!("IRQ");
-
-    if let Some(aic) = &mut crate::drivers::aic::AIC {
-        if let Some((die, number, r#type)) = aic.get_current_irq() {
-            log_debug!("Irq die {}", die);
-            log_debug!("Irq number {}", number);
-            log_debug!("Irq type {:?}", r#type);
-        }
-    }
-
+    print_interrupt();
     default_exception_handler(e);
 }
 
@@ -504,7 +493,7 @@ pub fn handling_init() {
 /// you need to immediately return from an exception without waiting for the handler to finish.
 /// It is also useful to return from exceptions that never happened (like transitioning to another
 /// thread, or starting the scheduler)
-pub fn return_from_exception(cx: ExceptionContext) -> ! {
+pub fn return_from_exception(_cx: ExceptionContext) -> ! {
     #[cfg(target_arch = "aarch64")]
     unsafe {
         barrier::dsb(barrier::SY);
@@ -531,7 +520,7 @@ pub fn return_from_exception(cx: ExceptionContext) -> ! {
         "ldp x28, x29, [x30, #0x100]",
         "ldr x30, [x30, #0x110]",
         "eret",
-        in("x30") (&cx) as *const _
+        in("x30") (&_cx) as *const _
         );
     }
     unreachable!();

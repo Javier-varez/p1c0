@@ -21,15 +21,21 @@ pub enum Error {
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-type DeviceRef = Arc<RwSpinLock<dyn Device>>;
+pub type DeviceRef = Arc<RwSpinLock<Dev>>;
 
 trait Driver {
     fn probe(&self, dev_path: &[AdtNode]) -> Result<DeviceRef>;
 }
 
-trait Device {
-    // What behaviors should devices expose?
+pub enum Dev {
+    Generic(Box<dyn Device>),
+    InterruptController(Box<dyn interfaces::interrupt_controller::InterruptController>),
+    Watchdog(Box<dyn interfaces::watchdog::Watchdog>),
+    Logger(Box<dyn interfaces::logger::Logger>),
 }
+
+// Generic Device that does not interact with the world
+pub trait Device {}
 
 // This just keeps devices alive for now, but should also allow to query devices from other devs.
 #[allow(dead_code)]
