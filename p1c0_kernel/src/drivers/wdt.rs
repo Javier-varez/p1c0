@@ -41,7 +41,11 @@ impl Wdt {
     }
 }
 
-impl super::Device for Wdt {}
+impl super::interfaces::watchdog::Watchdog for Wdt {
+    fn pet(&self) {
+        self.service()
+    }
+}
 
 struct WdtDriver {}
 
@@ -64,11 +68,18 @@ impl super::Driver for WdtDriver {
         regs.control.write(Control::ENABLE::SET);
 
         // We create a thread and service the watchdog there. If the OS halts the thread would not run, rebooting the device
-        let dev = Arc::new(RwSpinLock::new(Wdt { regs }));
+        let dev = Arc::new(RwSpinLock::new(super::Dev::Watchdog(Box::new(Wdt {
+            regs,
+        }))));
         {
             let dev = dev.clone();
             thread::Builder::new().name("Wdt").spawn(move || loop {
-                dev.lock_read().service();
+                match &*dev.lock_read() {
+                    super::Dev::Watchdog(wdt) => wdt.pet(),
+                    _ => {
+                        panic!("Device MUST be a watchdog")
+                    }
+                };
                 syscall::Syscall::sleep_us(1_000_000);
             });
         }

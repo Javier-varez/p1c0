@@ -1,5 +1,6 @@
 use crate::{
     collections::ring_buffer::{self, RingBuffer},
+    drivers::{Dev, DeviceRef},
     init::is_kernel_relocated,
     sync::spinlock::SpinLock,
     syscall::Syscall,
@@ -40,7 +41,7 @@ pub trait Print {
 // However, given it runs in a single-threaded context it should be mostly ok.
 static mut EARLY_PRINT: Option<*mut dyn EarlyPrint> = None;
 
-static PRINT: SpinLock<Option<*const dyn Print>> = SpinLock::new(None);
+static PRINT: SpinLock<Option<DeviceRef>> = SpinLock::new(None);
 
 const BUFFER_SIZE: usize = 1024 * 256;
 static BUFFER: RingBuffer<BUFFER_SIZE> = RingBuffer::new();
@@ -102,18 +103,35 @@ pub unsafe fn register_early_printer<T: EarlyPrint>(printer: &'static mut T) {
 }
 
 #[inline]
-pub fn init_printer<T: Print + Send + 'static>(printer: T) {
+pub fn register_printer(printer: DeviceRef) {
     let mut reader = BUFFER.split_reader().expect("The buffer is already split!");
+
+    match &*printer.lock_read() {
+        Dev::Logger(_) => {}
+        _ => {
+            panic!("Printer must be a Dev::Logger instance");
+        }
+    }
 
     crate::thread::Builder::new()
         .name("Printer")
         .spawn(move || {
-            let printer = printer;
-            PRINT.lock().replace(&printer as *const _);
+            PRINT.lock().replace(printer);
             loop {
                 match reader.pop() {
                     Ok(val) => {
-                        printer.write_u8(val).unwrap();
+                        let mut lock = PRINT.lock();
+                        if let Some(lock) = lock.as_mut() {
+                            let mut lock = lock.lock_write();
+                            match &mut *lock {
+                                Dev::Logger(logger) => {
+                                    logger.write_u8(val).unwrap();
+                                }
+                                _ => {
+                                    panic!("Printer must be a Dev::Logger instance");
+                                }
+                            };
+                        }
                     }
                     Err(ring_buffer::Error::WouldBlock) => {
                         // TODO(javier-varez): Sleep here waiting for condition to happen instead of looping
@@ -134,8 +152,20 @@ pub fn init_printer<T: Print + Send + 'static>(printer: T) {
 ///   Only callable from a single-threaded context if the reader thread is stuck
 pub unsafe fn force_flush() {
     let mut reader = BUFFER.split_reader_unchecked();
-    let printer = &**PRINT.lock().as_ref().unwrap();
-    while let Ok(val) = reader.pop() {
-        printer.write_u8(val).unwrap();
-    }
+    PRINT.access_inner_without_locking(|printer| {
+        printer
+            .as_ref()
+            .unwrap()
+            .access_inner_without_locking(|printer| {
+                let logger = match &mut *printer {
+                    Dev::Logger(logger) => logger,
+                    _ => {
+                        panic!("Printer must be a Dev::Logger instance");
+                    }
+                };
+                while let Ok(val) = reader.pop() {
+                    logger.write_u8(val).unwrap();
+                }
+            });
+    });
 }

@@ -182,6 +182,9 @@ impl<const SIZE: usize> RingBuffer<SIZE> {
         }
     }
 
+    /// # Safety
+    /// Should only be called when you are TOTALLY sure that there is no other reader already
+    /// active for the ring buffer
     pub unsafe fn split_reader_unchecked(&self) -> Reader<'_, SIZE> {
         loop {
             let split = self.split.load(Ordering::Relaxed);

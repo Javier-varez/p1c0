@@ -21,12 +21,11 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty)
     ) => {
-        #[cfg_attr(test, allow(unused_variables))]
-        pub fn $syscall_fn_name(arg0: $arg0_ty) {
+        pub fn $syscall_fn_name(_arg0: $arg0_ty) {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
                 core::arch::asm!(concat!("svc ", $syscall_idx),
-                                 in("x0") arg0 as u64
+                                 in("x0") _arg0 as u64
                 );
             }
         }
@@ -36,14 +35,13 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty)
     ) => {
-        #[cfg_attr(test, allow(unused_variables))]
-        pub fn $syscall_fn_name(arg0: $arg0_ty, arg1: $arg1_ty) {
+        pub fn $syscall_fn_name(_arg0: $arg0_ty, _arg1: $arg1_ty) {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
                 #[cfg(not(test))]
                 core::arch::asm!(concat!("svc ", $syscall_idx),
-                                 in("x0") arg0 as u64,
-                                 in("x1") arg1 as u64,
+                                 in("x0") _arg0 as u64,
+                                 in("x1") _arg1 as u64,
                 );
             }
         }
@@ -53,14 +51,13 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty)
     ) => {
-        #[cfg_attr(test, allow(unused_variables))]
-        pub fn $syscall_fn_name(arg0: $arg0_ty, arg1: $arg1_ty, arg2: $arg2_ty) {
+        pub fn $syscall_fn_name(_arg0: $arg0_ty, _arg1: $arg1_ty, _arg2: $arg2_ty) {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
                 core::arch::asm!(concat!("svc ", $syscall_idx),
-                                 in("x0") arg0 as u64,
-                                 in("x1") arg1 as u64,
-                                 in("x2") arg2 as u64,
+                                 in("x0") _arg0 as u64,
+                                 in("x1") _arg1 as u64,
+                                 in("x2") _arg2 as u64,
                 );
             }
         }
@@ -70,18 +67,17 @@ macro_rules! gen_syscall_caller {
         $syscall_fn_name: ident,
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty, $arg3_ty: ty)
     ) => {
-        #[cfg_attr(test, allow(unused_variables))]
-        pub fn $syscall_fn_name(arg0: $arg0_ty,
-                                arg1: $arg1_ty,
-                                arg2: $arg2_ty,
-                                arg3: $arg3_ty) {
+        pub fn $syscall_fn_name(_arg0: $arg0_ty,
+                                _arg1: $arg1_ty,
+                                _arg2: $arg2_ty,
+                                _arg3: $arg3_ty) {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
                 core::arch::asm!(concat!("svc ", $syscall_idx),
-                                 in("x0") arg0 as u64,
-                                 in("x1") arg1 as u64,
-                                 in("x2") arg2 as u64,
-                                 in("x3") arg3 as u64,
+                                 in("x0") _arg0 as u64,
+                                 in("x1") _arg1 as u64,
+                                 in("x2") _arg2 as u64,
+                                 in("x3") _arg3 as u64,
                 );
             }
         }
@@ -111,12 +107,12 @@ macro_rules! gen_syscall_caller {
         ($arg0_ty: ty) -> $ret_ty: ty
     ) => {
         #[cfg_attr(test, allow(unused_variables))]
-        pub fn $syscall_fn_name(arg0: $arg0_ty) -> $ret_ty {
+        pub fn $syscall_fn_name(_arg0: $arg0_ty) -> $ret_ty {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
                 let mut result: $ret_ty;
                 core::arch::asm!(concat!("svc ", $syscall_idx),
-                                 in("x0") arg0 as u64,
+                                 in("x0") _arg0 as u64,
                                  lateout("x0") result,
                 );
                 result
@@ -132,13 +128,13 @@ macro_rules! gen_syscall_caller {
         ($arg0_ty: ty, $arg1_ty: ty) -> $ret_ty: ty
     ) => {
         #[cfg_attr(test, allow(unused_variables))]
-        pub fn $syscall_fn_name(arg0: $arg0_ty, arg1: $arg1_ty) -> $ret_ty {
+        pub fn $syscall_fn_name(_arg0: $arg0_ty, _arg1: $arg1_ty) -> $ret_ty {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
                 let mut result: $ret_ty;
                 core::arch::asm!(concat!("svc ", $syscall_idx),
-                                 in("x0") arg0 as u64,
-                                 in("x1") arg1 as u64,
+                                 in("x0") _arg0 as u64,
+                                 in("x1") _arg1 as u64,
                                  lateout("x0") result,
                 );
                 result
@@ -154,14 +150,14 @@ macro_rules! gen_syscall_caller {
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty) -> $ret_ty: ty
     ) => {
         #[cfg_attr(test, allow(unused_variables))]
-        pub fn $syscall_fn_name(arg0: $arg0_ty, arg1: $arg1_ty, arg2: $arg2_ty) -> $ret_ty {
+        pub fn $syscall_fn_name(_arg0: $arg0_ty, _arg1: $arg1_ty, _arg2: $arg2_ty) -> $ret_ty {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
                 let mut result: $ret_ty;
                 core::arch::asm!(concat!("svc ", $syscall_idx),
-                                 in("x0") arg0 as u64,
-                                 in("x1") arg1 as u64,
-                                 in("x2") arg2 as u64,
+                                 in("x0") _arg0 as u64,
+                                 in("x1") _arg1 as u64,
+                                 in("x2") _arg2 as u64,
                                  lateout("x0") result,
                 );
                 result
@@ -177,18 +173,18 @@ macro_rules! gen_syscall_caller {
         ($arg0_ty: ty, $arg1_ty: ty, $arg2_ty: ty, $arg3_ty: ty) -> $ret_ty: ty
     ) => {
         #[cfg_attr(test, allow(unused_variables))]
-        pub fn $syscall_fn_name(arg0: $arg0_ty,
-                                arg1: $arg1_ty,
-                                arg2: $arg2_ty,
-                                arg3: $arg3_ty) -> $ret_ty {
+        pub fn $syscall_fn_name(_arg0: $arg0_ty,
+                                _arg1: $arg1_ty,
+                                _arg2: $arg2_ty,
+                                _arg3: $arg3_ty) -> $ret_ty {
             #[cfg(all(target_arch = "aarch64", not(test)))]
             unsafe {
                 let mut result: $ret_ty;
                 core::arch::asm!(concat!("svc ", $syscall_idx),
-                                 in("x0") arg0 as u64,
-                                 in("x1") arg1 as u64,
-                                 in("x2") arg2 as u64,
-                                 in("x3") arg3 as u64,
+                                 in("x0") _arg0 as u64,
+                                 in("x1") _arg1 as u64,
+                                 in("x2") _arg2 as u64,
+                                 in("x3") _arg3 as u64,
                                  lateout("x0") result,
                 );
                 result

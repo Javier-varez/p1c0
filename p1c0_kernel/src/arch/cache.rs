@@ -13,9 +13,9 @@ pub fn invalidate_va_range(mut va: VirtualAddress, size_bytes: usize) {
 
     for i in 0..num_lines {
         unsafe {
-            let _va = va.offset(i * CACHE_LINE_SIZE);
+            let _va = va.offset(i * CACHE_LINE_SIZE).as_usize();
             #[cfg(target_arch = "aarch64")]
-            core::arch::asm!("dc ivac, {}", in(reg) _va.as_usize());
+            core::arch::asm!("dc ivac, {}", in(reg) _va);
         }
     }
 
@@ -32,9 +32,9 @@ pub fn clean_va_range(mut va: VirtualAddress, size_bytes: usize) {
 
     for i in 0..num_lines {
         unsafe {
-            let _va = va.offset(i * CACHE_LINE_SIZE);
+            let _va = va.offset(i * CACHE_LINE_SIZE).as_usize();
             #[cfg(target_arch = "aarch64")]
-            core::arch::asm!("dc cvau, {}", in(reg) _va.as_usize());
+            core::arch::asm!("dc cvau, {}", in(reg) _va);
         }
     }
 

@@ -11,7 +11,7 @@ pub use crate::{error, log_debug, log_error, log_info, log_verbose, log_warning,
 pub use alloc::{
     boxed::Box,
     string::{String, ToString},
-    sync::Arc,
+    sync::{Arc, Weak},
     vec,
     vec::Vec,
 };

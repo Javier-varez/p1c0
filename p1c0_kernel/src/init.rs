@@ -4,7 +4,7 @@ use crate::{
     backtrace,
     boot_args::BootArgs,
     chickens, drivers,
-    drivers::{aic, generic_timer, interfaces::timer::Timer, uart},
+    drivers::{generic_timer, interfaces::timer::Timer, uart},
     memory::{
         self,
         address::{Address, PhysicalAddress, VirtualAddress},
@@ -132,21 +132,13 @@ unsafe fn kernel_prelude() {
 
     // Enable FPU usage both in EL1 and EL0
     CPACR.modify(CPACR::FPEN::Enable);
-
     memory::MemoryManager::instance().late_init();
-
     exceptions::handling_init();
 
-    let aic = aic::Aic::probe("/arm-io/aic").unwrap();
-    aic::AIC.replace(aic);
-
-    // Initialize periodic timer
     const TIMESTEP: Duration = Duration::from_millis(1);
     generic_timer::get_timer().initialize(TIMESTEP);
 
-    // Invoke all initcalls functions
     run_initcalls();
-
     probe_devices();
 
     kernel_main();

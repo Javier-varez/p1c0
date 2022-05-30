@@ -1,7 +1,13 @@
+use super::interfaces::interrupt_controller::{InterruptController, IrqType};
 use crate::{
-    adt::get_adt,
+    adt::{self},
+    error,
     memory::{self, address::Address, MemoryManager},
+    prelude::*,
+    sync::spinlock::RwSpinLock,
 };
+
+use p1c0_macros::initcall;
 
 use tock_registers::{
     interfaces::{Readable, Writeable},
@@ -14,11 +20,18 @@ pub enum Error {
     NotCompatible,
     ProbeError(memory::Error),
     InvalidIrqNumber,
+    InvalidAdtNode,
 }
 
-impl From<memory::Error> for Error {
+impl From<memory::Error> for Box<dyn error::Error> {
     fn from(error: memory::Error) -> Self {
-        Self::ProbeError(error)
+        Box::new(Error::ProbeError(error))
+    }
+}
+
+impl error::Error for Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
     }
 }
 
@@ -86,13 +99,6 @@ struct AicEventRegs {
     event: ReadWrite<u32, Event::Register>,
 }
 
-#[derive(Debug)]
-pub enum IrqType {
-    FIQ,
-    HW,
-    IPI,
-}
-
 pub struct Aic {
     global_regs: &'static mut AicGlobalRegs,
     irq_regs: &'static mut AicRegs,
@@ -100,15 +106,11 @@ pub struct Aic {
 }
 
 impl Aic {
-    pub fn probe(device_path: &str) -> Result<Self, Error> {
-        let adt = get_adt().expect("Could not get adt");
-
-        let node = adt.find_node(device_path).ok_or(Error::NotCompatible)?;
-        if !node.is_compatible("aic,2") {
-            return Err(Error::NotCompatible);
-        }
-
-        let (aic_pa, size) = adt.get_device_addr(device_path, 0).unwrap();
+    pub fn probe(dev_path: &[adt::AdtNode]) -> Result<super::DeviceRef, Box<dyn error::Error>> {
+        let adt = adt::get_adt().expect("Could not get adt");
+        let (aic_pa, size) = adt
+            .get_device_addr_from_nodes(dev_path, 0)
+            .ok_or_else(|| Box::new(Error::InvalidAdtNode) as Box<dyn error::Error>)?;
 
         let va = MemoryManager::instance().map_io("aic", aic_pa, size)?;
 
@@ -126,55 +128,55 @@ impl Aic {
         instance.mask_all()?;
         instance.global_regs.config.write(Config::Enable::SET);
 
+        let instance = Arc::new(RwSpinLock::new(super::Dev::InterruptController(Box::new(
+            instance,
+        ))));
+        super::interfaces::interrupt_controller::register_interrupt_controller(instance.clone());
+
         Ok(instance)
     }
 
-    fn offset_for_irq_number(&self, irq_number: u32) -> Result<(u32, u32), Error> {
+    fn offset_for_irq_number(&self, irq_number: u32) -> Result<(u32, u32), Box<dyn error::Error>> {
         if irq_number >= self.num_interrupts() {
-            return Err(Error::InvalidIrqNumber);
+            return Err(Box::new(Error::InvalidIrqNumber));
         }
 
         let reg_offset = irq_number / 32;
         let bit_offset = irq_number % 32;
         Ok((reg_offset, bit_offset))
     }
+}
 
-    pub fn mask_interrupt(&mut self, irq_number: u32) -> Result<(), Error> {
+impl InterruptController for Aic {
+    fn num_interrupts(&self) -> u32 {
+        self.global_regs.info1.read(Info1::IrqNr)
+    }
+
+    fn mask_interrupt(&mut self, irq_number: u32) -> Result<(), Box<dyn error::Error>> {
         let (reg_offset, bit_offset) = self.offset_for_irq_number(irq_number)?;
         self.irq_regs.mask_set[reg_offset as usize].set(1 << bit_offset);
         Ok(())
     }
 
-    pub fn unmask_interrupt(&mut self, irq_number: u32) -> Result<(), Error> {
+    fn unmask_interrupt(&mut self, irq_number: u32) -> Result<(), Box<dyn error::Error>> {
         let (reg_offset, bit_offset) = self.offset_for_irq_number(irq_number)?;
         self.irq_regs.mask_clr[reg_offset as usize].set(1 << bit_offset);
         Ok(())
     }
 
-    pub fn set_interrupt(&mut self, irq_number: u32) -> Result<(), Error> {
+    fn set_interrupt(&mut self, irq_number: u32) -> Result<(), Box<dyn error::Error>> {
         let (reg_offset, bit_offset) = self.offset_for_irq_number(irq_number)?;
         self.irq_regs.sw_set[reg_offset as usize].set(1 << bit_offset);
         Ok(())
     }
 
-    pub fn clear_interrupt(&mut self, irq_number: u32) -> Result<(), Error> {
+    fn clear_interrupt(&mut self, irq_number: u32) -> Result<(), Box<dyn error::Error>> {
         let (reg_offset, bit_offset) = self.offset_for_irq_number(irq_number)?;
         self.irq_regs.sw_clr[reg_offset as usize].set(1 << bit_offset);
         Ok(())
     }
 
-    pub fn num_interrupts(&self) -> u32 {
-        self.global_regs.info1.read(Info1::IrqNr)
-    }
-
-    pub fn mask_all(&mut self) -> Result<(), Error> {
-        for i in 0..self.num_interrupts() {
-            self.mask_interrupt(i)?;
-        }
-        Ok(())
-    }
-
-    pub fn get_current_irq(&mut self) -> Option<(u32, u32, IrqType)> {
+    fn get_current_irq(&mut self) -> Option<(u32, u32, IrqType)> {
         let reg = self.event_regs.event.extract();
 
         if reg.get() == 0 {
@@ -198,4 +200,19 @@ impl Aic {
     }
 }
 
-pub static mut AIC: Option<Aic> = None;
+impl super::Device for Aic {}
+
+struct AicDriver {}
+
+impl super::Driver for AicDriver {
+    fn probe(&self, dev_path: &[adt::AdtNode]) -> super::Result<super::DeviceRef> {
+        log_error!("Probing aic driver");
+        let dev = Aic::probe(dev_path).map_err(|e| super::Error::DeviceSpecificError(e))?;
+        Ok(dev)
+    }
+}
+
+#[initcall(priority = 0)]
+fn register_aic_driver() {
+    super::register_driver("aic,2", Box::new(AicDriver {})).unwrap();
+}
