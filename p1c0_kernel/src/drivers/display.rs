@@ -72,7 +72,7 @@ extern "C" {
 }
 
 impl Display {
-    pub fn map_fb(base: *mut u32, size: usize) -> Result<*mut u32, memory::Error> {
+    fn map_fb(base: *mut u32, size: usize) -> Result<*mut u32, memory::Error> {
         let pa = PhysicalAddress::try_from_ptr(base as *const u8).expect("Framebuffer is aligned");
         let la = pa
             .try_into_logical()

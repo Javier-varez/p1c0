@@ -3,7 +3,6 @@
 #![feature(maybe_uninit_as_bytes)]
 #![feature(maybe_uninit_slice)]
 #![feature(no_coverage)]
-#![cfg_attr(test, feature(scoped_threads))]
 
 pub mod adt;
 pub mod arch;
