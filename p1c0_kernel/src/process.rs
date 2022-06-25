@@ -126,11 +126,7 @@ impl Builder {
                 pa,
                 GlobalPermissions::new_only_privileged(Permissions::RW),
                 |va| unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        page_data.as_ptr(),
-                        va.as_mut_ptr(),
-                        page_data.len(),
-                    );
+                    core::ptr::copy_nonoverlapping(page_data.as_ptr(), va.as_mut_ptr(), chunk_size);
                 },
             );
 
