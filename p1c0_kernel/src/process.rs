@@ -25,6 +25,7 @@ pub enum Error {
     InvalidBase,
     ElfError(elf::Error),
     UnsupportedExecutable,
+    UnalignedLoadableSegment,
     NoEntryPoint,
 }
 
@@ -332,7 +333,7 @@ impl Builder {
     }
 
     pub fn new_from_elf_data(name: &str, elf_data: Vec<u8>, aslr: usize) -> Result<Builder, Error> {
-        let elf = ElfParser::from_slice(&elf_data[..]).map_err(|_| Error::UnsupportedExecutable)?;
+        let elf = ElfParser::from_slice(&elf_data[..]).map_err(|e| Error::ElfError(e))?;
         if !matches!(
             elf.elf_type(),
             elf::EType::Executable | elf::EType::SharedObject
@@ -343,7 +344,7 @@ impl Builder {
 
         let mut process_builder = Builder::new();
         for header in elf.program_header_iter() {
-            let header_type = header.ty().map_err(|_| Error::UnsupportedExecutable)?;
+            let header_type = header.ty().map_err(|e| Error::ElfError(e))?;
             if matches!(header_type, elf::PtType::Load) {
                 log_debug!(
                     "Virtual addr 0x{:x}, Physical addr 0x{:x}, Size in process {} Size in file {}",
@@ -355,7 +356,7 @@ impl Builder {
 
                 let vaddr = (header.vaddr() as usize + aslr) as *const _;
                 let vaddr = VirtualAddress::try_from_ptr(vaddr)
-                    .map_err(|_| Error::UnsupportedExecutable)?;
+                    .map_err(|_| Error::UnalignedLoadableSegment)?;
 
                 let segment_data = elf.get_segment_data(&header);
 
@@ -393,7 +394,7 @@ impl Builder {
 
                 process_builder.map_section(
                     elf.matching_section_name(&header)
-                        .map_err(|_| Error::UnsupportedExecutable)?
+                        .map_err(|e| Error::ElfError(e))?
                         .unwrap_or(""),
                     vaddr,
                     header.memsize() as usize,
@@ -503,7 +504,7 @@ pub(crate) fn kill_current_process(
     let killed_proc = processes.iter_mut().find(|p| p.pid == pid.0).unwrap();
 
     log_info!(
-        "Killing process with PID {}, exit code {}",
+        "Killing process with PID {}, exit code 0x{:x}",
         killed_proc.pid,
         error_code
     );
