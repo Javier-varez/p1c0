@@ -386,6 +386,7 @@ impl fmt::Display for ExceptionContext {
 
         writeln!(f, "{}", self.spsr_el1)?;
         writeln!(f, "ELR_EL1: {:#018x}", self.elr_el1)?;
+        writeln!(f, "SP_EL0: {:#018x}", self.sp_el0)?;
         writeln!(f)?;
         writeln!(f, "General purpose register:")?;
 
