@@ -639,7 +639,8 @@ define_enum! {
         FiniArray = 15,
         PreinitArray = 16,
         Group = 17,
-        SymtabShndx = 18
+        SymtabShndx = 18,
+        GnuHash = 0x6FFFFFF6
     ],
     InvalidShType
 }
