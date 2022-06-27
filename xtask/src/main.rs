@@ -1,3 +1,6 @@
+mod drivers;
+mod userspace;
+
 use std::io::{Read, Write};
 use std::process::exit;
 use xshell::{cmd, mkdir_p, pushd, pushenv, rm_rf, Pushenv};
@@ -43,18 +46,14 @@ enum Options {
 }
 
 const FW_DIR: &str = "fw";
-const USERSPACE_DIR: &str = "userspace";
-const BUILD_DIR: &str = "build";
 const ROOTFS_DIR: &str = "build/rootfs";
 const ROOTFS_FILE: &str = "build/rootfs.cpio";
 
 fn build_rootfs() -> Result<(), anyhow::Error> {
     mkdir_p(ROOTFS_DIR)?;
 
-    // Build userspace binaries
-    cmd!("cmake -S {USERSPACE_DIR} -B {BUILD_DIR}/{USERSPACE_DIR} -DCMAKE_TOOLCHAIN_FILE=toolchain/aarch64.cmake -DCMAKE_SYSTEM_NAME=Generic").run()?;
-    cmd!("cmake --build {BUILD_DIR}/{USERSPACE_DIR}").run()?;
-    cmd!("cmake --install {BUILD_DIR}/{USERSPACE_DIR} --prefix {ROOTFS_DIR}").run()?;
+    userspace::build()?;
+    drivers::build()?;
 
     let rootfs_cpio_data = {
         let _dir = pushd(ROOTFS_DIR);

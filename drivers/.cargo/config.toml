@@ -1,0 +1,16 @@
+[build]
+target = "aarch64-unknown-none-softfloat"
+
+[target.aarch64-unknown-none-softfloat]
+rustflags = [
+    "-C", "link-arg=-Tdriver.ld",
+    "-C", "relocation-model=pic",
+    "-C", "link-arg=--no-apply-dynamic-relocs",
+    "-C", "link-arg=-pie",
+    "-C", "link-args=-z nocopyreloc",
+    "-C", "link-args=-z notext",
+    "-C", "force-frame-pointers=yes"
+]
+
+[target.'cfg(target_os = "none")']
+runner = "m1_runner"

@@ -76,29 +76,22 @@ fn kernel_entry() {
         }
     });
 
-    let filename = "/bin/basic_test";
-    let mut file = p1c0_kernel::filesystem::VirtualFileSystem::open(
-        filename,
-        p1c0_kernel::filesystem::OpenMode::Read,
-    )
-    .unwrap();
-
-    let mut elf_data = vec![];
-    elf_data.resize(file.size, 0);
-    p1c0_kernel::filesystem::VirtualFileSystem::read(&mut file, &mut elf_data[..]).unwrap();
-    p1c0_kernel::filesystem::VirtualFileSystem::close(file);
-
-    // We start two instances of the process. One of them will contain different number of arguments
-    p1c0_kernel::process::Builder::new_from_elf_data(filename, elf_data.clone(), 0)
-        .unwrap()
-        .start()
+    thread::spawn(move || {
+        let filename = "/bin/virtio";
+        let mut file = p1c0_kernel::filesystem::VirtualFileSystem::open(
+            filename,
+            p1c0_kernel::filesystem::OpenMode::Read,
+        )
         .unwrap();
 
-    let mut builder =
-        p1c0_kernel::process::Builder::new_from_elf_data(filename, elf_data.clone(), 0x30000)
-            .unwrap();
-    builder.push_argument("additionalArgument");
-    builder.start().unwrap();
+        let mut elf_data = vec![];
+        elf_data.resize(file.size, 0);
+        p1c0_kernel::filesystem::VirtualFileSystem::read(&mut file, &mut elf_data[..]).unwrap();
+        p1c0_kernel::filesystem::VirtualFileSystem::close(file);
+        let builder =
+            p1c0_kernel::process::Builder::new_from_elf_data(filename, elf_data, 0).unwrap();
+        builder.start().unwrap();
+    });
 
     thread::initialize();
 }

@@ -9,5 +9,6 @@ members = [
 
 exclude = [
     "xtask",
-    "fw"
+    "fw",
+    "drivers"
 ]

@@ -1,0 +1,11 @@
+[workspace]
+
+members = [
+    "driver-helper",
+    "stdlib",
+    "virtio"
+]
+
+exclude = [
+    "driver-build",
+]
