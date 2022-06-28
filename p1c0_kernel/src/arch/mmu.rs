@@ -316,7 +316,7 @@ impl TranslationLevel {
     }
 
     fn supports_block_descriptors(&self) -> bool {
-        matches!(*self, TranslationLevel::Level2 | TranslationLevel::Level3)
+        matches!(*self, TranslationLevel::Level2)
     }
 
     fn address_range_size(&self) -> usize {
@@ -367,6 +367,7 @@ impl TranslationLevel {
 
 /// Levels must be aligned at least at 16KB according to the translation granule.
 /// In addition, each level must be 11 bits, that's why we have 2048 entries in a level table
+/// Happy coincidence this is just enough memory that fits in a single 16KB page
 #[repr(C, align(0x4000))]
 pub struct LevelTable {
     table: [DescriptorEntry; 2048],
@@ -531,6 +532,7 @@ impl LevelTable {
                 descriptor_entry.ty(),
                 DescriptorType::Block | DescriptorType::Page
             ) {
+                // FIXME(javier-varez): Check permission bits and attributes too!
                 if descriptor_entry.pa().expect("Desc is a page/block") != pa {
                     return Err(Error::OverlapsExistingMapping(va, level));
                 } else {

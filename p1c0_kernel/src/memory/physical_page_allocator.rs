@@ -14,6 +14,15 @@ pub enum Error {
     /// Contains the overlap region
     RegionOverlapsWith(PhysicalAddress, usize),
     NoMemoryAvailable,
+    WouldAllocateMemory,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Options {
+    // Can allocate memory if needed
+    Default,
+    // Never allocates memory
+    NeverAllocate,
 }
 
 fn pfn_from_pa(pa: PhysicalAddress) -> usize {
@@ -100,6 +109,7 @@ impl PhysicalPageAllocator {
         &mut self,
         pa: PhysicalAddress,
         num_pages: usize,
+        options: Options,
     ) -> Result<(), Error> {
         log_info!(
             "PhysicalPageAllocator - Adding region with base address {}, num_pages {}",
@@ -160,6 +170,10 @@ impl PhysicalPageAllocator {
                 drop(boxed);
             });
         } else {
+            if options == Options::NeverAllocate {
+                return Err(Error::WouldAllocateMemory);
+            }
+
             let region = Box::new(IntrusiveItem::new(PhysicalMemoryRegion::new(pa, num_pages)));
             self.regions.push(OwnedMutPtr::new_from_box(region));
         }
@@ -173,6 +187,7 @@ impl PhysicalPageAllocator {
         &mut self,
         pa: PhysicalAddress,
         num_pages: usize,
+        options: Options,
     ) -> Result<(), Error> {
         log_info!(
             "PhysicalPageAllocator - Stealing region with base address {}, num_pages {}",
@@ -213,7 +228,11 @@ impl PhysicalPageAllocator {
         } else {
             // We need to split the region unfortunately, which means allocating another region
             // object
-            //
+
+            if options == Options::NeverAllocate {
+                return Err(Error::WouldAllocateMemory);
+            }
+
             let first_pa = region.pa;
             let first_num_pages = pa.offset_from(first_pa) as usize >> PAGE_BITS;
 
@@ -249,12 +268,17 @@ impl PhysicalPageAllocator {
         &mut self,
         pa: PhysicalAddress,
         num_pages: usize,
+        options: Options,
     ) -> Result<PhysicalMemoryRegion, Error> {
-        self.steal_region(pa, num_pages)?;
+        self.steal_region(pa, num_pages, options)?;
         Ok(PhysicalMemoryRegion::new(pa, num_pages))
     }
 
-    pub fn request_any_pages(&mut self, num_pages: usize) -> Result<PhysicalMemoryRegion, Error> {
+    pub fn request_any_pages(
+        &mut self,
+        num_pages: usize,
+        options: Options,
+    ) -> Result<PhysicalMemoryRegion, Error> {
         let mut pa = None;
         for region in self.regions.iter() {
             if region.num_pages >= num_pages {
@@ -264,14 +288,18 @@ impl PhysicalPageAllocator {
         }
 
         if let Some(pa) = pa {
-            self.request_pages(pa, num_pages)
+            self.request_pages(pa, num_pages, options)
         } else {
             Err(Error::NoMemoryAvailable)
         }
     }
 
-    pub fn release_pages(&mut self, region: PhysicalMemoryRegion) -> Result<(), Error> {
-        self.add_region(region.pa, region.num_pages)?;
+    pub fn release_pages(
+        &mut self,
+        region: PhysicalMemoryRegion,
+        options: Options,
+    ) -> Result<(), Error> {
+        self.add_region(region.pa, region.num_pages, options)?;
         Ok(())
     }
 }
@@ -286,7 +314,9 @@ mod test {
         let dram_base = PhysicalAddress::try_from_ptr(0x10000000000 as *const _).unwrap();
         let num_pages = (32 * 1024 * 1024 * 1024) >> PAGE_BITS;
 
-        allocator.add_region(dram_base, num_pages).unwrap();
+        allocator
+            .add_region(dram_base, num_pages, Options::Default)
+            .unwrap();
 
         assert_eq!(
             allocator
@@ -304,7 +334,9 @@ mod test {
         let dram_base = PhysicalAddress::try_from_ptr(0x10000000000 as *const _).unwrap();
         let num_pages = (32 * 1024 * 1024 * 1024) >> PAGE_BITS;
 
-        allocator.add_region(dram_base, num_pages).unwrap();
+        allocator
+            .add_region(dram_base, num_pages, Options::Default)
+            .unwrap();
 
         assert_eq!(
             allocator
@@ -317,7 +349,9 @@ mod test {
 
         let region_base = PhysicalAddress::try_from_ptr(0x10000074000 as *const _).unwrap();
         let num_pages = 7;
-        allocator.steal_region(region_base, num_pages).unwrap();
+        allocator
+            .steal_region(region_base, num_pages, Options::Default)
+            .unwrap();
 
         let second_base = unsafe { PhysicalAddress::new_unchecked(0x10000090000 as *const _) };
         assert_eq!(
@@ -334,15 +368,21 @@ mod test {
 
         let region_base = PhysicalAddress::try_from_ptr(0x10000090000 as *const _).unwrap();
         let num_pages = 9;
-        allocator.steal_region(region_base, num_pages).unwrap();
+        allocator
+            .steal_region(region_base, num_pages, Options::Default)
+            .unwrap();
 
         let region_base = PhysicalAddress::try_from_ptr(0x100000b4000 as *const _).unwrap();
         let num_pages = 46;
-        allocator.steal_region(region_base, num_pages).unwrap();
+        allocator
+            .steal_region(region_base, num_pages, Options::Default)
+            .unwrap();
 
         let region_base = PhysicalAddress::try_from_ptr(0x1000016c000 as *const _).unwrap();
         let num_pages = 262144;
-        allocator.steal_region(region_base, num_pages).unwrap();
+        allocator
+            .steal_region(region_base, num_pages, Options::Default)
+            .unwrap();
 
         let third_base = unsafe { PhysicalAddress::new_unchecked(0x1010016c000 as *const _) };
         assert_eq!(
@@ -356,5 +396,42 @@ mod test {
                 PhysicalMemoryRegion::new(third_base, 1834917)
             ]
         );
+    }
+
+    #[test]
+    fn add_region_would_allocate() {
+        let mut allocator = PhysicalPageAllocator::new();
+        let dram_base = PhysicalAddress::try_from_ptr(0x10000000000 as *const _).unwrap();
+        let num_pages = (32 * 1024 * 1024 * 1024) >> PAGE_BITS;
+
+        allocator
+            .add_region(dram_base, num_pages, Options::Default)
+            .unwrap();
+
+        let another_contiguous_dram_region =
+            PhysicalAddress::try_from_ptr(0x108_0000_0000 as *const _).unwrap();
+        allocator
+            .add_region(
+                another_contiguous_dram_region,
+                num_pages,
+                Options::NeverAllocate,
+            )
+            .unwrap();
+
+        assert_eq!(
+            allocator
+                .regions
+                .iter()
+                .map(|region| (**region).clone())
+                .collect::<Vec<_>>(),
+            vec![PhysicalMemoryRegion::new(dram_base, num_pages * 2)]
+        );
+
+        let a_non_contiguous_region =
+            PhysicalAddress::try_from_ptr(0x200_0000_0000 as *const _).unwrap();
+        let err = allocator
+            .add_region(a_non_contiguous_region, num_pages, Options::NeverAllocate)
+            .unwrap_err();
+        assert!(matches!(err, Error::WouldAllocateMemory));
     }
 }

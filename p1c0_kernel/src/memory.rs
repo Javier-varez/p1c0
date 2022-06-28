@@ -317,9 +317,11 @@ impl MemoryManager {
         permissions: Permissions,
     ) -> Result<(), Error> {
         // Request pages from the PhysicalPageAllocator
-        let region = self
-            .physical_page_allocator
-            .request_pages(la.into_physical(), num_pages_from_bytes(size_bytes))?;
+        let region = self.physical_page_allocator.request_pages(
+            la.into_physical(),
+            num_pages_from_bytes(size_bytes),
+            physical_page_allocator::Options::Default,
+        )?;
 
         // Getting the logical range must succeed because we got ownership of the pages and this is
         // a logical mapping (one-to-one address)
@@ -401,7 +403,9 @@ impl MemoryManager {
         num_pages: usize,
         policy: AllocPolicy,
     ) -> Result<PhysicalMemoryRegion, Error> {
-        let pmr = self.physical_page_allocator.request_any_pages(num_pages)?;
+        let pmr = self
+            .physical_page_allocator
+            .request_any_pages(num_pages, physical_page_allocator::Options::Default)?;
 
         if policy == AllocPolicy::ZeroFill {
             for page_idx in 0..pmr.num_pages() {
@@ -421,8 +425,10 @@ impl MemoryManager {
         &mut self,
         physical_memory_region: PhysicalMemoryRegion,
     ) -> Result<(), Error> {
-        self.physical_page_allocator
-            .release_pages(physical_memory_region)?;
+        self.physical_page_allocator.release_pages(
+            physical_memory_region,
+            physical_page_allocator::Options::Default,
+        )?;
         Ok(())
     }
 
@@ -435,22 +441,32 @@ impl MemoryManager {
     ) -> Result<(), Error> {
         // We initialize the physical page allocator with memory from the DRAM
         let dram_pages = num_pages_from_bytes(dram_size);
-        self.physical_page_allocator
-            .add_region(dram_base, dram_pages)?;
+        self.physical_page_allocator.add_region(
+            dram_base,
+            dram_pages,
+            physical_page_allocator::Options::Default,
+        )?;
 
         // Remove kernel pages
         for section_id in map::ALL_SECTIONS.iter() {
             let section = map::KernelSection::from_id(*section_id);
             let physical_addr = section.pa();
             let num_pages = num_pages_from_bytes(section.size_bytes());
-            self.physical_page_allocator
-                .steal_region(physical_addr, num_pages)?;
+            self.physical_page_allocator.steal_region(
+                physical_addr,
+                num_pages,
+                physical_page_allocator::Options::Default,
+            )?;
         }
 
         // Remove ADT regions
         let device_tree_pages = num_pages_from_bytes(device_tree_size);
         self.physical_page_allocator
-            .steal_region(device_tree_base, device_tree_pages)
+            .steal_region(
+                device_tree_base,
+                device_tree_pages,
+                physical_page_allocator::Options::Default,
+            )
             .expect("Cannot steal ADT region");
 
         self.physical_page_allocator.print_regions();
