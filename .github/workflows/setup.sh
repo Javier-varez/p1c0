@@ -26,11 +26,13 @@ get_qemu_install_path() {
 get_gcc_install_path() {
     if [ "darwin" == $OS ]; then
         OS_ADDEND="-darwin"
+        GCC_ARCH=x86_64
     else
         OS_ADDEND=""
+        GCC_ARCH=${ARCH}
     fi
 
-    echo "${GCC_DIR}/gcc-arm-${GCC_VERSION}${OS_ADDEND}-${ARCH}-aarch64-none-elf/bin"
+    echo "${GCC_DIR}/gcc-arm-${GCC_VERSION}${OS_ADDEND}-${GCC_ARCH}-aarch64-none-elf/bin"
 }
 
 download_qemu() {
