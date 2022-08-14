@@ -63,16 +63,19 @@ fn kernel_entry() {
 
     #[cfg(not(feature = "emulator"))]
     thread::Builder::new().name("HID").spawn(move || {
-        let spi3 = unsafe { Spi::new("/arm-io/spi3").unwrap() };
-        let gpio0_bank = unsafe { GpioBank::new("/arm-io/gpio0").unwrap() };
-        let nub_gpio0_bank = unsafe { GpioBank::new("/arm-io/nub-gpio0").unwrap() };
+        if let Ok(spi3) = unsafe { Spi::new("/arm-io/spi3") } {
+            if let Ok(gpio0_bank) = unsafe { GpioBank::new("/arm-io/gpio0") } {
+                let nub_gpio0_bank = unsafe { GpioBank::new("/arm-io/nub-gpio0").unwrap() };
 
-        let mut hid_dev =
-            unsafe { HidDev::new("/arm-io/spi3/ipd", spi3, &gpio0_bank, &nub_gpio0_bank).unwrap() };
-        hid_dev.power_on();
-        loop {
-            // Handle HID events
-            hid_dev.process();
+                let mut hid_dev = unsafe {
+                    HidDev::new("/arm-io/spi3/ipd", spi3, &gpio0_bank, &nub_gpio0_bank).unwrap()
+                };
+                hid_dev.power_on();
+                loop {
+                    // Handle HID events
+                    hid_dev.process();
+                }
+            }
         }
     });
 
