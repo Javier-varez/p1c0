@@ -1,3 +1,23 @@
+mod sys_impl_apl_ehid0 {
+    tock_registers::register_bitfields! { u64,
+        pub SYS_IMPL_APL_EHID0 [
+            BLI_UNK32 OFFSET(32) NUMBITS(1) [],
+        ]
+    }
+
+    crate::define_register!(
+        SYS_IMPL_APL_EHID0,
+        SYS_IMPL_APL_EHID0::Register,
+        3,
+        0,
+        15,
+        0,
+        1
+    );
+}
+
+pub use sys_impl_apl_ehid0::SYS_IMPL_APL_EHID0;
+
 mod sys_impl_apl_ehid4 {
     tock_registers::register_bitfields! { u64,
         pub SYS_IMPL_APL_EHID4 [
@@ -70,6 +90,7 @@ mod sys_impl_apl_ehid9 {
     tock_registers::register_bitfields! { u64,
         pub SYS_IMPL_APL_EHID9 [
             DEV_THROTTLE_2_ENABLE OFFSET(5) NUMBITS(1) [],
+            DEV_THROTTLE_2_LIMIT OFFSET(6) NUMBITS(6) [],
         ]
     }
 
@@ -106,6 +127,26 @@ mod sys_impl_apl_ehid10 {
 }
 
 pub use sys_impl_apl_ehid10::SYS_IMPL_APL_EHID10;
+
+mod sys_impl_apl_ehid18 {
+    tock_registers::register_bitfields! { u64,
+        pub SYS_IMPL_APL_EHID18 [
+            BLZ_UNK34 OFFSET(34) NUMBITS(1) [],
+        ]
+    }
+
+    crate::define_register!(
+        SYS_IMPL_APL_EHID18,
+        SYS_IMPL_APL_EHID18::Register,
+        3,
+        0,
+        15,
+        11,
+        3
+    );
+}
+
+pub use sys_impl_apl_ehid18::SYS_IMPL_APL_EHID18;
 
 mod sys_impl_apl_ehid20 {
     tock_registers::register_bitfields! { u64,

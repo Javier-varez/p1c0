@@ -3,12 +3,34 @@ use crate::{prelude::*, registers::*};
 use cortex_a::registers::*;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
-const MIDR_PART_T8103_ICESTORM: u64 = 0x22;
-const MIDR_PART_T8103_FIRESTORM: u64 = 0x23;
-const MIDR_PART_T6000_ICESTORM: u64 = 0x24;
-const MIDR_PART_T6000_FIRESTORM: u64 = 0x25;
-const MIDR_PART_T6001_ICESTORM: u64 = 0x28;
-const MIDR_PART_T6001_FIRESTORM: u64 = 0x29;
+#[derive(Debug)]
+enum PartNumbers {
+    T8103Icestorm = 0x22,
+    T8103Firestorm = 0x23,
+    T6000Icestorm = 0x24,
+    T6000Firestorm = 0x25,
+    T6001Icestorm = 0x28,
+    T6001Firestorm = 0x29,
+    T8112Blizzard = 0x32,
+    T8112Avalanche = 0x33,
+}
+
+impl TryFrom<u64> for PartNumbers {
+    type Error = ();
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        match value {
+            0x22 => Ok(PartNumbers::T8103Icestorm),
+            0x23 => Ok(PartNumbers::T8103Firestorm),
+            0x24 => Ok(PartNumbers::T6000Icestorm),
+            0x25 => Ok(PartNumbers::T6000Firestorm),
+            0x28 => Ok(PartNumbers::T6001Icestorm),
+            0x29 => Ok(PartNumbers::T6001Firestorm),
+            0x32 => Ok(PartNumbers::T8112Blizzard),
+            0x33 => Ok(PartNumbers::T8112Avalanche),
+            _ => Err(()),
+        }
+    }
+}
 
 fn is_ecore() -> bool {
     let mpidr = MPIDR_EL1.get();
@@ -42,6 +64,17 @@ fn init_m1_icestorm() {
     SYS_IMPL_APL_EHID20.modify(SYS_IMPL_APL_EHID20::FORCE_NONSPEC_TARGETED_TIMER_SEL.val(3));
 }
 
+fn init_common_blizzard() {
+    SYS_IMPL_APL_EHID0.modify(SYS_IMPL_APL_EHID0::BLI_UNK32::SET);
+}
+
+fn init_m2_blizzard() {
+    init_common_blizzard();
+
+    SYS_IMPL_APL_EHID9.modify(SYS_IMPL_APL_EHID9::DEV_THROTTLE_2_LIMIT.val(60));
+    SYS_IMPL_APL_EHID9.modify(SYS_IMPL_APL_EHID9::DEV_THROTTLE_2_ENABLE::SET);
+}
+
 pub fn init_cpu() {
     OSLAR_EL1.set(0);
 
@@ -55,18 +88,22 @@ pub fn init_cpu() {
         );
     }
 
-    let part = MIDR_EL1.read(MIDR_EL1::PartNum);
+    let part: PartNumbers = MIDR_EL1
+        .read(MIDR_EL1::PartNum)
+        .try_into()
+        .expect("Unknown CPU part number");
     let revision = MIDR_EL1.read(MIDR_EL1::Revision);
-    log_debug!("Part number: {}, Revision: {}", part, revision);
+    log_debug!("Part number: {:?}, Revision: {}", part, revision);
 
     match part {
-        MIDR_PART_T6000_FIRESTORM => todo!(),
-        MIDR_PART_T6000_ICESTORM => init_m1_icestorm(),
-        MIDR_PART_T6001_FIRESTORM => todo!(),
-        MIDR_PART_T6001_ICESTORM => init_m1_icestorm(),
-        MIDR_PART_T8103_FIRESTORM => todo!(),
-        MIDR_PART_T8103_ICESTORM => init_m1_icestorm(),
-        _ => panic!("Unknown CPU type!"),
+        PartNumbers::T6001Firestorm => todo!(),
+        PartNumbers::T6001Icestorm => init_m1_icestorm(),
+        PartNumbers::T6000Firestorm => todo!(),
+        PartNumbers::T6000Icestorm => init_m1_icestorm(),
+        PartNumbers::T8103Firestorm => todo!(),
+        PartNumbers::T8103Icestorm => init_m1_icestorm(),
+        PartNumbers::T8112Avalanche => todo!(),
+        PartNumbers::T8112Blizzard => init_m2_blizzard(),
     };
 
     let core = MPIDR_EL1.get() & 0xff;
