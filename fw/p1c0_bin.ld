@@ -5,6 +5,9 @@ _stack_size = 0x80000;
 /* 2MB arena size */
 _arena_size = 0x200000;
 
+/* Maximum payload size */
+_max_payload_size = 64*1024*1024;
+
 /* We are actually relocatable */
 . = 0;
 
