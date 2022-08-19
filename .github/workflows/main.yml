@@ -45,8 +45,10 @@ jobs:
     - uses: hermitcore/toolchain@downstream
     - name: Install dependencies
       run: .github/workflows/setup.sh
-    - name: Run cargo build
+    - name: Build macho target
       run: cargo xtask build --release
+    - name: Build binary target
+      run: cargo xtask build --release --binary
 
   cargo_coverage:
     runs-on: ubuntu-latest
