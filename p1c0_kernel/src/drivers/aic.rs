@@ -1,7 +1,6 @@
 use super::interfaces::interrupt_controller::{InterruptController, IrqType};
 use crate::{
-    adt::{self},
-    error,
+    adt, error,
     memory::{self, address::Address, MemoryManager},
     prelude::*,
     sync::spinlock::RwSpinLock,
@@ -128,9 +127,7 @@ impl Aic {
         instance.mask_all()?;
         instance.global_regs.config.write(Config::Enable::SET);
 
-        let instance = Arc::new(RwSpinLock::new(super::Dev::InterruptController(Box::new(
-            instance,
-        ))));
+        let instance = Arc::new(RwSpinLock::new(instance));
         super::interfaces::interrupt_controller::register_interrupt_controller(instance.clone());
 
         Ok(instance)

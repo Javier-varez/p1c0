@@ -1,11 +1,13 @@
+extern crate alloc;
+
 use crate::{
     collections::ring_buffer::{self, RingBuffer},
-    drivers::{Dev, DeviceRef},
     init::is_kernel_relocated,
-    sync::spinlock::SpinLock,
+    sync::spinlock::{RwSpinLock, SpinLock},
     syscall::Syscall,
 };
 
+use alloc::sync::Arc;
 use core::fmt::Write;
 
 #[derive(Debug)]
@@ -21,7 +23,7 @@ pub enum Error {
 pub trait EarlyPrint: Write {}
 
 pub trait Print {
-    fn write_str(&self, s: &str) -> Result<(), Error> {
+    fn write_str(&mut self, s: &str) -> Result<(), Error> {
         for character in s.bytes() {
             if character == b'\n' {
                 // Implicit \r with every \n
@@ -32,7 +34,7 @@ pub trait Print {
         Ok(())
     }
 
-    fn write_u8(&self, c: u8) -> Result<(), Error>;
+    fn write_u8(&mut self, c: u8) -> Result<(), Error>;
 }
 
 // This variable is used during early boot and therefore this cannot be wrapped in a mutex/spinlock,
@@ -41,7 +43,7 @@ pub trait Print {
 // However, given it runs in a single-threaded context it should be mostly ok.
 static mut EARLY_PRINT: Option<*mut dyn EarlyPrint> = None;
 
-static PRINT: SpinLock<Option<DeviceRef>> = SpinLock::new(None);
+static mut PRINT: Option<*mut dyn Print> = None;
 
 const BUFFER_SIZE: usize = 1024 * 256;
 static BUFFER: RingBuffer<BUFFER_SIZE> = RingBuffer::new();
@@ -103,35 +105,21 @@ pub unsafe fn register_early_printer<T: EarlyPrint>(printer: &'static mut T) {
 }
 
 #[inline]
-pub fn register_printer(printer: DeviceRef) {
+pub fn register_printer(printer: Arc<RwSpinLock<dyn Print>>) {
     let mut reader = BUFFER.split_reader().expect("The buffer is already split!");
-
-    match &*printer.lock_read() {
-        Dev::Logger(_) => {}
-        _ => {
-            panic!("Printer must be a Dev::Logger instance");
-        }
-    }
 
     crate::thread::Builder::new()
         .name("Printer")
         .spawn(move || {
-            PRINT.lock().replace(printer);
+            let mut logger = printer.lock_write();
+            unsafe { PRINT.replace(&mut *logger as *mut _) };
+            drop(logger);
+
             loop {
                 match reader.pop() {
                     Ok(val) => {
-                        let mut lock = PRINT.lock();
-                        if let Some(lock) = lock.as_mut() {
-                            let mut lock = lock.lock_write();
-                            match &mut *lock {
-                                Dev::Logger(logger) => {
-                                    logger.write_u8(val).unwrap();
-                                }
-                                _ => {
-                                    panic!("Printer must be a Dev::Logger instance");
-                                }
-                            };
-                        }
+                        let mut lock = printer.lock_write();
+                        lock.write_u8(val).unwrap();
                     }
                     Err(ring_buffer::Error::WouldBlock) => {
                         // TODO(javier-varez): Sleep here waiting for condition to happen instead of looping
@@ -152,20 +140,14 @@ pub fn register_printer(printer: DeviceRef) {
 ///   Only callable from a single-threaded context if the reader thread is stuck
 pub unsafe fn force_flush() {
     let mut reader = BUFFER.split_reader_unchecked();
-    PRINT.access_inner_without_locking(|printer| {
-        printer
-            .as_ref()
-            .unwrap()
-            .access_inner_without_locking(|printer| {
-                let logger = match &mut *printer {
-                    Dev::Logger(logger) => logger,
-                    _ => {
-                        panic!("Printer must be a Dev::Logger instance");
-                    }
-                };
-                while let Ok(val) = reader.pop() {
-                    logger.write_u8(val).unwrap();
-                }
-            });
-    });
+    let printer = match PRINT.as_ref() {
+        Some(printer) => &mut **printer,
+        None => {
+            return;
+        }
+    };
+
+    while let Ok(val) = reader.pop() {
+        printer.write_u8(val).unwrap();
+    }
 }

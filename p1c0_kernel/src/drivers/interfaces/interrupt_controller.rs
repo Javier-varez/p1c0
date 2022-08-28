@@ -10,7 +10,7 @@ pub enum IrqType {
     IPI,
 }
 
-pub trait InterruptController {
+pub trait InterruptController: crate::drivers::Device {
     fn num_interrupts(&self) -> u32;
     fn mask_interrupt(&mut self, irq_number: u32) -> Result<()>;
     fn unmask_interrupt(&mut self, irq_number: u32) -> Result<()>;
@@ -27,31 +27,19 @@ pub trait InterruptController {
 }
 
 // Assume just 1 interrupt controller for now. This might have to change in the future
-static IRQ_CONTROLLER: RwSpinLock<Option<crate::drivers::DeviceRef>> = RwSpinLock::new(None);
+static IRQ_CONTROLLER: RwSpinLock<Option<Arc<RwSpinLock<dyn InterruptController>>>> =
+    RwSpinLock::new(None);
 
-pub fn register_interrupt_controller(irq_controller: crate::drivers::DeviceRef) {
-    match &*irq_controller.lock_read() {
-        crate::drivers::Dev::InterruptController(_) => {}
-        _ => {
-            panic!("Device must be an interrupt controller");
-        }
-    }
+pub fn register_interrupt_controller(irq_controller: Arc<RwSpinLock<dyn InterruptController>>) {
     IRQ_CONTROLLER.lock_write().replace(irq_controller);
 }
 
-pub fn may_do_with_irq_controller(
-    mut callable: impl FnMut(&mut Box<dyn InterruptController>),
-) -> bool {
+pub fn may_do_with_irq_controller(mut callable: impl FnMut(&mut dyn InterruptController)) -> bool {
     let irq_ctrlrer_guard = IRQ_CONTROLLER.lock_read();
     if let Some(irq_controller) = irq_ctrlrer_guard.as_ref() {
         let mut irq_controller = irq_controller.lock_write();
-        match &mut *irq_controller {
-            crate::drivers::Dev::InterruptController(irq_controller) => {
-                callable(irq_controller);
-                return true;
-            }
-            _ => unreachable!(),
-        };
+        callable(&mut *irq_controller);
+        return true;
     }
 
     false

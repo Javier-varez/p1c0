@@ -140,7 +140,7 @@ impl Display {
         let source = &hw[offset] as *const u32;
         let destination = hw.as_mut_ptr();
 
-        // Use memcpy128 for speed. This over
+        // Use memcpy128 for speed.
         // Safety:
         //   * source is aligned to 128 bits
         //   * destination is also aligned to 128 bits

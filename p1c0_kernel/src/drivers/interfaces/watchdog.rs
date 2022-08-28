@@ -1,3 +1,3 @@
-pub trait Watchdog {
+pub trait Watchdog: crate::drivers::Device {
     fn pet(&self);
 }
