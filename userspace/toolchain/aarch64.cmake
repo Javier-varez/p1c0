@@ -9,6 +9,7 @@ set(CMAKE_)
 
 set(CMAKE_CXX_COMPILER aarch64-none-elf-g++)
 set(CMAKE_CXX_COMPILER_TARGET ${triple})
+set(CMAKE_RANLIB aarch64-none-elf-ranlib)
 
 # We need to make sure to not omit frame pointer to make debugging easier.
 # Otherwise we might not be able to get backtraces
