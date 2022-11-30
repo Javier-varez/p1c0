@@ -11,7 +11,7 @@ use early_alloc::{AllocRef, EarlyAllocator};
 
 use core::ops::{Deref, DerefMut};
 
-use cortex_a::{
+use aarch64_cpu::{
     asm::barrier,
     registers::{MAIR_EL1, SCTLR_EL1, TCR_EL1, TTBR0_EL1, TTBR1_EL1},
 };
@@ -587,16 +587,14 @@ impl LevelTable {
 }
 
 pub fn switch_process_translation_table(low_table: &mut LevelTable) {
-    unsafe {
-        let va = LogicalAddress::try_from_ptr(low_table.as_ptr() as *mut _)
-            .expect("Level table not aligned!!");
-        let pa = va.into_physical();
+    let va = LogicalAddress::try_from_ptr(low_table.as_ptr() as *mut _)
+        .expect("Level table not aligned!!");
+    let pa = va.into_physical();
 
-        TTBR0_EL1.set_baddr(pa.as_u64());
+    TTBR0_EL1.set_baddr(pa.as_u64());
 
-        barrier::dsb(barrier::ISHST);
-        barrier::isb(barrier::SY);
-    }
+    barrier::dsb(barrier::ISHST);
+    barrier::isb(barrier::SY);
 
     // TODO(javier-varez): We need better granularity here for performance
     flush_tlb()
@@ -647,10 +645,8 @@ pub fn initialize(high_table: &mut LevelTable, low_table: &mut LevelTable) {
     TTBR0_EL1.set_baddr(low_table.table.as_ptr() as u64);
     TTBR1_EL1.set_baddr(high_table.table.as_ptr() as u64);
 
-    unsafe {
-        barrier::dsb(barrier::ISHST);
-        barrier::isb(barrier::SY);
-    }
+    barrier::dsb(barrier::ISHST);
+    barrier::isb(barrier::SY);
 
     // Actually enable the MMU
     SCTLR_EL1.modify(SCTLR_EL1::M::Enable + SCTLR_EL1::C::Cacheable + SCTLR_EL1::I::Cacheable);

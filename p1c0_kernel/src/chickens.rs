@@ -1,6 +1,6 @@
 use crate::{prelude::*, registers::*};
 
-use cortex_a::registers::*;
+use aarch64_cpu::registers::*;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 
 #[derive(Debug)]
@@ -113,9 +113,7 @@ pub fn init_cpu() {
 
     S3_4_C15_C10_4.set(0);
 
-    unsafe {
-        cortex_a::asm::barrier::isb(cortex_a::asm::barrier::SY);
-    }
+    aarch64_cpu::asm::barrier::isb(aarch64_cpu::asm::barrier::SY);
     SYS_IMPL_APL_CYC_OVRD.modify(
         SYS_IMPL_APL_CYC_OVRD::FIQ_MODE.val(0)
             + SYS_IMPL_APL_CYC_OVRD::IRQ_MODE.val(0)

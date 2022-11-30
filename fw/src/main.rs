@@ -21,7 +21,7 @@ use p1c0_kernel::{
 #[cfg(not(feature = "emulator"))]
 use p1c0_kernel::drivers::{gpio::GpioBank, hid::HidDev, spi::Spi};
 
-use cortex_a::registers::DAIF;
+use aarch64_cpu::registers::DAIF;
 use embedded_graphics::pixelcolor::Rgb888;
 use tinybmp::Bmp;
 use tock_registers::interfaces::Writeable;
@@ -108,7 +108,7 @@ pub extern "C" fn kernel_main() -> ! {
 
     #[cfg(not(feature = "emulator"))]
     loop {
-        cortex_a::asm::wfi();
+        aarch64_cpu::asm::wfi();
     }
 }
 

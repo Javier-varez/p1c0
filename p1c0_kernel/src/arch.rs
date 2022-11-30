@@ -4,7 +4,7 @@ pub mod mmu;
 
 use crate::memory::address::VirtualAddress;
 
-use cortex_a::registers::{CurrentEL, SPSel};
+use aarch64_cpu::registers::{CurrentEL, SPSel};
 use tock_registers::interfaces::Readable;
 
 #[derive(Debug, Clone)]
