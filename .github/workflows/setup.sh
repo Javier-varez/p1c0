@@ -6,7 +6,7 @@ GCC_DIR=${PWD}/${TOOLS_DIR}/gcc-aarch64-none-elf
 DOWNLOAD_DIR=${PWD}/${TOOLS_DIR}/downloads
 
 QEMU_VERSION="0.1.4"
-GCC_VERSION="11.2-2022.02"
+GCC_VERSION="11.3.rel1"
 
 OS=$(uname | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m| tr '[:upper:]' '[:lower:]')
@@ -32,7 +32,7 @@ get_gcc_install_path() {
         GCC_ARCH=${ARCH}
     fi
 
-    echo "${GCC_DIR}/gcc-arm-${GCC_VERSION}${OS_ADDEND}-${GCC_ARCH}-aarch64-none-elf/bin"
+    echo "${GCC_DIR}/arm-gnu-toolchain-${GCC_VERSION}${OS_ADDEND}-${GCC_ARCH}-aarch64-none-elf/bin"
 }
 
 download_qemu() {
@@ -63,8 +63,8 @@ download_gcc() {
 
     INSTALL_DIR=${TOOLS_DIR}/gcc-aarch64-none-elf/
 
-    TAR_NAME=gcc-arm-${GCC_VERSION}${OS_ADDEND}-${GCC_ARCH}-aarch64-none-elf.tar.xz
-    URL=https://developer.arm.com/-/media/Files/downloads/gnu/11.2-2022.02/binrel/${TAR_NAME}
+    TAR_NAME=arm-gnu-toolchain-${GCC_VERSION}${OS_ADDEND}-${GCC_ARCH}-aarch64-none-elf.tar.xz
+    URL=https://developer.arm.com/-/media/Files/downloads/gnu/${GCC_VERSION}/binrel/${TAR_NAME}
     download_tool ${URL}
 
     mkdir -p ${GCC_DIR}
