@@ -1,6 +1,6 @@
 use crate::memory::address::{Address, VirtualAddress};
 
-use cortex_a::asm::barrier::{dmb, SY};
+use aarch64_cpu::asm::barrier::{dmb, SY};
 
 const CACHE_LINE_SIZE: usize = 64;
 
@@ -20,7 +20,7 @@ pub fn invalidate_va_range(mut va: VirtualAddress, size_bytes: usize) {
     }
 
     // Add barrier operation to ensure the data cache clean completes before the next instructions
-    unsafe { dmb(SY) };
+    dmb(SY);
 }
 
 pub fn clean_va_range(mut va: VirtualAddress, size_bytes: usize) {
@@ -39,5 +39,5 @@ pub fn clean_va_range(mut va: VirtualAddress, size_bytes: usize) {
     }
 
     // Add barrier operation to ensure the data cache clean completes before the next instructions
-    unsafe { dmb(SY) };
+    dmb(SY);
 }

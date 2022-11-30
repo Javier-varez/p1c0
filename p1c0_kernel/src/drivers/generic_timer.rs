@@ -2,7 +2,7 @@ use super::interfaces::{self, TimerResolution};
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use cortex_a::{
+use aarch64_cpu::{
     asm::barrier,
     registers::{CNTFRQ_EL0, CNTVCT_EL0, CNTV_CTL_EL0, CNTV_TVAL_EL0},
 };
@@ -38,7 +38,7 @@ impl interfaces::timer::Timer for GenericTimer {
     fn ticks(&self) -> interfaces::Ticks {
         // Ensures that we don't get an out of order value by adding an instruction barrier
         // (flushing the instruction pipeline)
-        unsafe { barrier::isb(barrier::SY) };
+        barrier::isb(barrier::SY);
         interfaces::Ticks::new(CNTVCT_EL0.get())
     }
 

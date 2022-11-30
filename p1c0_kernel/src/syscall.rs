@@ -376,7 +376,7 @@ fn handle_reboot(_cx: &mut ExceptionContext) {
 
     // We hang here never servicing the WDT again, causing a reboot
     loop {
-        cortex_a::asm::wfi();
+        aarch64_cpu::asm::wfi();
     }
 }
 

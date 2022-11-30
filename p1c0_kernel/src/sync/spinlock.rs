@@ -1,6 +1,6 @@
 use core::{cell::UnsafeCell, sync::atomic};
 
-use cortex_a::{asm::barrier, registers::DAIF};
+use aarch64_cpu::{asm::barrier, registers::DAIF};
 use tock_registers::interfaces::{Readable, Writeable};
 
 static CRITICAL_NESTING: atomic::AtomicU32 = atomic::AtomicU32::new(0);
@@ -17,7 +17,7 @@ fn get_then_mask_daif() -> u64 {
     let saved_daif = DAIF.get();
 
     DAIF.write(DAIF::D::Masked + DAIF::I::Masked + DAIF::A::Masked + DAIF::F::Masked);
-    unsafe { barrier::dsb(barrier::ISHST) };
+    barrier::dsb(barrier::ISHST);
     saved_daif
 }
 
@@ -28,7 +28,7 @@ fn restore_saved_daif(saved_daif: u64) {
 
     // Add a barrier here to ensure that subsequent memory accesses really execute
     // out of the critical section
-    unsafe { barrier::dsb(barrier::ISHST) };
+    barrier::dsb(barrier::ISHST);
 }
 
 fn increment_critical_nesting(saved_daif: u64) {
@@ -50,7 +50,7 @@ fn decrement_critical_nesting() {
     let prev_nesting = CRITICAL_NESTING.fetch_sub(1, atomic::Ordering::Release);
     if prev_nesting == 1 {
         // Add a barrier here to ensure that memory accesses finish before enabling exceptions
-        unsafe { barrier::dsb(barrier::ISHST) };
+        barrier::dsb(barrier::ISHST);
 
         // Restore daif settings
         unsafe { DAIF.set(SAVED_DAIF) };

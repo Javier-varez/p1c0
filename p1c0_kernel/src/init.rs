@@ -18,7 +18,7 @@ use p1c0_macros::initcall;
 
 use core::time::Duration;
 
-use cortex_a::{
+use aarch64_cpu::{
     asm,
     registers::{CurrentEL, CNTHCTL_EL2, CNTVOFF_EL2, ELR_EL2, HCR_EL2, SPSR_EL2, SP_EL1},
 };

@@ -13,7 +13,7 @@ use crate::{
 use core::arch::global_asm;
 use core::fmt;
 
-use cortex_a::{asm::barrier, registers::*};
+use aarch64_cpu::{asm::barrier, registers::*};
 use tock_registers::{
     interfaces::{Readable, Writeable},
     registers::InMemoryRegister,
@@ -454,7 +454,7 @@ pub fn handling_init() {
 
     VBAR_EL1.set(vectors as u64);
     // Force VBAR update to complete before next instruction.
-    unsafe { barrier::isb(barrier::SY) };
+    barrier::isb(barrier::SY);
 
     if matches!(
         CurrentEL.read_as_enum(CurrentEL::EL),
@@ -475,7 +475,7 @@ pub fn handling_init() {
         );
 
         // Force HCR update to complete before next instruction.
-        unsafe { barrier::isb(barrier::SY) };
+        barrier::isb(barrier::SY);
 
         #[cfg(target_os = "none")]
         let vectors = unsafe { &__el2_exception_vector_start as *const _ };
@@ -486,7 +486,7 @@ pub fn handling_init() {
         VBAR_EL2.set(vectors as u64);
 
         // Force VBAR update to complete before next instruction.
-        unsafe { barrier::isb(barrier::SY) };
+        barrier::isb(barrier::SY);
     }
 }
 

@@ -22,7 +22,7 @@ use core::{
     time::Duration,
 };
 
-use cortex_a::{asm::wfi, registers::SPSR_EL1};
+use aarch64_cpu::{asm::wfi, registers::SPSR_EL1};
 use heapless::String;
 use tock_registers::interfaces::Readable;
 

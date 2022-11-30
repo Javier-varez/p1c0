@@ -11,7 +11,7 @@ default = []
 
 [dependencies]
 embedded-graphics = "0.7.1"
-cortex-a = "7.2.0"
-tock-registers = "0.7.0"
+aarch64-cpu = "9.0.0"
+tock-registers = "0.8.1"
 heapless = "0.7.9"
 p1c0-macros = { path = "../p1c0_macros" }

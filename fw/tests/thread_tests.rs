@@ -41,7 +41,7 @@ fn test_runs_single_thread() {
         drop(locked_num_threads);
 
         loop {
-            cortex_a::asm::wfi();
+            aarch64_cpu::asm::wfi();
         }
     });
 
@@ -73,7 +73,7 @@ fn test_runs_multiple_threads() {
         drop(locked_num_threads);
 
         loop {
-            cortex_a::asm::wfi();
+            aarch64_cpu::asm::wfi();
         }
     });
 
@@ -83,7 +83,7 @@ fn test_runs_multiple_threads() {
         drop(locked_num_threads);
 
         loop {
-            cortex_a::asm::wfi();
+            aarch64_cpu::asm::wfi();
         }
     });
 
