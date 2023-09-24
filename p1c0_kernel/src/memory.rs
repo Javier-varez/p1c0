@@ -9,6 +9,7 @@ use crate::{
         self,
         mmu::{PAGE_BITS, PAGE_SIZE},
     },
+    boot_args::get_boot_args,
     sync::spinlock::{SpinLock, SpinLockGuard},
 };
 use address::{Address, LogicalAddress, PhysicalAddress, VirtualAddress};
@@ -221,7 +222,7 @@ impl MemoryManager {
             )
             .expect("Cannot unmap DRAM identity-map");
 
-        // Map mmio ranges as defined in the ADT
+        // Unmap mmio ranges as defined in the ADT
         let root_address_cells = adt.find_node("/").and_then(|node| node.get_address_cells());
         let node = adt.find_node("/arm-io").expect("There is not an arm-io");
         let range_iter = node.range_iter(root_address_cells);
@@ -287,25 +288,65 @@ impl MemoryManager {
         // Now unmap identity mapping
         self.remove_identity_mappings();
 
-        let adt = crate::adt::get_adt().unwrap();
-        let chosen = adt.find_node("/chosen").expect("There is a chosen node");
-        let dram_base = chosen
-            .find_property("dram-base")
-            .and_then(|prop| prop.usize_value().ok())
-            .and_then(|addr| PhysicalAddress::try_from_ptr(addr as *const u8).ok())
-            .expect("There is a dram base");
-        let dram_size = chosen
-            .find_property("dram-size")
-            .and_then(|prop| prop.usize_value().ok())
-            .expect("There is a dram base");
-
+        /*
+         * Note that only the RAM given by iBoot is used because of uknonwn carveouts in the rest of
+         * the RAM.
+         */
+        let boot_args = get_boot_args();
         self.initialize_physical_page_allocator(
-            dram_base,
-            dram_size,
+            PhysicalAddress::from_unaligned_ptr(boot_args.top_of_kernel_data as *const _)
+                .align_up_to_page(),
+            boot_args.mem_size,
             device_tree,
             device_tree_size,
         )
         .expect("Could not initialize physical_page_allocator");
+    }
+
+    /// Maps reserved memory as logical memory. This means that it does not request memory from the
+    /// physical page allocator, as the memory is assumed to be reserved.
+    ///   SAFETY:
+    ///     The user must know that the address being mapped is safe to use and does not collide
+    ///     with an address managed by the physical_page_allocator.
+    pub unsafe fn map_logical_reserved(
+        &mut self,
+        name: &str,
+        la: LogicalAddress,
+        size_bytes: usize,
+        attributes: Attributes,
+        permissions: Permissions,
+    ) -> Result<(), Error> {
+        // Getting the logical range must succeed because we got ownership of the pages and this is
+        // a logical mapping (one-to-one address)
+        let logical_range = self
+            .kernel_address_space
+            .add_logical_range(
+                name,
+                la,
+                size_bytes,
+                attributes,
+                permissions,
+                Some(PhysicalMemoryRegion::new(la.into_physical(), size_bytes)),
+            )
+            .expect("Error mapping logical range");
+
+        let la = logical_range.la;
+        let size = logical_range.size_bytes;
+        let attributes = logical_range.attributes;
+        let permissions = GlobalPermissions::new_only_privileged(logical_range.permissions);
+
+        self.kernel_address_space
+            .high_table()
+            .map_region(
+                la.into_virtual(),
+                la.into_physical(),
+                size,
+                attributes,
+                permissions,
+            )
+            .expect("MMU cannot map requested region");
+
+        Ok(())
     }
 
     pub fn map_logical(
@@ -452,22 +493,28 @@ impl MemoryManager {
             let section = map::KernelSection::from_id(*section_id);
             let physical_addr = section.pa();
             let num_pages = num_pages_from_bytes(section.size_bytes());
-            self.physical_page_allocator.steal_region(
-                physical_addr,
-                num_pages,
-                physical_page_allocator::Options::Default,
-            )?;
+            // Note that it is ok if these pages were not available in the first place, so this
+            // steal may fail
+            self.physical_page_allocator
+                .steal_region(
+                    physical_addr,
+                    num_pages,
+                    physical_page_allocator::Options::Default,
+                )
+                .ok();
         }
 
         // Remove ADT regions
         let device_tree_pages = num_pages_from_bytes(device_tree_size);
+        // Note that it is ok if these pages were not available in the first place, so this
+        // steal may fail
         self.physical_page_allocator
             .steal_region(
                 device_tree_base,
                 device_tree_pages,
                 physical_page_allocator::Options::Default,
             )
-            .expect("Cannot steal ADT region");
+            .ok();
 
         self.physical_page_allocator.print_regions();
 
