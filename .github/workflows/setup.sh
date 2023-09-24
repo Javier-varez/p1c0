@@ -119,5 +119,5 @@ ensure_gcc
 
 write_env
 
-cargo install cargo-binutils
-cargo install grcov
+cargo install cargo-binutils --locked
+cargo install grcov --locked
