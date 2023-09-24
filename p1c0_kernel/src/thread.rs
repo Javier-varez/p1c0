@@ -196,7 +196,7 @@ impl Builder {
 
         const DEFAULT_STACK_SIZE: usize = 1024;
 
-        let name = self.name.unwrap_or_else(String::new);
+        let name = self.name.unwrap_or_default();
         let stack_size = self.stack_size.unwrap_or(DEFAULT_STACK_SIZE);
         let stack = Stack::new(stack_size);
         let stack_ptr = stack.top();
@@ -428,7 +428,7 @@ fn exit_thread(thread: Tcb) {
     let tid = thread.tid;
 
     // Drop the thread
-    unsafe { thread.into_box() };
+    let _ = unsafe { thread.into_box() };
 
     // Get the TID and unlock any threads that were waiting for this one to complete
     let unblocked_threads = BLOCKED_THREADS.lock().drain_filter(|thread| {

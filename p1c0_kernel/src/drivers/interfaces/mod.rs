@@ -40,6 +40,6 @@ impl TimerResolution {
     }
 
     pub fn duration_to_ticks(&self, duration: Duration) -> Ticks {
-        Ticks(((duration.as_nanos() as u128 * self.0 as u128) / Self::S_IN_NS as u128) as u64)
+        Ticks(((duration.as_nanos() * self.0 as u128) / Self::S_IN_NS) as u64)
     }
 }

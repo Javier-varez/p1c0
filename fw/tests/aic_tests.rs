@@ -3,7 +3,6 @@
 #![feature(custom_test_frameworks)]
 #![test_runner(test_fwk::runner)]
 #![reexport_test_harness_main = "test_main"]
-#![feature(default_alloc_error_handler)]
 #![feature(assert_matches)]
 
 use p1c0 as _; // needed to link libentry (and _start)

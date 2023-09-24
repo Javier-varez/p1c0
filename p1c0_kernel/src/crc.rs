@@ -1,7 +1,7 @@
 mod crc16 {
     const POLY: u16 = 0xA001; // x^16 + x^15 + x^2 + 1
 
-    #[no_coverage]
+    #[coverage(off)]
     const fn generate_coefficient(byte: u8) -> u16 {
         let mut value: u16 = byte as u16;
 
@@ -20,7 +20,7 @@ mod crc16 {
         value
     }
 
-    #[no_coverage]
+    #[coverage(off)]
     const fn generate_table() -> [u16; 256] {
         let mut table = [0; 256];
         let mut i = 0;
@@ -60,7 +60,7 @@ pub fn crc16(seed: u16, data: &[u8]) -> u16 {
 mod crc32c {
     const POLY: u32 = 0x82F63B78; // CRC32C
 
-    #[no_coverage]
+    #[coverage(off)]
     const fn generate_coefficient(byte: u8) -> u32 {
         let mut value = byte as u32;
 
@@ -79,7 +79,7 @@ mod crc32c {
         value
     }
 
-    #[no_coverage]
+    #[coverage(off)]
     const fn generate_table() -> [u32; 256] {
         let mut table = [0; 256];
         let mut i = 0;

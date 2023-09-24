@@ -149,12 +149,12 @@ impl RegisterBank {
             let offset: usize = register.offset.base10_parse().unwrap();
             if (offset % reg_size) != 0 {
                 let error_message = format!("Register `{}` is unaligned", register.name);
-                return Err(syn::Error::new(register.offset.span(), &error_message));
+                return Err(syn::Error::new(register.offset.span(), error_message));
             }
 
             if offset < current_offset {
                 let error_message = format!("Register `{}` overlaps with another", register.name);
-                return Err(syn::Error::new(register.offset.span(), &error_message));
+                return Err(syn::Error::new(register.offset.span(), error_message));
             }
 
             current_offset = offset + reg_size;

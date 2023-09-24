@@ -213,7 +213,7 @@ fn pointer_alignment<T>(ptr: *const T) -> usize {
 
 /// This function checks the alignment and size of the slices to obtain the best fit
 /// transaction size that does not result in UB
-fn deduct_transaction_size(tx_data: &[u8], rx_data: &mut [MaybeUninit<u8>]) -> TransactionSize {
+fn deduct_transaction_size(tx_data: &[u8], rx_data: &[MaybeUninit<u8>]) -> TransactionSize {
     let tx_alignment = pointer_alignment(tx_data.as_ptr());
     let rx_alignment = pointer_alignment(tx_data.as_ptr());
     if tx_alignment >= 4
@@ -412,14 +412,14 @@ impl Spi {
                     let bytes = u16::to_be_bytes(rx_data as u16);
                     for byte in bytes {
                         let slot = rx_data_iter.next().unwrap_unchecked();
-                        slot.write(byte as u8);
+                        slot.write(byte);
                     }
                 }
                 TransactionSize::Ts4b => {
                     let bytes = u32::to_be_bytes(rx_data);
                     for byte in bytes {
                         let slot = rx_data_iter.next().unwrap_unchecked();
-                        slot.write(byte as u8);
+                        slot.write(byte);
                     }
                 }
             }

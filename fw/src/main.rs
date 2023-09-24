@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(default_alloc_error_handler)]
 
 use p1c0::print_boot_args;
 
@@ -87,8 +86,7 @@ fn kernel_entry() {
         )
         .unwrap();
 
-        let mut elf_data = vec![];
-        elf_data.resize(file.size, 0);
+        let mut elf_data = vec![0; file.size];
         p1c0_kernel::filesystem::VirtualFileSystem::read(&mut file, &mut elf_data[..]).unwrap();
         p1c0_kernel::filesystem::VirtualFileSystem::close(file);
         let builder =
@@ -117,7 +115,9 @@ fn finish() -> ! {
     arm_semihosting::exit(1);
 
     #[cfg(not(feature = "emulator"))]
-    loop {}
+    loop {
+        aarch64_cpu::asm::wfi();
+    }
 }
 
 #[panic_handler]

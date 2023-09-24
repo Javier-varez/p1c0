@@ -451,7 +451,7 @@ impl ProcessAddressSpace {
     }
 
     pub(crate) fn address_table(&mut self) -> &mut LevelTable {
-        &mut *self.address_table
+        &mut self.address_table
     }
 
     pub fn map_section(

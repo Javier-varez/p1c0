@@ -356,7 +356,7 @@ mod test {
         assert_eq!(vector, vec![32, 23, 84, 843]);
 
         list.release(|element| {
-            unsafe { element.into_box() };
+            let _ = unsafe { element.into_box() };
         });
     }
 
@@ -381,7 +381,7 @@ mod test {
         assert_eq!(vector, vec![843, 84, 23, 32]);
 
         list.release(|element| {
-            unsafe { element.into_box() };
+            let _ = unsafe { element.into_box() };
         });
     }
 
@@ -408,7 +408,7 @@ mod test {
         assert_eq!(iter.next_back(), None);
 
         list.release(|element| {
-            unsafe { element.into_box() };
+            let _ = unsafe { element.into_box() };
         });
     }
 
@@ -429,13 +429,13 @@ mod test {
         let removed_element = list.pop().expect("There is no element to pop");
         assert_eq!(*removed_element.deref().deref(), 32);
 
-        unsafe { removed_element.into_box() };
+        let _ = unsafe { removed_element.into_box() };
 
         let vector: Vec<_> = list.iter().map(|item| item.inner).collect();
         assert_eq!(vector, vec![23, 84]);
 
         list.release(|element| {
-            unsafe { element.into_box() };
+            let _ = unsafe { element.into_box() };
         });
     }
 
@@ -456,13 +456,13 @@ mod test {
         let removed_element = list.remove(1).expect("Could not remove element");
         assert_eq!(*removed_element.deref().deref(), 23);
 
-        unsafe { removed_element.into_box() };
+        let _ = unsafe { removed_element.into_box() };
 
         let vector: Vec<_> = list.iter().map(|item| item.inner).collect();
         assert_eq!(vector, vec![32, 84]);
 
         list.release(|element| {
-            unsafe { element.into_box() };
+            let _ = unsafe { element.into_box() };
         });
     }
 
@@ -493,11 +493,11 @@ mod test {
         assert_eq!(vector, vec![84, 84]);
 
         removed_list.release(|element| {
-            unsafe { element.into_box() };
+            let _ = unsafe { element.into_box() };
         });
 
         list.release(|element| {
-            unsafe { element.into_box() };
+            let _ = unsafe { element.into_box() };
         });
     }
 
@@ -533,7 +533,7 @@ mod test {
         assert_eq!(vector, vec![32, 23, 234, 84, 84]);
 
         list.release(|element| {
-            unsafe { element.into_box() };
+            let _ = unsafe { element.into_box() };
         });
     }
 
@@ -574,7 +574,7 @@ mod test {
         assert_eq!(iter.next_back(), None);
 
         list.release(|element| {
-            unsafe { element.into_box() };
+            let _ = unsafe { element.into_box() };
         });
     }
 

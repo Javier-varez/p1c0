@@ -1,5 +1,7 @@
 [workspace]
 
+resolver = "2"
+
 members = [
     "p1c0_kernel",
     "p1c0_macros",
