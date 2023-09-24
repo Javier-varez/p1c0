@@ -168,6 +168,14 @@ impl PhysicalAddress {
         Self(addr_usize as *const u8)
     }
 
+    #[must_use]
+    pub fn align_up_to_page(&self) -> Self {
+        let mut addr_usize = self.0 as usize;
+        addr_usize += PAGE_SIZE - 1;
+        addr_usize &= !(PAGE_SIZE - 1);
+        Self(addr_usize as *const u8)
+    }
+
     /// # Safety
     ///   The user must guarantee that the resulting pointer is a valid PhysicalAddress after this
     ///   operation. This means that it is within the limits of addressable physical memory and

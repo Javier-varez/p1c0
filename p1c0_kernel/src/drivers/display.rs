@@ -78,13 +78,19 @@ impl Display {
             .try_into_logical()
             .expect("Framebuffer does not have a logical address");
 
-        memory::MemoryManager::instance().map_logical(
-            "framebuffer",
-            la,
-            size,
-            Attributes::Normal,
-            Permissions::RW,
-        )?;
+        // SAFETY:
+        //   This is safe because the memory range passed to our kernel already does not contain
+        //   the pages reserved for the framebuffer, but they are still regular ram (And should be
+        //   mapped as such to give nice read/write performance).
+        unsafe {
+            memory::MemoryManager::instance().map_logical_reserved(
+                "framebuffer",
+                la,
+                size,
+                Attributes::Normal,
+                Permissions::RW,
+            )?
+        };
 
         Ok(la.as_ptr() as *mut u32)
     }
