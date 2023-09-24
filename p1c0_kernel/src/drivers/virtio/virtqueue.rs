@@ -185,8 +185,7 @@ impl<const N: usize, const C: usize> VirtQueue<N, C> {
             .iter_mut()
             .zip(self.descriptor_data.iter_mut())
         {
-            let buffer_pa =
-                LogicalAddress::new_unaligned(buffer.as_mut_ptr() as *mut u8).into_physical();
+            let buffer_pa = LogicalAddress::new_unaligned(buffer.as_mut_ptr()).into_physical();
 
             desc.addr.set(buffer_pa.as_u64());
             desc.len.set(buffer.len() as u32);

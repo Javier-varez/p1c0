@@ -207,7 +207,7 @@ struct AicDriver {}
 impl super::Driver for AicDriver {
     fn probe(&self, dev_path: &[adt::AdtNode]) -> super::Result<super::DeviceRef> {
         log_error!("Probing aic driver");
-        let dev = Aic::probe(dev_path).map_err(|e| super::Error::DeviceSpecificError(e))?;
+        let dev = Aic::probe(dev_path).map_err(super::Error::DeviceSpecificError)?;
         Ok(dev)
     }
 }

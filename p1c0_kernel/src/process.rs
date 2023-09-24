@@ -260,7 +260,7 @@ impl Builder {
                 mapped_env_addresses.push(core::ptr::null());
 
                 let mut copy_slice = |slice: &[*const u8]| {
-                    let size_bytes = slice.len() * core::mem::size_of::<*const u8>();
+                    let size_bytes = core::mem::size_of_val(slice);
 
                     // Align offset to pointer size
                     let alignment = offset % core::mem::size_of::<*const u8>();
@@ -329,7 +329,7 @@ impl Builder {
     }
 
     pub fn new_from_elf_data(name: &str, elf_data: Vec<u8>, aslr: usize) -> Result<Builder, Error> {
-        let elf = ElfParser::from_slice(&elf_data[..]).map_err(|e| Error::ElfError(e))?;
+        let elf = ElfParser::from_slice(&elf_data[..]).map_err(Error::ElfError)?;
         if !matches!(
             elf.elf_type(),
             elf::EType::Executable | elf::EType::SharedObject
@@ -340,7 +340,7 @@ impl Builder {
 
         let mut process_builder = Builder::new();
         for header in elf.program_header_iter() {
-            let header_type = header.ty().map_err(|e| Error::ElfError(e))?;
+            let header_type = header.ty().map_err(Error::ElfError)?;
             if matches!(header_type, elf::PtType::Load) {
                 log_debug!(
                     "Virtual addr 0x{:x}, Physical addr 0x{:x}, Size in process {} Size in file {}",
@@ -390,7 +390,7 @@ impl Builder {
 
                 process_builder.map_section(
                     elf.matching_section_name(&header)
-                        .map_err(|e| Error::ElfError(e))?
+                        .map_err(Error::ElfError)?
                         .unwrap_or(""),
                     vaddr,
                     header.memsize() as usize,

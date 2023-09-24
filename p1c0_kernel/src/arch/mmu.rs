@@ -586,7 +586,7 @@ impl LevelTable {
     }
 }
 
-pub fn switch_process_translation_table(low_table: &mut LevelTable) {
+pub fn switch_process_translation_table(low_table: &LevelTable) {
     let va = LogicalAddress::try_from_ptr(low_table.as_ptr() as *mut _)
         .expect("Level table not aligned!!");
     let pa = va.into_physical();
@@ -616,7 +616,7 @@ pub fn flush_tlb_page(addr: VirtualAddress) {
     }
 }
 
-pub fn initialize(high_table: &mut LevelTable, low_table: &mut LevelTable) {
+pub fn initialize(high_table: &LevelTable, low_table: &LevelTable) {
     if unsafe { MMU_INITIALIZED } {
         panic!("MMU Already initialized!");
     }
